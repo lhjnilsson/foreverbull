@@ -52,6 +52,9 @@ type recordingBars struct {
 	limit    int
 	bars     []*finance_pb.OHLC
 	err      error
+	// deliverRequested returns one bar per symbol in the call. The chunk
+	// test uses it so a presence check is not an empty delivery.
+	deliverRequested bool
 }
 
 func (r *recordingBars) List(_ context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*finance_pb.OHLC, error) {
@@ -62,6 +65,13 @@ func (r *recordingBars) List(_ context.Context, provider string, symbols []strin
 	r.limit = limit
 	if r.err != nil {
 		return nil, r.err
+	}
+	if r.deliverRequested {
+		out := make([]*finance_pb.OHLC, 0, len(symbols))
+		for _, symbol := range symbols {
+			out = append(out, &finance_pb.OHLC{Symbol: symbol, Timestamp: timestamppb.New(asOf)})
+		}
+		return out, nil
 	}
 	return r.bars, nil
 }
@@ -123,7 +133,7 @@ func (test *PoolTest) TestProcessSendsBarsWithoutADatabaseURL() {
 }
 
 func (test *PoolTest) TestProcessChunksBarReads() {
-	source := &recordingBars{}
+	source := &recordingBars{deliverRequested: true}
 	handler := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
 		return &servicePb.WorkerResponse{}
 	}
@@ -161,6 +171,59 @@ func (test *PoolTest) TestProcessReturnsABarLoadErrorBeforeSending() {
 	_, err = pool.Process(context.TODO(), time.Now(), []string{"AAPL"}, &finance_pb.Portfolio{})
 	test.Require().EqualError(err, "load bars: read failed")
 	test.NotContains(err.Error(), "postgres://")
+}
+
+func (test *PoolTest) TestProcessFailsWhenARequestedSymbolHasNoBars() {
+	// 01:00 at UTC+2 is 23:00 the previous UTC day. The named date is that
+	// UTC day, not the wall clock and not the timestamp argument when a
+	// portfolio time is set.
+	loc := time.FixedZone("CEST", 2*60*60)
+	wall := time.Date(2024, time.June, 3, 1, 0, 0, 0, loc)
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(wall)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	_, err = pool.Process(context.TODO(), wall, []string{"MSFT", "AAPL", "NVDA", "IBM", "MSFT"}, nil)
+	test.Require().EqualError(err, "no bars for MSFT, NVDA and IBM on 2024-06-02")
+	test.NotContains(err.Error(), "AAPL")
+	test.Equal(1, source.calls)
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(wall)}
+	other := time.Date(2020, time.January, 2, 0, 0, 0, 0, time.UTC)
+	_, err = pool.Process(context.TODO(), other, []string{"IBM"}, portfolio)
+	test.Require().EqualError(err, "no bars for IBM on 2024-06-02")
+	test.Equal(2, source.calls)
+}
+
+func (test *PoolTest) TestProcessEmptySymbolListIsNotMissingBars() {
+	source := &recordingBars{err: fmt.Errorf("list should not be called")}
+	handler := func(_ *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		return &servicePb.WorkerResponse{}
+	}
+	algo, runner := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{CB: handler, Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	configuration := pool.Configure()
+	socket, err := rep.NewSocket()
+	test.Require().NoError(err)
+	defer socket.Close()
+	test.Require().NoError(socket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.BrokerPort)))
+	test.Require().NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second))
+	test.Require().NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second))
+	go runner(socket)
+
+	when := time.Date(2024, time.June, 3, 0, 0, 0, 0, time.UTC)
+	_, err = pool.Process(context.TODO(), when, nil, &finance_pb.Portfolio{})
+	test.Require().NoError(err)
+	_, err = pool.Process(context.TODO(), when, []string{}, &finance_pb.Portfolio{})
+	test.Require().NoError(err)
+	test.Equal(0, source.calls)
 }
 
 func (test *PoolTest) TestSimple() {

@@ -3,6 +3,7 @@ import tempfile
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
+from datetime import timezone
 from typing import Any
 from typing import cast
 from unittest import mock
@@ -107,6 +108,66 @@ class TestAssets:
         direct = Asset(as_of, "AAPL", bars).stock_data
         one = batched.loc[["AAPL"]].reset_index()
         pandas.testing.assert_frame_equal(one, direct, check_dtype=True)
+
+
+def test_requested_symbol_with_no_bars_names_the_symbol_and_date():
+    as_of = datetime(2024, 6, 3, 21, tzinfo=UTC)
+    bars = [_bar("AAPL", as_of, 10), _bar("AAPL", as_of - timedelta(days=1), 9)]
+
+    with pytest.raises(ConfigurationError) as exc:
+        _ = Asset(as_of, "MSFT", bars).stock_data
+    assert str(exc.value) == "no bars for MSFT on 2024-06-03"
+
+    with pytest.raises(ConfigurationError) as exc:
+        _ = Asset(datetime(2024, 6, 3, 21), "MSFT").stock_data
+    assert str(exc.value) == "no bars for MSFT on 2024-06-03"
+
+    # 01:00 at UTC+2 is 23:00 the previous UTC day.
+    shifted = datetime(2024, 6, 3, 1, tzinfo=timezone(timedelta(hours=2)))
+    with pytest.raises(ConfigurationError) as exc:
+        _ = Asset(shifted, "MSFT", bars).stock_data
+    assert str(exc.value) == "no bars for MSFT on 2024-06-02"
+
+    with pytest.raises(ConfigurationError) as exc:
+        _ = Assets(as_of, ["MSFT", "AAPL", "NVDA", "IBM", "MSFT"], bars).stock_data
+    assert str(exc.value) == "no bars for MSFT, NVDA and IBM on 2024-06-03"
+
+
+def test_missing_bars_fail_before_a_strategy_can_flatten_a_held_position():
+    as_of = datetime(2024, 6, 3, tzinfo=UTC)
+    bars = [_bar("AAPL", as_of, 10)]
+    assets = Assets(as_of, ["AAPL", "MSFT"], bars)
+    portfolio = Portfolio(
+        marketdata_pb.Portfolio(
+            timestamp=pb_utils.to_proto_timestamp(as_of),
+            portfolio_value=100_000,
+            positions=[marketdata_pb.Position(symbol="MSFT", amount=4)],
+        ),
+        bars,
+    )
+
+    with pytest.raises(ConfigurationError) as exc:
+        selected: list[str] = []
+        for asset in assets:
+            close = asset.stock_data["close"]
+            if len(close) < 30:
+                continue
+            selected.append(asset.symbol)
+        for position in portfolio.positions:
+            if position.symbol not in selected:
+                portfolio.order_target(position.symbol, 0)
+
+    assert str(exc.value) == "no bars for MSFT on 2024-06-03"
+    assert portfolio.pending_orders == []
+
+
+def test_assets_with_no_symbols_is_not_a_missing_symbol():
+    as_of = datetime(2024, 6, 3, tzinfo=UTC)
+    frame = Assets(as_of, [], [_bar("AAPL", as_of, 10)]).stock_data
+    assert frame.empty
+    assert list(frame.index.names) == ["symbol", "time"]
+    assert set(frame.columns) == {"high", "low", "open", "close", "volume"}
+    assert list(Assets(as_of, [], [])) == []
 
 
 _PORTFOLIO_DAY = datetime(2023, 12, 29, tzinfo=UTC)

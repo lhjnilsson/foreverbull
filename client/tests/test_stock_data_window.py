@@ -1,7 +1,7 @@
 """stock_data keeps the last lookback bars inside _STOCK_DATA_WINDOW before as_of.
 
 Bars the broker sent from before the window, or after as_of, stay out of the
-frame a strategy reads.
+frame a strategy reads. A symbol with no bar left inside the window fails.
 """
 
 from datetime import UTC
@@ -11,6 +11,7 @@ from datetime import timedelta
 import pandas
 import pytest
 
+from foreverbull.exceptions import ConfigurationError
 from foreverbull.models import Asset
 from foreverbull.models import Assets
 from foreverbull.models.finance import _STOCK_DATA_LOOKBACK
@@ -90,3 +91,34 @@ def test_stock_data_drops_bars_outside_the_window():
 
     (iterated,) = [asset.stock_data for asset in Assets(AS_OF, [SYMBOL], delivered)]
     pandas.testing.assert_frame_equal(iterated, direct, check_dtype=True)
+
+
+def test_only_bars_outside_the_window_fail_and_name_the_symbol_and_date():
+    since = _stock_data_since(AS_OF)
+    outside = [
+        marketdata_pb.OHLC(
+            symbol=SYMBOL,
+            timestamp=pb_utils.to_proto_timestamp(since),
+            open=1,
+            high=1,
+            low=1,
+            close=1,
+            volume=1,
+        ),
+        marketdata_pb.OHLC(
+            symbol=SYMBOL,
+            timestamp=pb_utils.to_proto_timestamp(AS_OF + timedelta(days=1)),
+            open=2,
+            high=2,
+            low=2,
+            close=2,
+            volume=1,
+        ),
+    ]
+    with pytest.raises(ConfigurationError) as exc:
+        _ = Asset(AS_OF, SYMBOL, outside).stock_data
+    assert str(exc.value) == "no bars for WINDOW on 2024-06-28"
+
+    with pytest.raises(ConfigurationError) as exc:
+        _ = Assets(AS_OF, [SYMBOL, "OTHER"], outside).stock_data
+    assert str(exc.value) == "no bars for WINDOW and OTHER on 2024-06-28"
