@@ -546,7 +546,10 @@ class Engine(multiprocessing.Process):
             self._ticker_history = cached
         tickers = cached[1].get(int(asset.sid))
         if not tickers:
-            return asset.symbol
+            # Zipline's asset.symbol is the latest ticker. Using it here is the
+            # FB-then-META mislabel this lookup exists to prevent. A sid with
+            # no history is unreachable.
+            raise RuntimeError(f"sid {int(asset.sid)} ({asset.symbol}) has no ticker history")
         return ticker_on(tickers, _session_day(trading_algorithm.datetime))
 
     def _get_execution_result(self, data: bytes) -> bytes:

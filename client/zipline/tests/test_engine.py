@@ -523,6 +523,50 @@ def test_a_run_without_a_benchmark_leaves_the_benchmark_fields_unset():
     assert last.has_field("benchmark_volatility")
 
 
+class _TickerOwner:
+    def __init__(self, sid: int, start, value: str):
+        self.sid = sid
+        self.start = start
+        self.value = value
+
+
+class _Finder:
+    def __init__(self, owners: list[_TickerOwner]):
+        self.symbol_ownership_map = {"META": owners}
+
+
+class _Asset:
+    def __init__(self, sid: int, symbol: str):
+        self.sid = sid
+        self.symbol = symbol
+
+
+class _Algo:
+    def __init__(self, finder: _Finder, day):
+        self.asset_finder = finder
+        self.datetime = day
+
+
+def test_a_position_without_ticker_history_raises():
+    engine = Engine()
+    asset = _Asset(7, "META")
+    with pytest.raises(RuntimeError, match=r"sid 7 \(META\) has no ticker history"):
+        engine._position_symbol(_Algo(_Finder([]), pd.Timestamp("2021-10-01")), asset)  # type: ignore[arg-type]
+
+
+def test_a_position_uses_the_ticker_in_force_that_day():
+    finder = _Finder(
+        [
+            _TickerOwner(1, pd.Timestamp("2021-06-01"), "FB"),
+            _TickerOwner(1, pd.Timestamp("2021-10-28"), "META"),
+        ]
+    )
+    engine = Engine()
+    asset = _Asset(1, "META")
+    assert engine._position_symbol(_Algo(finder, pd.Timestamp("2021-10-01")), asset) == "FB"  # type: ignore[arg-type]
+    assert engine._position_symbol(_Algo(finder, pd.Timestamp("2021-11-01")), asset) == "META"  # type: ignore[arg-type]
+
+
 def _write_e2e_bundle(
     bundle_name: str,
     sessions,
