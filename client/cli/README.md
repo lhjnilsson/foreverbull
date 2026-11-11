@@ -73,7 +73,11 @@ uv run fbull backtest create --file ../examples/demo.yaml --provider stooq
 
 Stooq may block automated downloads with a bot-check page. Create then stops at the first blocked symbol and says to retry with `--provider yahoo`.
 
-`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider` and `profile`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. That path builds a point-in-time universe from iShares historical holdings for the backtest dates (not today's list).
+`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider`, `profile`, and `auto_close_on_universe_drop`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set.
+
+When this is on (the default), foreverbull closes any held position in a symbol that leaves the universe, at that session's close. After the symbol is added back, the strategy may buy again; the old position is not restored. When this is off, held positions stay open through a drop, including a drop with no re-add. The strategy can flatten a held non-member, but it can't add to that position or open a new one until the name is a member again. This only applies to an ETF universe; it has no effect on a symbol-list backtest. To use a different setting, create a new backtest.
+
+Off is `auto_close_on_universe_drop: false`. `--close-on-universe-drop` and `--no-close-on-universe-drop` override the file. There is no prompt. `fbull backtest etfs` prints the same funds the prompt offers (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before the broker is called. That path builds a point-in-time universe from iShares historical holdings for the backtest dates (not today's list).
 
 `run` starts a backtest session on the broker and executes the strategy file on the host (NNG ports `27000`–`27015` on local Kind). The backtest must already exist from `create`. After a run, `fbull` prints a Grafana link at `http://localhost:3000` (local Kind host port).
 
