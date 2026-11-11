@@ -3,6 +3,7 @@ import stat
 import threading
 import time
 
+from multiprocessing import Process
 from multiprocessing import Queue
 from typing import ClassVar
 
@@ -310,6 +311,74 @@ def _threaded_pool(monkeypatch) -> worker.WorkerPool:
     monkeypatch.setattr(worker.models.Algorithm, "from_file_path", lambda _path: None)
     monkeypatch.setattr(worker.WorkerDaemon, "configure_execution", lambda self, req: None)
     return worker.WorkerPool("unused", executors=1)
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({}, False),
+        ({"THREADED_EXECUTION": ""}, False),
+        ({"THREADED_EXECUTION": "1"}, True),
+        ({"THREADED_EXECUTION": "true"}, True),
+        ({"THREADED_EXECUTION": "TRUE"}, True),
+        ({"THREADED_EXECUTION": " true "}, True),
+        ({"THREADED_EXECUTION": "0"}, False),
+        ({"THREADED_EXECUTION": "false"}, False),
+        ({"THREADED_EXECUTION": "FALSE"}, False),
+        ({"THREADED_EXECUTION": " false "}, False),
+    ],
+)
+def test_parse_threaded_execution(env, expected):
+    assert worker.parse_threaded_execution(env) is expected
+
+
+def test_parse_threaded_execution_defaults_to_processes_when_unset(monkeypatch):
+    monkeypatch.delenv("THREADED_EXECUTION", raising=False)
+    assert worker.parse_threaded_execution() is False
+
+
+@pytest.mark.parametrize("raw", ["yes", "no", "2", "on", "off", "falsey", "  "])
+def test_parse_threaded_execution_rejects_an_invalid_value(raw):
+    with pytest.raises(exceptions.ConfigurationError) as exc:
+        worker.parse_threaded_execution({"THREADED_EXECUTION": raw})
+    assert str(exc.value) == f"THREADED_EXECUTION must be true or false, but it's set to '{raw}'."
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+@pytest.mark.parametrize(
+    ("value", "threaded"),
+    [
+        ("1", True),
+        ("true", True),
+        ("0", False),
+        ("false", False),
+        (" false ", False),
+    ],
+)
+def test_threaded_execution_value_selects_threads_or_processes(monkeypatch, value, threaded):
+    monkeypatch.setenv("THREADED_EXECUTION", value)
+    monkeypatch.setattr(worker.models.Algorithm, "from_file_path", lambda _path: None)
+    monkeypatch.setattr(worker.pynng, "Surveyor0", _UnlistenedSurveyor)
+    _UnlistenedSurveyor.instances.clear()
+    pool = worker.WorkerPool("unused", executors=1)
+    with pytest.raises(exceptions.ConfigurationError):
+        pool.__enter__()
+    assert len(pool._workers) == 1
+    assert not pool._workers[0].is_alive()
+    if threaded:
+        assert isinstance(pool._workers[0], threading.Thread)
+    else:
+        assert isinstance(pool._workers[0], Process)
+
+
+def test_invalid_threaded_execution_fails_before_a_worker_starts(monkeypatch):
+    monkeypatch.setenv("THREADED_EXECUTION", "yes")
+    monkeypatch.setattr(worker.models.Algorithm, "from_file_path", lambda _path: None)
+    pool = worker.WorkerPool("unused", executors=2)
+    with pytest.raises(exceptions.ConfigurationError) as exc:
+        pool.__enter__()
+    assert str(exc.value) == "THREADED_EXECUTION must be true or false, but it's set to 'yes'."
+    assert pool._workers == []
 
 
 def test_pool_socket_is_in_a_private_directory_removed_on_exit(monkeypatch):
