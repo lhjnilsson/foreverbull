@@ -19,6 +19,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
@@ -280,21 +281,26 @@ func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time
 	if err != nil {
 		return nil, err
 	}
-	listings = seedBacktestStart(etf, listings, start)
-	recordLeadingHoldingsGap(etf, listings)
+	listings, err = seedBacktestStart(etf, listings, start, end)
+	if err != nil {
+		return nil, err
+	}
 
 	snaps := make([]universe.Snapshot, 0, len(listings))
+	missing := make([]time.Time, 0)
 	for _, listing := range listings {
 		holdings := holdingsFromAssets(listing.Assets)
 		if len(holdings) == 0 {
+			missing = append(missing, dateOnly(listing.AsOf))
 			continue
 		}
-		// Copied rows keep the source ISIN and ticker, so a gap is not a drop or a rename.
 		snaps = append(snaps, universe.Snapshot{AsOf: listing.AsOf, Holdings: holdings})
 	}
+	if len(missing) > 0 {
+		return nil, errors.New(usercopy.ETFHoldingsGap(etf, missing))
+	}
 	if len(snaps) == 0 {
-		return nil, fmt.Errorf("iShares has no holdings file for %s between %s and %s",
-			etf, dateOnly(start).Format("2006-01-02"), dateOnly(end).Format("2006-01-02"))
+		return nil, errors.New(usercopy.ETFNoHoldingsInWindow(etf, start, end))
 	}
 	return snaps, nil
 }
@@ -304,73 +310,37 @@ func loadETFSnapshots(scraper dependency.ETFScraper, etf string, start, end time
 // that list is moved to the start and held until the next as-of. Listings
 // before the start are dropped; the backtest does not read them.
 //
-// A list published after the start is a look-ahead. It is used only when
-// nothing was published on or before the start, so the universe is not empty,
-// and the warning names the ETF, the start, and the as-of that was used.
-func seedBacktestStart(etf string, listings []dependency.Listing, start time.Time) []dependency.Listing {
+// A list published after the start is not used. RejectUnpublishedListings
+// already failed that create; the check here is the same refusal before any
+// copy onto the start.
+func seedBacktestStart(etf string, listings []dependency.Listing, start, end time.Time) ([]dependency.Listing, error) {
+	if err := dependency.RejectUnpublishedListings(etf, start, end, listings); err != nil {
+		return nil, err
+	}
 	start = dateOnly(start)
-	src := 0
+	src := -1
 	for i := range listings {
+		if len(listings[i].Assets) == 0 {
+			continue
+		}
 		if !dateOnly(listings[i].AsOf).After(start) {
 			src = i
 		}
 	}
-	published := publishedAsOf(listings[src])
-	if published.After(start) {
-		log.Warn().
-			Str("etf", etf).
-			Str("start_date", start.Format("2006-01-02")).
-			Str("snapshot_date", published.Format("2006-01-02")).
-			Msg("no holdings snapshot published on or before the backtest start, seeded from the first one after it")
+	if src < 0 {
+		panic("seedBacktestStart: no holdings list on or before the start")
 	}
 	seeded := make([]dependency.Listing, 0, len(listings)+1)
 	seeded = append(seeded, dependency.Listing{
-		AsOf:       start,
-		Assets:     slices.Clone(listings[src].Assets),
-		FilledFrom: published,
+		AsOf:   start,
+		Assets: slices.Clone(listings[src].Assets),
 	})
 	for _, listing := range listings {
 		if dateOnly(listing.AsOf).After(start) {
 			seeded = append(seeded, listing)
 		}
 	}
-	return seeded
-}
-
-// publishedAsOf is the as-of of the file a listing's rows came from.
-func publishedAsOf(listing dependency.Listing) time.Time {
-	if listing.FilledFrom.IsZero() {
-		return dateOnly(listing.AsOf)
-	}
-	return dateOnly(listing.FilledFrom)
-}
-
-// recordLeadingHoldingsGap logs that a leading gap kept a later published listing.
-func recordLeadingHoldingsGap(etf string, listings []dependency.Listing) {
-	var first, last, from time.Time
-	count := 0
-	for _, listing := range listings {
-		if !listing.Leading || listing.FilledFrom.IsZero() {
-			continue
-		}
-		count++
-		if count == 1 || listing.AsOf.Before(first) {
-			first = listing.AsOf
-			from = listing.FilledFrom
-		}
-		if !listing.AsOf.Before(last) {
-			last = listing.AsOf
-		}
-	}
-	if count == 0 {
-		return
-	}
-	log.Warn().
-		Str("etf", etf).
-		Str("gap_start", first.Format("2006-01-02")).
-		Str("gap_end", last.Format("2006-01-02")).
-		Str("filled_from", from.Format("2006-01-02")).
-		Msg("leading holdings gap filled from a later published listing")
+	return seeded, nil
 }
 
 func holdingsFromAssets(assets []dependency.Asset) []universe.Holding {
