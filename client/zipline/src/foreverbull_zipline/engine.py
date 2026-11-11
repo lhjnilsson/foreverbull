@@ -285,7 +285,7 @@ class Engine(multiprocessing.Process):
         self._dividend_book = DividendBook(set())
         self._benchmark: BenchmarkReturns | None = None
         # False when the run has no benchmark: Zipline still gets a flat
-        # series, and the stored benchmark fields stay unset.
+        # series, and the stored benchmark, alpha, and beta fields stay unset.
         self._has_benchmark = False
         # Why the last run stopped before its end, told on the next period
         # request. None when the run finished.
@@ -569,11 +569,16 @@ class Engine(multiprocessing.Process):
                 benchmark_period_return = _optional(total["benchmark_period_return"])
                 benchmark_price_return = _optional(total["benchmark_price_return"])
                 benchmark_volatility = _optional(total["benchmark_volatility"])
+                alpha = _optional(total["alpha"])
+                beta = _optional(total["beta"])
             else:
-                # The flat series let Zipline run. It is not a benchmark return.
+                # The flat series lets Zipline run. It is not a benchmark, so
+                # a return, alpha, or beta computed from it is not stored.
                 benchmark_period_return = None
                 benchmark_price_return = None
                 benchmark_volatility = None
+                alpha = None
+                beta = None
             rsp.periods.append(
                 execution_pb.Period(
                     date=pb_utils.from_pydate_to_proto_date(period["period_close"].to_pydatetime().replace()),
@@ -608,8 +613,8 @@ class Engine(multiprocessing.Process):
                     benchmark_period_return=benchmark_period_return,
                     benchmark_price_return=benchmark_price_return,
                     benchmark_volatility=benchmark_volatility,
-                    alpha=_optional(total["alpha"]),
-                    beta=_optional(total["beta"]),
+                    alpha=alpha,
+                    beta=beta,
                 )
             )
         upload = req.upload

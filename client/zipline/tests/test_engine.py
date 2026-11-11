@@ -490,27 +490,54 @@ def _result_row(session, portfolio_value: float) -> dict[str, Any]:
     }
 
 
-def _stored_periods(has_benchmark: bool, benchmark: BenchmarkReturns) -> list[execution_pb.Period]:
+def _stored_periods(
+    has_benchmark: bool,
+    benchmark: BenchmarkReturns,
+    portfolio_values: list[float] | None = None,
+) -> list[execution_pb.Period]:
     sessions = benchmark.total.index
+    if portfolio_values is None:
+        portfolio_values = [100_000.0] * len(sessions)
     engine = Engine()
     engine._capital_base = 100_000.0
     engine._has_benchmark = has_benchmark
     engine._benchmark = benchmark
-    engine.result = pd.DataFrame([_result_row(session, 100_000.0) for session in sessions], index=sessions)
+    engine.result = pd.DataFrame(
+        [_result_row(session, value) for session, value in zip(sessions, portfolio_values, strict=True)],
+        index=sessions,
+    )
     payload = engine._get_execution_result(engine_service_pb.GetResultRequest().to_binary())
     response = engine_service_pb.GetResultResponse()
     merge_from_binary(response, payload)
     return list(response.periods)
 
 
+def _assert_benchmark_fields_unset(period: execution_pb.Period) -> None:
+    assert not period.has_field("benchmark_period_return")
+    assert not period.has_field("benchmark_price_return")
+    assert not period.has_field("benchmark_volatility")
+    assert not period.has_field("alpha")
+    assert not period.has_field("beta")
+
+
 def test_a_run_without_a_benchmark_leaves_the_benchmark_fields_unset():
     sessions = pd.to_datetime(["2023-01-03", "2023-01-04"])
     flat = BenchmarkReturns(total=pd.Series(0.0, index=sessions), price=pd.Series(0.0, index=sessions))
     for period in _stored_periods(False, flat):
-        assert not period.has_field("benchmark_period_return")
-        assert not period.has_field("benchmark_price_return")
-        assert not period.has_field("benchmark_volatility")
+        _assert_benchmark_fields_unset(period)
         assert period.portfolio_value == pytest.approx(100_000.0)
+
+    # The portfolio moves, so an unset alpha or beta is not an empty-return
+    # artifact. Without a benchmark those fields stay unset.
+    moving_sessions = pd.to_datetime(["2023-01-03", "2023-01-04", "2023-01-05", "2023-01-06"])
+    moving_values = [100_000.0, 101_000.0, 103_000.0, 102_000.0]
+    flat_span = BenchmarkReturns(
+        total=pd.Series(0.0, index=moving_sessions), price=pd.Series(0.0, index=moving_sessions)
+    )
+    moving = _stored_periods(False, flat_span, moving_values)
+    assert [period.portfolio_value for period in moving] == pytest.approx(moving_values)
+    for period in moving:
+        _assert_benchmark_fields_unset(period)
 
     recorded = BenchmarkReturns(
         total=pd.Series([0.01, 0.02], index=sessions),
@@ -521,6 +548,15 @@ def test_a_run_without_a_benchmark_leaves_the_benchmark_fields_unset():
     assert last.benchmark_period_return == pytest.approx((1.01 * 1.02) - 1.0)
     assert last.has_field("benchmark_price_return")
     assert last.has_field("benchmark_volatility")
+
+    with_benchmark = BenchmarkReturns(
+        total=pd.Series([0.01, 0.02, 0.015, -0.01], index=moving_sessions),
+        price=pd.Series([0.01, 0.02, 0.015, -0.01], index=moving_sessions),
+    )
+    compared = _stored_periods(True, with_benchmark, moving_values)[-1]
+    assert compared.has_field("benchmark_period_return")
+    assert compared.has_field("alpha")
+    assert compared.has_field("beta")
 
 
 class _TickerOwner:
