@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
+	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"github.com/stretchr/testify/suite"
 )
@@ -65,6 +67,55 @@ func (test *UniverseMemberTest) date(s string) time.Time {
 func (test *UniverseMemberTest) toPtr(s string) *time.Time {
 	d := test.date(s)
 	return &d
+}
+
+// Overlapping membership fails after the backtest row is inserted. The
+// transaction rolls the row back, so the same name can be created again.
+func (test *UniverseMemberTest) TestCreateWithMembersRollsBackAFailedMember() {
+	ctx := context.Background()
+	from := test.date("2024-01-01")
+	later := test.date("2024-06-01")
+	item := &backtest.Backtest{
+		Name:      "partial-members",
+		Benchmark: "OEF",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+			Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "AAPL", Enabled: true}},
+		}},
+	}
+	overlap := []repository.MemberInterval{
+		{ISIN: aaplISIN, FromDate: from},
+		{ISIN: aaplISIN, FromDate: later},
+	}
+	_, err := test.backtests.CreateWithMembers(ctx, item, overlap)
+	test.Require().Error(err)
+	test.ErrorContains(err, "universe_member")
+
+	_, err = test.backtests.Get(ctx, item.Name)
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM backtest WHERE name=$1`, item.Name))
+	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM backtest_period WHERE backtest_name=$1`, item.Name))
+	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM universe_member WHERE backtest_name=$1`, item.Name))
+
+	stored, err := test.backtests.CreateWithMembers(ctx, item, overlap[:1])
+	test.Require().NoError(err)
+	test.Equal(item.Name, stored.Name)
+	test.Require().Len(stored.Periods, 1)
+	test.Require().Len(stored.Periods[0].Assets, 1)
+	test.Equal("AAPL", stored.Periods[0].Assets[0].Symbol)
+	test.True(stored.Periods[0].Assets[0].Enabled)
+
+	listed, err := test.members.List(ctx, item.Name)
+	test.Require().NoError(err)
+	test.Equal([]repository.MemberInterval{{ISIN: aaplISIN, FromDate: from}}, listed)
+}
+
+func (test *UniverseMemberTest) countRows(query string, args ...any) int {
+	test.T().Helper()
+	var n int
+	test.Require().NoError(test.conn.QueryRow(context.Background(), query, args...).Scan(&n))
+	return n
 }
 
 func (test *UniverseMemberTest) createBacktest(name string) {

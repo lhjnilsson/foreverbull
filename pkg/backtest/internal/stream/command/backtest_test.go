@@ -430,6 +430,62 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	test.mdclient.AssertExpectations(test.T())
 }
 
+// A universe member write that fails after the backtest row is inserted rolls
+// that row back. Shared instrument rows stay, and the same name can be created again.
+func (test *BacktestCommandTest) TestCreateBacktestFromETFRollsBackWhenMemberWriteFails() {
+	ctx := context.Background()
+	_, err := test.db.Exec(ctx, `
+		ALTER TABLE universe_member
+		ADD CONSTRAINT universe_member_test_fail CHECK (false)`)
+	test.Require().NoError(err)
+	test.T().Cleanup(func() {
+		_, _ = test.db.Exec(context.Background(),
+			`ALTER TABLE universe_member DROP CONSTRAINT IF EXISTS universe_member_test_fail`)
+	})
+
+	dec := test.date("2022-12-31")
+	jan := test.date("2023-01-31")
+	aapl := dependency.Asset{Symbol: "AAPL", Name: "Apple Inc.", AssetType: "Equity", ISIN: aaplISIN}
+	listings := map[time.Time][]dependency.Asset{
+		dec: {aapl},
+		jan: {aapl},
+	}
+	err = test.createETFBacktest("partial-etf", "2023-01-01", "2023-01-31", listings)
+	test.Require().Error(err)
+	test.ErrorContains(err, "universe_member")
+
+	backtests := repository.Backtest{Conn: test.db}
+	_, err = backtests.Get(ctx, "partial-etf")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+	var n int
+	test.Require().NoError(test.db.QueryRow(ctx, `SELECT COUNT(*) FROM backtest WHERE name=$1`, "partial-etf").Scan(&n))
+	test.Equal(0, n)
+	test.Require().NoError(test.db.QueryRow(ctx, `SELECT COUNT(*) FROM backtest_period WHERE backtest_name=$1`, "partial-etf").Scan(&n))
+	test.Equal(0, n)
+	test.Require().NoError(test.db.QueryRow(ctx, `SELECT COUNT(*) FROM backtest_period_asset WHERE backtest_name=$1`, "partial-etf").Scan(&n))
+	test.Equal(0, n)
+	test.Require().NoError(test.db.QueryRow(ctx, `SELECT COUNT(*) FROM universe_member WHERE backtest_name=$1`, "partial-etf").Scan(&n))
+	test.Equal(0, n)
+	test.Require().NoError(test.db.QueryRow(ctx, `SELECT COUNT(*) FROM instrument WHERE isin=$1`, aaplISIN).Scan(&n))
+	test.Equal(1, n)
+
+	_, err = test.db.Exec(ctx, `ALTER TABLE universe_member DROP CONSTRAINT universe_member_test_fail`)
+	test.Require().NoError(err)
+
+	test.Require().NoError(test.createETFBacktest("partial-etf", "2023-01-01", "2023-01-31", listings))
+	stored, err := backtests.Get(ctx, "partial-etf")
+	test.Require().NoError(err)
+	test.Equal("OEF", stored.GetBenchmark())
+	test.NotEmpty(stored.GetPeriods())
+	for _, period := range stored.GetPeriods() {
+		test.NotEmpty(period.GetAssets())
+	}
+	listed, err := (&repository.UniverseMember{Conn: test.db}).List(ctx, "partial-etf")
+	test.Require().NoError(err)
+	test.NotEmpty(listed)
+	test.Equal(aaplISIN, listed[0].ISIN)
+}
+
 // An ETF universe is never empty on a day of the backtest. iShares lists are
 // sampled at month-ends, so the days between the start and the next as-of
 // hold the last list published on or before the start. MSFT first appears in

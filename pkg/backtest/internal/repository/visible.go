@@ -99,40 +99,21 @@ func (db *Backtest) DeleteByID(ctx context.Context, id string) error {
 }
 
 // CreateOwned inserts a backtest for ownerID. Periods use backtest_id.
+// The backtest, its periods, and its period assets commit together.
 func (db *Backtest) CreateOwned(ctx context.Context, ownerID string, item *backtest.Backtest) (*backtest.Backtest, error) {
 	if ownerID == "" {
 		return nil, errors.New("account id is empty")
 	}
-	provider, err := normalizeBacktestProvider(item.GetProvider())
-	if err != nil {
-		return nil, err
+	return db.insertBacktest(ctx, backtestWrite{ownerID: ownerID, item: item})
+}
+
+// CreateOwnedWithMembers is CreateOwned plus the universe members, in that
+// same transaction. An empty list still replaces membership, which stores none.
+func (db *Backtest) CreateOwnedWithMembers(ctx context.Context, ownerID string, item *backtest.Backtest, members []MemberInterval) (*backtest.Backtest, error) {
+	if ownerID == "" {
+		return nil, errors.New("account id is empty")
 	}
-	var id string
-	err = db.Conn.QueryRow(ctx, `
-		INSERT INTO backtest (name, benchmark, provider, profile, owner_id)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id`, item.GetName(), item.GetBenchmark(), provider, item.GetProfile(), ownerID).Scan(&id)
-	if err != nil {
-		return nil, fmt.Errorf("create backtest: %w", err)
-	}
-	for _, period := range item.GetPeriods() {
-		_, err = db.Conn.Exec(ctx, `
-			INSERT INTO backtest_period (backtest_id, start_date, end_date)
-			VALUES ($1, $2, $3)`, id, commonPB.DateToDateString(period.GetStartDate()), commonPB.DateToDateString(period.GetEndDate()))
-		if err != nil {
-			return nil, fmt.Errorf("create backtest period: %w", err)
-		}
-		for _, asset := range period.GetAssets() {
-			_, err = db.Conn.Exec(ctx, `
-				INSERT INTO backtest_period_asset (backtest_id, start_date, end_date, symbol, enabled)
-				VALUES ($1, $2, $3, $4, $5)`,
-				id, commonPB.DateToDateString(period.GetStartDate()), commonPB.DateToDateString(period.GetEndDate()), asset.GetSymbol(), asset.GetEnabled())
-			if err != nil {
-				return nil, fmt.Errorf("create backtest period asset: %w", err)
-			}
-		}
-	}
-	return db.GetByID(ctx, id)
+	return db.insertBacktest(ctx, backtestWrite{ownerID: ownerID, item: item, members: members, writeMembers: true})
 }
 
 func scanOwnedBacktest(rows pgx.Rows) (*backtest.Backtest, error) {

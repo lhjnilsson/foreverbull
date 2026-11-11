@@ -99,38 +99,165 @@ func MigrateBacktestProvider(ctx context.Context, conn postgres.Query) error {
 	return nil
 }
 
-func (db *Backtest) Create(ctx context.Context, backtest *backtest.Backtest) (*backtest.Backtest, error) {
-	provider, err := normalizeBacktestProvider(backtest.GetProvider())
+// backtestWrite is one create. writeMembers stores universe membership in the
+// same transaction as the backtest. Instrument and alias rows are not part of
+// it: they are shared, and a retry finds them.
+type backtestWrite struct {
+	ownerID      string
+	item         *backtest.Backtest
+	members      []MemberInterval
+	writeMembers bool
+}
+
+// Create inserts the backtest, its periods, and its period assets in one
+// transaction. A failure rolls those rows back, so the name is not left taken.
+func (db *Backtest) Create(ctx context.Context, item *backtest.Backtest) (*backtest.Backtest, error) {
+	return db.insertBacktest(ctx, backtestWrite{item: item})
+}
+
+// CreateWithMembers is Create plus the universe members, in that same
+// transaction. An empty list still replaces membership, which stores none.
+func (db *Backtest) CreateWithMembers(ctx context.Context, item *backtest.Backtest, members []MemberInterval) (*backtest.Backtest, error) {
+	return db.insertBacktest(ctx, backtestWrite{item: item, members: members, writeMembers: true})
+}
+
+func (db *Backtest) insertBacktest(ctx context.Context, in backtestWrite) (*backtest.Backtest, error) {
+	provider, err := normalizeBacktestProvider(in.item.GetProvider())
 	if err != nil {
 		return nil, err
 	}
-	profile := strings.TrimSpace(backtest.GetProfile())
-	_, err = db.Conn.Exec(ctx,
-		`INSERT INTO backtest (name, benchmark, provider, profile)
-		VALUES ($1, $2, $3, $4)`,
-		backtest.Name, backtest.Benchmark, provider, profile)
+	tx, err := beginBacktestTx(ctx, db.Conn)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+
+	id, err := insertBacktestRow(ctx, tx, in, provider)
+	if err != nil {
+		return nil, err
+	}
+	if err := insertBacktestPeriods(ctx, tx, in, id); err != nil {
+		return nil, err
+	}
+	if in.writeMembers {
+		if err := insertBacktestMembers(ctx, tx, in, id); err != nil {
+			return nil, err
+		}
+	}
+	stored, err := readCreatedBacktest(ctx, tx, in, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create backtest: %w", err)
+	}
+	return stored, nil
+}
+
+func beginBacktestTx(ctx context.Context, conn postgres.Query) (pgx.Tx, error) {
+	begin, ok := conn.(txBeginner)
+	if !ok {
+		return nil, fmt.Errorf("failed to create backtest: connection cannot begin a transaction")
+	}
+	tx, err := begin.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create backtest: %w", err)
 	}
-	for _, period := range backtest.Periods {
-		_, err := db.Conn.Exec(ctx,
+	return tx, nil
+}
+
+func insertBacktestRow(ctx context.Context, conn postgres.Query, in backtestWrite, provider string) (string, error) {
+	if in.ownerID != "" {
+		var id string
+		err := conn.QueryRow(ctx, `
+			INSERT INTO backtest (name, benchmark, provider, profile, owner_id)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id`,
+			in.item.GetName(), in.item.GetBenchmark(), provider, in.item.GetProfile(), in.ownerID).Scan(&id)
+		if err != nil {
+			return "", fmt.Errorf("create backtest: %w", err)
+		}
+		return id, nil
+	}
+	profile := strings.TrimSpace(in.item.GetProfile())
+	_, err := conn.Exec(ctx,
+		`INSERT INTO backtest (name, benchmark, provider, profile)
+		VALUES ($1, $2, $3, $4)`,
+		in.item.Name, in.item.Benchmark, provider, profile)
+	if err != nil {
+		return "", fmt.Errorf("failed to create backtest: %w", err)
+	}
+	return "", nil
+}
+
+func insertBacktestPeriods(ctx context.Context, conn postgres.Query, in backtestWrite, id string) error {
+	if in.ownerID != "" {
+		return insertOwnedPeriods(ctx, conn, id, in.item.GetPeriods())
+	}
+	return insertNamedPeriods(ctx, conn, in.item.Name, in.item.Periods)
+}
+
+func insertNamedPeriods(ctx context.Context, conn postgres.Query, name string, periods []*backtest.Backtest_Period) error {
+	for _, period := range periods {
+		start := commonPB.DateToDateString(period.StartDate)
+		end := commonPB.DateToDateString(period.EndDate)
+		_, err := conn.Exec(ctx,
 			`INSERT INTO backtest_period (backtest_name, start_date, end_date)
 			VALUES ($1, $2, $3)`,
-			backtest.Name, commonPB.DateToDateString(period.StartDate), commonPB.DateToDateString(period.EndDate))
+			name, start, end)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create backtest period: %w", err)
+			return fmt.Errorf("failed to create backtest period: %w", err)
 		}
 		for _, asset := range period.Assets {
-			_, err := db.Conn.Exec(ctx,
+			_, err := conn.Exec(ctx,
 				`INSERT INTO backtest_period_asset (backtest_name, start_date, end_date, symbol, enabled)
 				VALUES ($1, $2, $3, $4, $5)`,
-				backtest.Name, commonPB.DateToDateString(period.StartDate), commonPB.DateToDateString(period.EndDate), asset.Symbol, asset.Enabled)
+				name, start, end, asset.Symbol, asset.Enabled)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create backtest period asset: %w", err)
+				return fmt.Errorf("failed to create backtest period asset: %w", err)
 			}
 		}
 	}
-	return db.Get(ctx, backtest.Name)
+	return nil
+}
+
+func insertOwnedPeriods(ctx context.Context, conn postgres.Query, id string, periods []*backtest.Backtest_Period) error {
+	for _, period := range periods {
+		start := commonPB.DateToDateString(period.GetStartDate())
+		end := commonPB.DateToDateString(period.GetEndDate())
+		_, err := conn.Exec(ctx, `
+			INSERT INTO backtest_period (backtest_id, start_date, end_date)
+			VALUES ($1, $2, $3)`, id, start, end)
+		if err != nil {
+			return fmt.Errorf("create backtest period: %w", err)
+		}
+		for _, asset := range period.GetAssets() {
+			_, err = conn.Exec(ctx, `
+				INSERT INTO backtest_period_asset (backtest_id, start_date, end_date, symbol, enabled)
+				VALUES ($1, $2, $3, $4, $5)`,
+				id, start, end, asset.GetSymbol(), asset.GetEnabled())
+			if err != nil {
+				return fmt.Errorf("create backtest period asset: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func insertBacktestMembers(ctx context.Context, conn postgres.Query, in backtestWrite, id string) error {
+	members := &UniverseMember{Conn: conn}
+	if in.ownerID != "" {
+		return members.ReplaceByID(ctx, id, in.members)
+	}
+	return members.Replace(ctx, in.item.Name, in.members)
+}
+
+func readCreatedBacktest(ctx context.Context, conn postgres.Query, in backtestWrite, id string) (*backtest.Backtest, error) {
+	stored := &Backtest{Conn: conn}
+	if in.ownerID != "" {
+		return stored.GetByID(ctx, id)
+	}
+	return stored.Get(ctx, in.item.Name)
 }
 
 func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, error) {

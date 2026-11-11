@@ -79,16 +79,34 @@ func uniqueViolation(err error) bool {
 }
 
 func createStoredBacktest(ctx context.Context, backtests repository.Backtest, ownerID string, item *backtest.Backtest) error {
+	return storeBacktest(ctx, backtests, ownerID, item, nil, false)
+}
+
+func createStoredBacktestWithMembers(ctx context.Context, backtests repository.Backtest, ownerID string, item *backtest.Backtest, members []repository.MemberInterval) error {
+	return storeBacktest(ctx, backtests, ownerID, item, members, true)
+}
+
+func storeBacktest(ctx context.Context, backtests repository.Backtest, ownerID string, item *backtest.Backtest, members []repository.MemberInterval, writeMembers bool) error {
 	if environment.GetAuthEnabled() {
 		if strings.TrimSpace(ownerID) == "" {
 			return errors.New("owner id is empty")
 		}
-		_, err := backtests.CreateOwned(ctx, ownerID, item)
+		var err error
+		if writeMembers {
+			_, err = backtests.CreateOwnedWithMembers(ctx, ownerID, item, members)
+		} else {
+			_, err = backtests.CreateOwned(ctx, ownerID, item)
+		}
 		if uniqueViolation(err) {
 			return fmt.Errorf("error creating backtest: %w", auth.ErrAlreadyExists)
 		}
 		return err
 	}
-	_, err := backtests.Create(ctx, item)
+	var err error
+	if writeMembers {
+		_, err = backtests.CreateWithMembers(ctx, item, members)
+	} else {
+		_, err = backtests.Create(ctx, item)
+	}
 	return err
 }
