@@ -1,6 +1,5 @@
 import logging
 import os
-import warnings
 
 from collections.abc import Iterable
 from collections.abc import Iterator
@@ -40,9 +39,12 @@ from foreverbull_zipline.data_bundles.dividends import stooq_cash_dividends_line
 from foreverbull_zipline.data_bundles.dividends import write_foreign_dividends
 from foreverbull_zipline.database import get_engine
 from foreverbull_zipline.errors import PlainSentence
+from foreverbull_zipline.warning_filters import install_warning_filters
 
 
-warnings.filterwarnings("ignore")
+# Installed again here so a direct import of this module, after the package
+# init, still has the narrow filter and not a process-wide ignore.
+install_warning_filters()
 
 _logger = logging.getLogger(__name__)
 
