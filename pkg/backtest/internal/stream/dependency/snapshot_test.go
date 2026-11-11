@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
 	"github.com/stretchr/testify/require"
 )
 
@@ -321,7 +320,7 @@ func TestGetSnapshotHTMLIsAGap(t *testing.T) {
 	require.Equal(t, int32(1), calls.Load())
 }
 
-func TestLoadSnapshotWindowFillsLeadingHTMLFromLaterListing(t *testing.T) {
+func TestLoadSnapshotWindowRejectsLeadingHTMLFromLaterListing(t *testing.T) {
 	t.Parallel()
 
 	const isin = "US0378331005"
@@ -345,38 +344,16 @@ func TestLoadSnapshotWindowFillsLeadingHTMLFromLaterListing(t *testing.T) {
 		cache:    &fsSnapshotCache{dir: t.TempDir()},
 		client:   srv.Client(),
 	}
-	start := testDate(t, "2020-01-01")
-	end := testDate(t, "2020-02-29")
-	listings, err := LoadSnapshotWindow(scraper, "iShares S&P 100", start, end)
-	require.NoError(t, err)
-	require.Len(t, listings, 2)
-	require.Equal(t, "2020-01-31", listings[0].AsOf.Format("2006-01-02"))
-	require.True(t, listings[0].Leading)
-	require.Equal(t, "2020-02-29", listings[0].FilledFrom.Format("2006-01-02"))
-	require.Equal(t, isin, listings[0].Assets[0].ISIN)
-	require.Equal(t, "AAPL", listings[0].Assets[0].Symbol)
-	require.Equal(t, listings[1].Assets, listings[0].Assets)
-	require.False(t, listings[1].Leading)
-	require.True(t, listings[1].FilledFrom.IsZero())
-
-	snaps := listingsToSnapshots(listings)
-	result := universe.Diff(snaps)
-	require.Len(t, result.Members, 1)
-	require.Equal(t, isin, result.Members[0].ISIN)
-	require.Equal(t, "2020-01-31", result.Members[0].FromDate.Format("2006-01-02"))
-	require.Nil(t, result.Members[0].ToDate)
-	require.Equal(t, []universe.Alias{{
-		ISIN:     isin,
-		Symbol:   "AAPL",
-		FromDate: testDate(t, "2020-01-31"),
-		ToDate:   nil,
-	}}, result.Aliases)
+	listings, err := LoadSnapshotWindow(scraper, "iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-02-29"))
+	require.Nil(t, listings)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list on or before 2020-01-01. "+
+		"The first list was published on 2020-02-29. Choose a start on or after 2020-02-29.")
 }
 
 // iShares serves a holdings file for any past as-of, so the last month-end
 // before the start is requested with the same asOfDate query as the window.
-// The walk stops at the first published file, and a gap in the window is
-// filled from that earlier list, not from a later one.
+// The walk stops at the first published file. A month in the window keeps
+// its own list.
 func TestLoadSnapshotWindowReadsLastListingBeforeStart(t *testing.T) {
 	t.Parallel()
 
@@ -400,7 +377,7 @@ func TestLoadSnapshotWindowReadsLastListingBeforeStart(t *testing.T) {
 		switch asOf {
 		case "20191231":
 			_, _ = w.Write(dec)
-		case "20200229":
+		case "20200131", "20200229":
 			_, _ = w.Write(feb)
 		default:
 			w.Header().Set("Content-Type", "text/html")
@@ -422,12 +399,40 @@ func TestLoadSnapshotWindowReadsLastListingBeforeStart(t *testing.T) {
 	mu.Unlock()
 	require.Len(t, listings, 3)
 	require.Equal(t, testDate(t, "2019-12-31"), listings[0].AsOf)
-	require.True(t, listings[0].FilledFrom.IsZero())
+	require.Len(t, listings[0].Assets, 1)
 	require.Equal(t, testDate(t, "2020-01-31"), listings[1].AsOf)
-	require.Equal(t, testDate(t, "2019-12-31"), listings[1].FilledFrom)
-	require.False(t, listings[1].Leading)
-	require.Equal(t, listings[0].Assets, listings[1].Assets)
+	require.Len(t, listings[1].Assets, 2)
 	require.Len(t, listings[2].Assets, 2)
+}
+
+func TestLoadSnapshotWindowRejectsGapFromEarlierListing(t *testing.T) {
+	t.Parallel()
+
+	const aaplISIN = "US0378331005"
+	dec := holdingsJSON(t, [][]interface{}{
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", aaplISIN},
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("asOfDate") {
+		case "20191231", "20200229":
+			_, _ = w.Write(dec)
+		default:
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<!DOCTYPE html><html></html>"))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+	listings, err := LoadSnapshotWindow(scraper, "iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-02-29"))
+	require.Nil(t, listings)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list for 2020-01-31. "+
+		"Choose dates that don't include 2020-01-31.")
 }
 
 func TestLoadSnapshotWindowNoHoldingsNamesWindow(t *testing.T) {
@@ -445,57 +450,31 @@ func TestLoadSnapshotWindowNoHoldingsNamesWindow(t *testing.T) {
 		client:   srv.Client(),
 	}
 	_, err := LoadSnapshotWindow(scraper, "iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-03-31"))
-	require.EqualError(t, err, "iShares has no holdings file for iShares S&P 100 between 2020-01-01 and 2020-03-31")
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list between 2020-01-01 and 2020-03-31. "+
+		"Choose dates that include a published list.")
 	require.NotContains(t, err.Error(), "invalid character")
 }
 
-func TestFillListingsCarryForwardIsNotADropOrRename(t *testing.T) {
+func TestRejectUnpublishedListingsDoesNotCopyTheGap(t *testing.T) {
 	t.Parallel()
 
 	const metaISIN = "US30303M1027"
 	fb := []Asset{{Symbol: "FB", Name: "Meta Platforms Inc.", Sector: "Communication", AssetType: "Equity", ISIN: metaISIN}}
 	meta := []Asset{{Symbol: "META", Name: "Meta Platforms Inc.", Sector: "Communication", AssetType: "Equity", ISIN: metaISIN}}
 	listings := []Listing{
+		{AsOf: testDate(t, "2019-12-31"), Assets: fb},
 		{AsOf: testDate(t, "2020-01-31"), Assets: fb},
 		{AsOf: testDate(t, "2020-02-29")},
 		{AsOf: testDate(t, "2020-03-31"), Assets: meta},
 	}
-	err := fillListings("iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-03-31"), listings)
-	require.NoError(t, err)
+	err := RejectUnpublishedListings("iShares S&P 100", testDate(t, "2020-01-01"), testDate(t, "2020-03-31"), listings)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list for 2020-02-29. "+
+		"Choose dates that don't include 2020-02-29.")
+	require.Empty(t, listings[2].Assets)
+	require.Equal(t, "FB", listings[0].Assets[0].Symbol)
 	require.Equal(t, "FB", listings[1].Assets[0].Symbol)
-	require.Equal(t, metaISIN, listings[1].Assets[0].ISIN)
-	require.False(t, listings[1].Leading)
-	require.Equal(t, "2020-01-31", listings[1].FilledFrom.Format("2006-01-02"))
+	require.Equal(t, "META", listings[3].Assets[0].Symbol)
 	require.Equal(t, "FB", fb[0].Symbol)
-
-	result := universe.Diff(listingsToSnapshots(listings))
-	require.Equal(t, []universe.Member{{
-		ISIN:     metaISIN,
-		FromDate: testDate(t, "2020-01-31"),
-		ToDate:   nil,
-	}}, result.Members)
-	mar := testDate(t, "2020-03-31")
-	require.Equal(t, []universe.Alias{
-		{ISIN: metaISIN, Symbol: "FB", FromDate: testDate(t, "2020-01-31"), ToDate: &mar},
-		{ISIN: metaISIN, Symbol: "META", FromDate: mar, ToDate: nil},
-	}, result.Aliases)
-}
-
-func listingsToSnapshots(listings []Listing) []universe.Snapshot {
-	snaps := make([]universe.Snapshot, 0, len(listings))
-	for _, listing := range listings {
-		holdings := make([]universe.Holding, 0, len(listing.Assets))
-		for _, asset := range listing.Assets {
-			holdings = append(holdings, universe.Holding{
-				ISIN:      asset.ISIN,
-				Symbol:    asset.Symbol,
-				Name:      asset.Name,
-				AssetType: asset.AssetType,
-			})
-		}
-		snaps = append(snaps, universe.Snapshot{AsOf: listing.AsOf, Holdings: holdings})
-	}
-	return snaps
 }
 
 func TestProductDataHoldingsRequest(t *testing.T) {

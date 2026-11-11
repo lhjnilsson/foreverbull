@@ -2,7 +2,6 @@ package command
 
 import (
 	"bytes"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -161,76 +160,157 @@ func TestLoadETFSnapshotsLaterAddIsNotAMemberBeforeItsAsOf(t *testing.T) {
 }
 
 // A month-end with no holdings file before the start does not stop the walk:
-// the 2019-11-30 list seeds a 2020-01-01 start. A January gap is filled from
-// that seed, not from the February list, so no day reads ahead.
+// the 2019-11-30 list seeds a 2020-01-01 start when every month in the window
+// has its own list. December is before the start, so it is not a gap.
 func TestLoadETFSnapshotsWalksBackPastUnpublishedMonthEnd(t *testing.T) {
 	logs := captureLog(t)
 	start := day(t, "2020-01-01")
+	jan := day(t, "2020-01-31")
 	end := day(t, "2020-02-29")
 	scraper := gapScraper{
-		dates: []time.Time{day(t, "2019-11-30"), day(t, "2019-12-31"), day(t, "2020-01-31"), end},
+		dates: []time.Time{day(t, "2019-11-30"), day(t, "2019-12-31"), jan, end},
 		byDay: map[string][]dependency.Asset{
 			"2019-11-30": {aaplAsset},
+			"2020-01-31": {aaplAsset, msftAsset},
 			"2020-02-29": {aaplAsset, msftAsset},
 		},
 	}
 	snaps, err := loadETFSnapshots(scraper, gapETF, start, end)
 	require.NoError(t, err)
 	require.Len(t, snaps, 3)
+	require.Equal(t, start, snaps[0].AsOf)
+	require.Equal(t, []universe.Holding{{
+		ISIN: gapISIN, Symbol: "AAPL", Name: "Apple Inc.", AssetType: "Equity",
+	}}, snaps[0].Holdings)
 
 	result := universe.Diff(snaps)
 	require.Equal(t, []universe.Member{
 		{ISIN: gapISIN, FromDate: start, ToDate: nil},
-		{ISIN: msftISIN, FromDate: end, ToDate: nil},
+		{ISIN: msftISIN, FromDate: jan, ToDate: nil},
 	}, result.Members)
+	require.Equal(t, []string{gapISIN}, universe.MembersAt(result.Members, start))
+	require.Equal(t, []string{gapISIN, msftISIN}, universe.MembersAt(result.Members, jan))
 	require.Empty(t, logs.String())
 }
 
-// Nothing was published on or before the start, so the first list after it is
-// held from the start. That is a look-ahead, and the warning names the ETF,
-// the start, and the as-of used. A leading in-window gap keeps its own warning.
-func TestLoadETFSnapshotsFallsBackToFirstListingAfterStart(t *testing.T) {
-	logs := captureLog(t)
+// Nothing was published on or before the start. Create fails and names the
+// ETF, the start, and the first list after it. The later list is not copied
+// onto the start.
+func TestLoadETFSnapshotsFailsWhenNothingPublishedOnOrBeforeStart(t *testing.T) {
+	jan := day(t, "2020-01-31")
+	feb := day(t, "2020-02-29")
+	scraper := gapScraper{
+		dates: []time.Time{jan, feb},
+		byDay: map[string][]dependency.Asset{
+			"2020-01-31": {aaplAsset},
+			"2020-02-29": {aaplAsset, msftAsset},
+		},
+	}
+	snaps, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-15"), feb)
+	require.Nil(t, snaps)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list on or before 2020-01-15. "+
+		"The first list was published on 2020-01-31. Choose a start on or after 2020-01-31.")
+}
+
+// January has no file and the first list is February. Moving the start to
+// February drops January, so the error is only the start sentence.
+func TestLoadETFSnapshotsFailsWhenLeadingGapWouldUseALaterList(t *testing.T) {
 	jan := day(t, "2020-01-31")
 	feb := day(t, "2020-02-29")
 	scraper := gapScraper{
 		dates: []time.Time{jan, feb},
 		byDay: map[string][]dependency.Asset{"2020-02-29": {aaplAsset}},
 	}
-	start := day(t, "2020-01-01")
+	snaps, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-01"), feb)
+	require.Nil(t, snaps)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list on or before 2020-01-01. "+
+		"The first list was published on 2020-02-29. Choose a start on or after 2020-02-29.")
+}
 
-	snaps, err := loadETFSnapshots(scraper, gapETF, start, feb)
-	require.NoError(t, err)
-	require.Len(t, snaps, 3)
-	require.Equal(t, start, snaps[0].AsOf)
-	require.Equal(t, jan, snaps[1].AsOf)
-	require.Equal(t, []universe.Holding{{
-		ISIN: gapISIN, Symbol: "AAPL", Name: "Apple Inc.", AssetType: "Equity",
-	}}, snaps[0].Holdings)
-	require.Equal(t, snaps[0].Holdings, snaps[1].Holdings)
-	require.Equal(t, snaps[2].Holdings, snaps[1].Holdings)
+// January is before the first list, so a later start drops it. March is still
+// missing after that list and is the only month the gap sentence names.
+func TestLoadETFSnapshotsFailsWhenStartAndALaterMonthAreMissing(t *testing.T) {
+	end := day(t, "2020-03-31")
+	scraper := gapScraper{
+		dates: []time.Time{day(t, "2020-01-31"), day(t, "2020-02-29"), end},
+		byDay: map[string][]dependency.Asset{"2020-02-29": {aaplAsset}},
+	}
+	snaps, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-01"), end)
+	require.Nil(t, snaps)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list on or before 2020-01-01. "+
+		"The first list was published on 2020-02-29. Choose a start on or after 2020-02-29. "+
+		"iShares S&P 100 has no holdings list for 2020-03-31. Choose dates that don't include 2020-03-31.")
+}
 
-	result := universe.Diff(snaps)
-	require.Equal(t, []universe.Member{{ISIN: gapISIN, FromDate: start, ToDate: nil}}, result.Members)
-	require.Equal(t, []universe.Alias{{ISIN: gapISIN, Symbol: "AAPL", FromDate: start, ToDate: nil}}, result.Aliases)
+// January and February are both before the first list, so neither is named
+// again. The start is still not taken from March.
+func TestLoadETFSnapshotsFailsWhenLeadingGapIsSeveralMonths(t *testing.T) {
+	mar := day(t, "2020-03-31")
+	scraper := gapScraper{
+		dates: []time.Time{day(t, "2020-01-31"), day(t, "2020-02-29"), mar},
+		byDay: map[string][]dependency.Asset{"2020-03-31": {aaplAsset}},
+	}
+	snaps, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-01"), mar)
+	require.Nil(t, snaps)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list on or before 2020-01-01. "+
+		"The first list was published on 2020-03-31. Choose a start on or after 2020-03-31.")
+}
 
-	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
-	require.Len(t, lines, 2)
-	var fallback map[string]string
-	require.NoError(t, json.Unmarshal(lines[0], &fallback))
-	require.Equal(t, map[string]string{
-		"level":         "warn",
-		"etf":           gapETF,
-		"start_date":    "2020-01-01",
-		"snapshot_date": "2020-02-29",
-		"message":       "no holdings snapshot published on or before the backtest start, seeded from the first one after it",
-	}, fallback)
-	require.Contains(t, string(lines[1]), "leading holdings gap filled from a later published listing")
+// December was published and January was not. The old path copied December
+// into January and create succeeded. Create now fails and names that month.
+func TestLoadETFSnapshotsFailsWhenGapWouldUseAnEarlierList(t *testing.T) {
+	end := day(t, "2020-02-29")
+	scraper := gapScraper{
+		dates: []time.Time{day(t, "2019-12-31"), day(t, "2020-01-31"), end},
+		byDay: map[string][]dependency.Asset{
+			"2019-12-31": {aaplAsset},
+			"2020-02-29": {aaplAsset, msftAsset},
+		},
+	}
+	snaps, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-01"), end)
+	require.Nil(t, snaps)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list for 2020-01-31. "+
+		"Choose dates that don't include 2020-01-31.")
+}
+
+// January and February are unpublished between two published lists. They are
+// one gap, not two copies of December.
+func TestLoadETFSnapshotsFailsWhenEarlierListWouldFillAGap(t *testing.T) {
+	end := day(t, "2020-03-31")
+	scraper := gapScraper{
+		dates: []time.Time{day(t, "2019-12-31"), day(t, "2020-01-31"), day(t, "2020-02-29"), end},
+		byDay: map[string][]dependency.Asset{
+			"2019-12-31": {aaplAsset},
+			"2020-03-31": {aaplAsset, msftAsset},
+		},
+	}
+	snaps, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-01"), end)
+	require.Nil(t, snaps)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list for 2020-01-31 to 2020-02-29. "+
+		"Choose dates that don't include 2020-01-31 to 2020-02-29.")
+}
+
+// January and March are missing and February is published, so the months are
+// named separately. An earlier list does not fill either one.
+func TestLoadETFSnapshotsFailsWhenTwoMonthsWouldUseAnEarlierList(t *testing.T) {
+	end := day(t, "2020-03-31")
+	scraper := gapScraper{
+		dates: []time.Time{day(t, "2019-12-31"), day(t, "2020-01-31"), day(t, "2020-02-29"), end},
+		byDay: map[string][]dependency.Asset{
+			"2019-12-31": {aaplAsset},
+			"2020-02-29": {aaplAsset, msftAsset},
+		},
+	}
+	snaps, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-01"), end)
+	require.Nil(t, snaps)
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list for 2020-01-31 and 2020-03-31. "+
+		"Choose dates that don't include 2020-01-31 or 2020-03-31.")
 }
 
 func TestLoadETFSnapshotsNoHoldingsNamesWindow(t *testing.T) {
 	scraper := gapScraper{dates: []time.Time{day(t, "2020-01-31"), day(t, "2020-02-29")}}
 	_, err := loadETFSnapshots(scraper, gapETF, day(t, "2020-01-01"), day(t, "2020-02-29"))
-	require.EqualError(t, err, "iShares has no holdings file for iShares S&P 100 between 2020-01-01 and 2020-02-29")
+	require.EqualError(t, err, "iShares S&P 100 has no holdings list between 2020-01-01 and 2020-02-29. "+
+		"Choose dates that include a published list.")
 	require.NotContains(t, err.Error(), "invalid character")
 }
