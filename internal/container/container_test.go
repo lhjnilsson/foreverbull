@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 const testNamespace = "foreverbull"
@@ -21,7 +22,10 @@ func testEngine(t *testing.T, objects ...runtime.Object) Engine {
 	t.Helper()
 	environment.SetupForTest(t)
 
-	return NewEngineWithClient(fake.NewSimpleClientset(objects...), testNamespace)
+	eng, err := NewEngineWithClient(fake.NewSimpleClientset(objects...), testNamespace)
+	require.NoError(t, err)
+
+	return eng
 }
 
 func envValue(t *testing.T, env []corev1.EnvVar, name string) string {
@@ -316,9 +320,12 @@ func TestStopAllDeletesServicePodsOnly(t *testing.T) {
 	require.Equal(t, "worker-other", other.Name)
 }
 
-func TestNewEngineWithClientDefaultNamespace(t *testing.T) {
-	eng := NewEngineWithClient(fake.NewSimpleClientset(), "")
-	require.Equal(t, defaultNamespace, eng.(*engine).namespace)
+func TestNewEngineWithClientMissingNamespace(t *testing.T) {
+	for _, namespace := range []string{"", " ", "\t"} {
+		eng, err := NewEngineWithClient(fake.NewSimpleClientset(), namespace)
+		require.Nil(t, eng)
+		require.EqualError(t, err, "kubernetes namespace is missing")
+	}
 }
 
 func TestNewEngineFromKubeconfig(t *testing.T) {
@@ -397,6 +404,201 @@ func TestNewEngineMissingKubeconfig(t *testing.T) {
 
 	_, err := NewEngine()
 	require.Error(t, err)
+}
+
+func TestNewEngineKubernetesNamespaceEnv(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, os.WriteFile(path, []byte(kubeconfigYAML("from-kubeconfig")), 0o600))
+
+	t.Setenv("KUBECONFIG", path)
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "")
+	t.Setenv("POD_NAMESPACE", "")
+	t.Setenv("KUBERNETES_NAMESPACE", "from-env")
+
+	eng, err := NewEngine()
+	require.NoError(t, err)
+	require.Equal(t, "from-env", eng.(*engine).namespace)
+}
+
+func TestNewEngineMissingKubeconfigNamespace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, os.WriteFile(path, []byte(kubeconfigYAML("")), 0o600))
+
+	t.Setenv("KUBECONFIG", path)
+	clearClusterEnv(t)
+
+	eng, err := NewEngine()
+	require.Nil(t, eng)
+	require.EqualError(t, err, `kubernetes namespace is missing: kubeconfig context "fake" has no namespace`)
+}
+
+func TestNewEngineKubeconfigNamespaceDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, os.WriteFile(path, []byte(kubeconfigYAML("default")), 0o600))
+
+	t.Setenv("KUBECONFIG", path)
+	clearClusterEnv(t)
+
+	eng, err := NewEngine()
+	require.NoError(t, err)
+	require.Equal(t, "default", eng.(*engine).namespace)
+}
+
+func TestNewEngineUsesServiceAccountNamespaceFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "namespace")
+	require.NoError(t, os.WriteFile(path, []byte(" from-file \n"), 0o600))
+	useNamespaceFile(t, path)
+	useInClusterConfig(t, &rest.Config{Host: "https://127.0.0.1:1"})
+
+	kubeconfig := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, os.WriteFile(kubeconfig, []byte(kubeconfigYAML("from-kubeconfig")), 0o600))
+	t.Setenv("KUBECONFIG", kubeconfig)
+	t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "443")
+	t.Setenv("POD_NAMESPACE", "")
+	t.Setenv("KUBERNETES_NAMESPACE", "")
+
+	eng, err := NewEngine()
+	require.NoError(t, err)
+	require.Equal(t, "from-file", eng.(*engine).namespace)
+}
+
+func TestNewEngineInClusterNamespaceEnvSkipsNamespaceFile(t *testing.T) {
+	useNamespaceFile(t, filepath.Join(t.TempDir(), "missing-namespace"))
+	useInClusterConfig(t, &rest.Config{Host: "https://127.0.0.1:1"})
+	t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "443")
+	t.Setenv("POD_NAMESPACE", "from-env")
+	t.Setenv("KUBERNETES_NAMESPACE", "")
+
+	eng, err := NewEngine()
+	require.NoError(t, err)
+	require.Equal(t, "from-env", eng.(*engine).namespace)
+}
+
+func TestNewEngineInClusterMissingNamespaceFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "namespace")
+	useNamespaceFile(t, path)
+	useInClusterConfig(t, &rest.Config{Host: "https://127.0.0.1:1"})
+	t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "443")
+	t.Setenv("POD_NAMESPACE", "")
+	t.Setenv("KUBERNETES_NAMESPACE", "")
+
+	eng, err := NewEngine()
+	require.Nil(t, eng)
+	require.ErrorContains(t, err, "kubernetes namespace is missing")
+	require.ErrorContains(t, err, path)
+}
+
+func TestNewEngineMissingServiceAccountVolume(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, os.WriteFile(path, []byte(kubeconfigYAML("from-kubeconfig")), 0o600))
+	t.Setenv("KUBECONFIG", path)
+	t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "443")
+
+	for _, namespace := range []string{"", "foreverbull"} {
+		t.Run("POD_NAMESPACE="+namespace, func(t *testing.T) {
+			t.Setenv("POD_NAMESPACE", namespace)
+			t.Setenv("KUBERNETES_NAMESPACE", "")
+
+			eng, err := NewEngine()
+			require.Nil(t, eng)
+			require.ErrorContains(t, err, "kubernetes serviceaccount volume is missing")
+			require.ErrorContains(t, err, "/var/run/secrets/kubernetes.io/serviceaccount/token")
+		})
+	}
+}
+
+func TestInClusterNamespace(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "namespace")
+		useNamespaceFile(t, path)
+
+		ns, err := inClusterNamespace()
+		require.Empty(t, ns)
+		require.ErrorContains(t, err, "kubernetes namespace is missing")
+		require.ErrorContains(t, err, path)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "namespace")
+		require.NoError(t, os.WriteFile(path, []byte(" \n"), 0o600))
+		useNamespaceFile(t, path)
+
+		ns, err := inClusterNamespace()
+		require.Empty(t, ns)
+		require.EqualError(t, err, "kubernetes namespace is missing: "+path+" is empty")
+	})
+
+	t.Run("named", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "namespace")
+		require.NoError(t, os.WriteFile(path, []byte(" from-file \n"), 0o600))
+		useNamespaceFile(t, path)
+
+		ns, err := inClusterNamespace()
+		require.NoError(t, err)
+		require.Equal(t, "from-file", ns)
+	})
+}
+
+func clearClusterEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "")
+	t.Setenv("POD_NAMESPACE", "")
+	t.Setenv("KUBERNETES_NAMESPACE", "")
+}
+
+func useNamespaceFile(t *testing.T, path string) {
+	t.Helper()
+
+	previous := saNamespaceFile
+	saNamespaceFile = path
+	t.Cleanup(func() {
+		saNamespaceFile = previous
+	})
+}
+
+func useInClusterConfig(t *testing.T, cfg *rest.Config) {
+	t.Helper()
+
+	previous := loadInClusterConfig
+	loadInClusterConfig = func() (*rest.Config, error) {
+		return cfg, nil
+	}
+	t.Cleanup(func() {
+		loadInClusterConfig = previous
+	})
+}
+
+func kubeconfigYAML(namespace string) string {
+	namespaceLine := ""
+	if namespace != "" {
+		namespaceLine = "\n    namespace: " + namespace
+	}
+
+	return `
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://127.0.0.1:1
+    insecure-skip-tls-verify: true
+  name: fake
+contexts:
+- context:
+    cluster: fake
+    user: fake` + namespaceLine + `
+  name: fake
+current-context: fake
+users:
+- name: fake
+  user:
+    token: fake
+`
 }
 
 func TestGetEmptyName(t *testing.T) {
