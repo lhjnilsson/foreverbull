@@ -253,3 +253,42 @@ func TestSessionLauncherQueueFull(t *testing.T) {
 		"Restarting fbenv won't clear the queue.")
 	require.NotContains(t, err.Error(), "ingest it first")
 }
+
+func TestSessionLauncherTaskOutcomeSentences(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		cause    error
+		sentence string
+	}{
+		{
+			name:     "finished",
+			cause:    stream.ErrTaskFinishedNotSaved,
+			sentence: "foreverbull couldn't record the task as finished. Run it again. If it repeats, please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.",
+		},
+		{
+			name:     "unconfirmed",
+			cause:    stream.ErrTaskEndNotConfirmed,
+			sentence: "foreverbull couldn't confirm whether the task finished. Don't assume it completed. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := new(mockStore)
+			store.On("GetBacktest", mock.Anything, "spy").Return(&backtestpb.Backtest{
+				Name:    "spy",
+				Periods: []*backtestpb.Backtest_Period{spyPeriod()},
+			}, nil)
+			store.On("CreateSession", mock.Anything, "spy").Return(&backtestpb.Session{Id: "session-1"}, nil)
+			eventStream := new(stream.MockStream)
+			eventStream.On("Publish", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("wait: %w", tc.cause))
+
+			launcher := &ss.SessionLauncher{Store: store, Stream: eventStream}
+			_, err := launcher.Run(context.Background(), ss.RunInput{BacktestName: "spy", StrategyName: "mean-rev"})
+			require.ErrorIs(t, err, tc.cause)
+			require.EqualError(t, err, tc.sentence)
+			require.NotContains(t, err.Error(), "ingest it first")
+		})
+	}
+}

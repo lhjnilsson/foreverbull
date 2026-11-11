@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
@@ -43,14 +45,16 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 		if err != nil {
 			return fmt.Errorf("error unmarshalling state: %w", err)
 		}
-		_, err = ns.jt.Publish(fmt.Sprintf(TOPIC_TASK_STATE, ns.module, msg.msg.Component, msg.msg.Method, msg.msg.GetId()), payload)
+		subject := fmt.Sprintf(TOPIC_TASK_STATE, ns.module, msg.msg.Component, msg.msg.Method, msg.msg.GetId())
+		_, err = ns.jt.Publish(subject, payload)
 		if err != nil {
 			pubErr := fmt.Errorf("error publishing state %s: %w", state, err)
 			if !refused(err) {
 				// A lost ack, a deadline, or a dropped connection: the
-				// server may have stored the state, so nothing that could
-				// contradict it is sent.
-				return &unconfirmedError{err: pubErr}
+				// server may have stored the state. A final state is read
+				// back once; a state that does not end the task is left
+				// unreported.
+				return ns.unconfirmed(msg, state, subject, payload, &s2, pubErr)
 			}
 			// The stream refused the state, so nobody following the stream
 			// sees it. Report it over core NATS so the task still ends.
@@ -155,8 +159,8 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 			return
 		}
 		if err := publishState(msg, pb.State_STATE_COMPLETED, nil, notices...); err != nil {
-			// The callback has no caller to return to; the sender times out
-			// waiting on a final state.
+			// The callback has no caller. A final state the read showed
+			// was not stored is already reported, so the waiter ends.
 			log.Err(err).Str("id", msg.msg.GetId()).Msg("error publishing state")
 			return
 		}
@@ -220,7 +224,9 @@ func (ns *NatsSubscriber) Unsubscribe() error {
 }
 
 // unconfirmedError is a state publish whose outcome is unknown: the
-// stream may have stored it. Nothing is reported for it over core NATS.
+// server may have stored it. Nothing is reported for it over core NATS,
+// because a report could contradict that state. A final state is not
+// this error when a read shows it was not stored; that one is reported.
 type unconfirmedError struct{ err error }
 
 func (e *unconfirmedError) Error() string {
@@ -253,21 +259,120 @@ func unrecordedState(state *pb.State, refusal error) *pb.State {
 // stream refuses publishes. The flush makes a broken connection an error
 // here rather than a message lost in a buffer.
 func (ns *NatsSubscriber) reportUnrecorded(msg *message, state *pb.State, refusal error) error {
-	if ns.nc == nil {
-		return errors.New("error reporting an unrecorded state: no core NATS connection")
-	}
-	payload, err := proto.Marshal(unrecordedState(state, refusal))
-	if err != nil {
-		return fmt.Errorf("error marshalling unrecorded state: %w", err)
-	}
+	return ns.publishUnrecorded(msg, unrecordedState(state, refusal))
+}
+
+// reportLostFinal sends the lostFinalState of a final publish whose
+// acknowledgement was ambiguous and whose payload is not the last message
+// on its subject. There is no second publish of that state.
+func (ns *NatsSubscriber) reportLostFinal(msg *message, state *pb.State) error {
+	return ns.publishUnrecorded(msg, lostFinalState(state))
+}
+
+func (ns *NatsSubscriber) publishUnrecorded(msg *message, state *pb.State) error {
 	topic := fmt.Sprintf(TOPIC_TASK_UNRECORDED, ns.module, msg.msg.Component, msg.msg.Method, msg.msg.GetId())
+	return ns.publishCore(topic, state, "an unrecorded state")
+}
+
+// reportUnconfirmed tells the waiter that a final state's outcome could
+// not be checked. It goes on TOPIC_TASK_UNCONFIRMED, which the state
+// listener does not read, so message_states gains no row that could
+// contradict a success the read could not see. There is no second publish
+// of the state.
+func (ns *NatsSubscriber) reportUnconfirmed(msg *message) error {
+	cause := usercopy.TaskEndNotConfirmed
+	state := &pb.State{State: pb.State_STATE_ERROR, OccurredAt: timestamppb.Now(), Error: &cause}
+	topic := fmt.Sprintf(TOPIC_TASK_UNCONFIRMED, ns.module, msg.msg.Component, msg.msg.Method, msg.msg.GetId())
+	return ns.publishCore(topic, state, "an unconfirmed outcome")
+}
+
+func (ns *NatsSubscriber) publishCore(topic string, state *pb.State, what string) error {
+	if ns.nc == nil {
+		return fmt.Errorf("error reporting %s: no core NATS connection", what)
+	}
+	payload, err := proto.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("error marshalling %s: %w", what, err)
+	}
 	if err := ns.nc.Publish(topic, payload); err != nil {
-		return fmt.Errorf("error reporting an unrecorded state: %w", err)
+		return fmt.Errorf("error reporting %s: %w", what, err)
 	}
 	if err := ns.nc.Flush(); err != nil {
-		return fmt.Errorf("error reporting an unrecorded state: %w", err)
+		return fmt.Errorf("error reporting %s: %w", what, err)
 	}
 	return nil
+}
+
+// endsTask reports whether state is one the waiter stops on.
+func endsTask(state pb.State_State) bool {
+	switch state {
+	case pb.State_STATE_COMPLETED, pb.State_STATE_ERROR, pb.State_STATE_CANCELED:
+		return true
+	case pb.State_STATE_UNSPECIFIED, pb.State_STATE_CREATED,
+		pb.State_STATE_PUBLISHED, pb.State_STATE_RECEIVED:
+		return false
+	default:
+		return false
+	}
+}
+
+// unconfirmed handles a publish whose acknowledgement doesn't settle
+// whether the server stored it. A final state is read once. When that
+// message is the payload just sent, the waiter will see it and nothing
+// that could contradict it is reported. When it is absent, it is reported
+// on the unrecorded subject so the waiter ends and message_states records
+// it. When the read itself fails, the waiter is told on a subject the
+// state listener does not read, so no error row is written. A state that
+// doesn't end the task is not read: RECEIVED may be missing and the
+// command still has to run.
+func (ns *NatsSubscriber) unconfirmed(msg *message, state pb.State_State, subject string, payload []byte, sent *pb.State, pubErr error) error {
+	if endsTask(state) {
+		stored, err := ns.payloadStored(subject, payload)
+		if err != nil {
+			if reportErr := ns.reportUnconfirmed(msg); reportErr != nil {
+				return &unconfirmedError{err: errors.Join(pubErr, err, reportErr)}
+			}
+			return &unconfirmedError{err: errors.Join(pubErr, err)}
+		}
+		if stored {
+			log.Err(pubErr).Str("id", msg.msg.GetId()).Msg("final state is stored")
+			return nil
+		}
+		if err := ns.reportLostFinal(msg, sent); err != nil {
+			return errors.Join(pubErr, err)
+		}
+		return pubErr
+	}
+	return &unconfirmedError{err: pubErr}
+}
+
+// payloadStored reports whether the last message on subject is payload.
+// A subject with no message does not hold it. Any other read error is
+// returned so the caller does not report a failure over a state it
+// could not see.
+func (ns *NatsSubscriber) payloadStored(subject string, payload []byte) (bool, error) {
+	msg, err := ns.jt.GetLastMsg(StreamName, subject)
+	if errors.Is(err, nats.ErrMsgNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("error reading the stored task state: %w", err)
+	}
+	return bytes.Equal(msg.Data, payload), nil
+}
+
+// lostFinalState is the state reported when a final publish came back
+// without a definite refusal and the subject does not hold that payload.
+// ERROR and CANCELED keep their state and cause. COMPLETED becomes ERROR:
+// a success that was not stored can't be reported as finished. The cause
+// is ErrTaskFinishedNotSaved, not a full queue and not an unreachable
+// service. The NATS error stays in the log.
+func lostFinalState(state *pb.State) *pb.State {
+	if state.GetState() == pb.State_STATE_ERROR || state.GetState() == pb.State_STATE_CANCELED {
+		return state
+	}
+	cause := usercopy.TaskFinishedNotSaved
+	return &pb.State{State: pb.State_STATE_ERROR, OccurredAt: timestamppb.Now(), Error: &cause}
 }
 
 type eventPublisher interface {

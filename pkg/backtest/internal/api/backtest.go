@@ -357,13 +357,19 @@ func (bs *BacktestServer) GetExecution(ctx context.Context,
 }
 
 // sessionRunError is the error CreateSession returns when the session run
-// command failed. Services that couldn't reach each other are named for
-// the user; anything else stays an internal error.
+// command failed. Both CreateSession paths use it. A known-missing success
+// and a failed confirmation are the sentences themselves. Services that
+// couldn't reach each other, and a full queue, are named for the user.
+// Anything else stays an internal error.
 func sessionRunError(backtest string, err error) error {
-	if errors.Is(err, stream.ErrServicesUnreachable) {
+	switch {
+	case errors.Is(err, stream.ErrTaskFinishedNotSaved):
+		return status.Error(codes.Internal, usercopy.TaskFinishedNotSaved)
+	case errors.Is(err, stream.ErrTaskEndNotConfirmed):
+		return status.Error(codes.Internal, usercopy.TaskEndNotConfirmed)
+	case errors.Is(err, stream.ErrServicesUnreachable):
 		return status.Error(codes.Unavailable, usercopy.BacktestRunUnreachable(backtest, "fbull backtest run "+backtest))
-	}
-	if errors.Is(err, stream.ErrStateNotRecorded) {
+	case errors.Is(err, stream.ErrStateNotRecorded):
 		return status.Error(codes.ResourceExhausted, usercopy.BacktestSessionQueueFull(backtest))
 	}
 	return fmt.Errorf("error publishing session run command: %w", err)

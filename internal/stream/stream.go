@@ -24,6 +24,12 @@ const (
 	// example because the stream is full, so the waiter and the state
 	// listener learn the task's outcome without the stream.
 	TOPIC_TASK_UNRECORDED = "foreverbull-unrecorded.%s.%s.%s.%s"
+	// TOPIC_TASK_UNCONFIRMED is core NATS, outside the foreverbull stream.
+	// A worker sends it when a final state's publish was ambiguous and the
+	// follow-up read failed, so the waiter can end. The state listener does
+	// not subscribe: an error recorded from here could contradict a success
+	// the read could not see.
+	TOPIC_TASK_UNCONFIRMED = "foreverbull-unconfirmed.%s.%s.%s.%s"
 )
 
 // StreamName is the shared JetStream stream every broker domain publishes

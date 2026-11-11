@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -78,6 +80,25 @@ func TestHTTP(t *testing.T) {
 		rec = httptest.NewRecorder()
 		WriteError(rec, status.Error(codes.NotFound, "missing"))
 		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("task outcome sentences are the error body", func(t *testing.T) {
+		sentences := []string{
+			"foreverbull couldn't record the task as finished. Run it again. If it repeats, please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.",
+			"foreverbull couldn't confirm whether the task finished. Don't assume it completed. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.",
+		}
+		require.Equal(t, sentences, []string{usercopy.TaskFinishedNotSaved, usercopy.TaskEndNotConfirmed})
+		for _, sentence := range sentences {
+			for _, err := range []error{errors.New(sentence), status.Error(codes.Internal, sentence)} {
+				rec := httptest.NewRecorder()
+				WriteError(rec, err)
+				require.Equal(t, http.StatusInternalServerError, rec.Code)
+				body, marshalErr := json.Marshal(map[string]string{"error": sentence})
+				require.NoError(t, marshalErr)
+				require.JSONEq(t, string(body), rec.Body.String())
+				require.NotContains(t, rec.Body.String(), `"internal"`)
+			}
+		}
 	})
 
 	t.Run("internal error hides the cause", func(t *testing.T) {

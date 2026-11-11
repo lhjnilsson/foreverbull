@@ -20,6 +20,16 @@ var ErrServicesUnreachable = errors.New(usercopy.ServicesUnreachable)
 // stored.
 var ErrStateNotRecorded = errors.New(usercopy.TaskStateNotRecorded)
 
+// ErrTaskFinishedNotSaved is a task whose success was not stored after the
+// publish came back without a definite refusal. The task is failed with
+// this cause instead of leaving its waiter until the context ends.
+var ErrTaskFinishedNotSaved = errors.New(usercopy.TaskFinishedNotSaved)
+
+// ErrTaskEndNotConfirmed is a task whose final outcome could not be
+// checked after an ambiguous publish. The waiter ends with this cause.
+// Nothing is recorded for it, because the outcome may already be saved.
+var ErrTaskEndNotConfirmed = errors.New(usercopy.TaskEndNotConfirmed)
+
 // jsStreamStoreFailed is the JetStream error code for a publish the stream
 // couldn't store, such as "maximum bytes exceeded" on a full stream with
 // DiscardNew.
@@ -79,6 +89,10 @@ func stateError(err error) error {
 		return ErrServicesUnreachable
 	case errors.Is(err, ErrStateNotRecorded):
 		return ErrStateNotRecorded
+	case errors.Is(err, ErrTaskFinishedNotSaved):
+		return ErrTaskFinishedNotSaved
+	case errors.Is(err, ErrTaskEndNotConfirmed):
+		return ErrTaskEndNotConfirmed
 	}
 	return err
 }
@@ -103,6 +117,10 @@ func commandError(text string) error {
 		return ErrServicesUnreachable
 	case usercopy.TaskStateNotRecorded:
 		return ErrStateNotRecorded
+	case usercopy.TaskFinishedNotSaved:
+		return ErrTaskFinishedNotSaved
+	case usercopy.TaskEndNotConfirmed:
+		return ErrTaskEndNotConfirmed
 	}
 	return errors.New(text)
 }

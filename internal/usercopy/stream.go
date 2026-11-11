@@ -7,6 +7,16 @@ import "fmt"
 // rather than left waiting for a state that was never stored.
 const TaskStateNotRecorded = "foreverbull's task queue is full, so it couldn't record the task's progress"
 
+// TaskFinishedNotSaved is the plain cause when a task finished and the
+// read showed that success was not stored. The sentence tells the user
+// to run the task again.
+const TaskFinishedNotSaved = "foreverbull couldn't record the task as finished. Run it again. If it repeats, please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+
+// TaskEndNotConfirmed is the plain cause when a final outcome could not
+// be checked, including a follow-up read that failed. The sentence does
+// not tell the user to run the task again.
+const TaskEndNotConfirmed = "foreverbull couldn't confirm whether the task finished. Don't assume it completed. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+
 // queueFullNext is the step after a full task queue: wait for old tasks to
 // leave it (the stream keeps a message for 24 hours), then retry. Restarting
 // the environment keeps the stream's volume, so it doesn't help.

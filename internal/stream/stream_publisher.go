@@ -36,6 +36,12 @@ const progressBuffer = 64
 // waiter, and the connection's error handler (logAsyncError) logs that.
 const unrecordedBuffer = 4
 
+// unconfirmedBuffer holds the notice a worker sends when it could not read
+// whether a final state was stored. The worker sends one, and the waiter
+// returns on it. The state listener does not subscribe to that subject, so
+// the notice never becomes a message_states row.
+const unconfirmedBuffer = 4
+
 // WaitForCompletion waits for the task's final state. Each onProgress gets
 // the text of every progress report the command sends meanwhile, over core
 // NATS, before the final state is returned.
@@ -56,22 +62,31 @@ func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 			unsubscribe(sub)
 			return nil, nil, fmt.Errorf("error subscribing to unrecorded states: %w", err)
 		}
+		// A failed read of a final state is not an unrecorded state: the
+		// listener would store that as an error and could contradict a
+		// success the read could not see. This subject is the waiter's alone.
+		unconfirmed := make(chan *nats.Msg, unconfirmedBuffer)
+		unconfirmedSub, err := nn.nc.ChanSubscribe(msg.taskUnconfirmedTopic(), unconfirmed)
+		if err != nil {
+			unsubscribe(sub, unrecordedSub)
+			return nil, nil, fmt.Errorf("error subscribing to unconfirmed outcomes: %w", err)
+		}
 		var progress chan *nats.Msg
 		var progressSub *nats.Subscription
 		if len(onProgress) > 0 {
 			progress = make(chan *nats.Msg, progressBuffer)
 			progressSub, err = nn.nc.ChanSubscribe(msg.taskProgressTopic(), progress)
 			if err != nil {
-				unsubscribe(sub, unrecordedSub)
+				unsubscribe(sub, unrecordedSub, unconfirmedSub)
 				return nil, nil, fmt.Errorf("error subscribing to progress: %w", err)
 			}
 		}
 		if err := nn.nc.Flush(); err != nil {
-			unsubscribe(sub, unrecordedSub, progressSub)
+			unsubscribe(sub, unrecordedSub, unconfirmedSub, progressSub)
 			return nil, nil, fmt.Errorf("error subscribing to progress and unrecorded states: %w", err)
 		}
 		var stopOnce sync.Once
-		stop := func() { stopOnce.Do(func() { unsubscribe(sub, unrecordedSub, progressSub) }) }
+		stop := func() { stopOnce.Do(func() { unsubscribe(sub, unrecordedSub, unconfirmedSub, progressSub) }) }
 		return func(ctx context.Context) error {
 			defer stop()
 			report := func(m *nats.Msg) {
@@ -128,6 +143,15 @@ func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 					state := pb.State{}
 					if err := proto.Unmarshal(m.Data, &state); err != nil {
 						return fmt.Errorf("error unmarshalling unrecorded state: %w", err)
+					}
+					if done, err := finalState(&state, drain); done {
+						return err
+					}
+					continue
+				case m := <-unconfirmed:
+					state := pb.State{}
+					if err := proto.Unmarshal(m.Data, &state); err != nil {
+						return fmt.Errorf("error unmarshalling unconfirmed outcome: %w", err)
 					}
 					if done, err := finalState(&state, drain); done {
 						return err

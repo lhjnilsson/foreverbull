@@ -23,6 +23,16 @@ func TestUnreachableStateRoundTrip(t *testing.T) {
 	other := errors.New("error getting session: no rows")
 	require.Equal(t, other, stateError(other))
 	require.EqualError(t, commandError(other.Error()), "error getting session: no rows")
+
+	require.EqualError(t, stateError(ErrTaskFinishedNotSaved), ErrTaskFinishedNotSaved.Error())
+	got := commandError(ErrTaskFinishedNotSaved.Error())
+	require.ErrorIs(t, got, ErrTaskFinishedNotSaved)
+	require.EqualError(t, got, ErrTaskFinishedNotSaved.Error())
+
+	require.EqualError(t, stateError(ErrTaskEndNotConfirmed), ErrTaskEndNotConfirmed.Error())
+	got = commandError(ErrTaskEndNotConfirmed.Error())
+	require.ErrorIs(t, got, ErrTaskEndNotConfirmed)
+	require.EqualError(t, got, ErrTaskEndNotConfirmed.Error())
 }
 
 // A failed request is logged and stored. Scheme, host and path stay. The

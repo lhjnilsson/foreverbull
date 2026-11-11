@@ -36,6 +36,10 @@ type refusingJetStream struct {
 	refuseTasks  bool
 	storeFirst   bool
 	err          error
+	// readErr, when set, is what GetLastMsg returns. The publish error is
+	// separate: a closed connection on the read can follow a timeout on
+	// the publish, and the core connection used to tell the waiter stays up.
+	readErr error
 }
 
 func (r refusingJetStream) Publish(subj string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error) {
@@ -64,6 +68,13 @@ func (r refusingJetStream) Publish(subj string, data []byte, opts ...nats.PubOpt
 		return refuse()
 	}
 	return r.JetStreamContext.Publish(subj, data, opts...)
+}
+
+func (r refusingJetStream) GetLastMsg(name, subject string, opts ...nats.JSOpt) (*nats.RawStreamMsg, error) {
+	if r.readErr != nil {
+		return nil, r.readErr
+	}
+	return r.JetStreamContext.GetLastMsg(name, subject, opts...)
 }
 
 func withJetStream(r refusingJetStream, js nats.JetStreamContext) refusingJetStream {
@@ -126,6 +137,19 @@ func (u unrecordedSetup) publishAndWait(t *testing.T, method string) (string, er
 	err = u.waiter.Publish(ctx, msg, WaitForCompletion())
 	require.NoError(t, ctx.Err(), "the waiter must return, not wait for a state the stream refused")
 	return msg.GetMsg().GetId(), err
+}
+
+// requireRecordedCanceled waits for the listener to store the task's
+// CANCELED row, which carries no cause.
+func (u unrecordedSetup) requireRecordedCanceled(t *testing.T, id string) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		var n int
+		err := u.db.QueryRow(context.Background(),
+			`SELECT count(*) FROM message_states WHERE message_id=$1 AND state=$2 AND error IS NULL`,
+			id, int32(pb.State_STATE_CANCELED)).Scan(&n)
+		return err == nil && n == 1
+	}, 10*time.Second, 50*time.Millisecond, "message_states must record the cancellation")
 }
 
 // requireRecordedError waits for the listener to store the task's ERROR
@@ -259,21 +283,85 @@ func TestAnUnconfirmedReceivedStateStillRunsTheTask(t *testing.T) {
 	u.requireNoRecordedError(t, id)
 }
 
-// The residual case: a final state whose publish timed out and which the
-// server really didn't store. Nothing tells the waiter, so it waits until
-// its context ends.
-func TestALostFinalStateLeavesTheWaiterToItsContext(t *testing.T) {
-	u := setupUnrecorded(t, refusingJetStream{refuse: pb.State_STATE_COMPLETED, err: nats.ErrTimeout}, "lost",
-		func(context.Context, Message) error { return nil })
+// A final success whose publish came back without a definite refusal, and
+// which the server did not store, fails the task with the named cause.
+// The waiter returns it well inside the bound. A deadline is the same
+// kind of ambiguous error as a lost acknowledgement.
+func TestALostFinalStateFailsTheTask(t *testing.T) {
+	for _, tc := range []struct {
+		method string
+		err    error
+	}{
+		{method: "losttimeout", err: nats.ErrTimeout},
+		{method: "lostdeadline", err: context.DeadlineExceeded},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			u := setupUnrecorded(t, refusingJetStream{refuse: pb.State_STATE_COMPLETED, err: tc.err}, tc.method,
+				func(context.Context, Message) error { return nil })
 
-	msg, err := NewMessage("unrecorded", "refuse", "lost", nil)
-	require.NoError(t, err)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	err = u.waiter.Publish(ctx, msg, WaitForCompletion())
-	require.Error(t, err)
-	require.Error(t, ctx.Err(), "only the context ends the wait")
-	u.requireNoRecordedError(t, msg.GetMsg().GetId())
+			id, err := u.publishAndWait(t, tc.method)
+			require.ErrorIs(t, err, ErrTaskFinishedNotSaved)
+			require.EqualError(t, err, usercopy.TaskFinishedNotSaved)
+			require.NotErrorIs(t, err, context.DeadlineExceeded)
+			require.NotErrorIs(t, err, context.Canceled)
+			require.NotContains(t, err.Error(), "nats:")
+			u.requireRecordedError(t, id, usercopy.TaskFinishedNotSaved)
+		})
+	}
+}
+
+// A final ERROR that was not stored still ends the waiter with the
+// command's cause. The lost acknowledgement is not a second diagnosis.
+func TestALostFinalErrorEndsTheWaiterWithItsCause(t *testing.T) {
+	const cause = "the provider has no prices for XYZ"
+	u := setupUnrecorded(t, refusingJetStream{refuse: pb.State_STATE_ERROR, err: nats.ErrTimeout}, "losterror",
+		func(context.Context, Message) error { return errors.New(cause) })
+
+	id, err := u.publishAndWait(t, "losterror")
+	require.EqualError(t, err, cause)
+	require.NotErrorIs(t, err, context.DeadlineExceeded)
+	u.requireRecordedError(t, id, cause)
+}
+
+// A final CANCELED that was not stored still ends the waiter as canceled.
+func TestALostFinalCancelEndsTheWaiter(t *testing.T) {
+	u := setupUnrecorded(t, refusingJetStream{refuse: pb.State_STATE_CANCELED, err: nats.ErrTimeout}, "lostcancel",
+		func(context.Context, Message) error { return context.Canceled })
+
+	id, err := u.publishAndWait(t, "lostcancel")
+	require.EqualError(t, err, "canceled")
+	require.NotErrorIs(t, err, context.DeadlineExceeded)
+	u.requireRecordedCanceled(t, id)
+}
+
+// A follow-up read that fails, including a closed connection, ends the
+// waiter with the confirmation cause. message_states gets no ERROR: the
+// success may already be stored, and the unrecorded subject is what the
+// listener copies.
+func TestAFailedFinalReadEndsTheWaiterWithoutAnErrorRow(t *testing.T) {
+	for _, tc := range []struct {
+		method  string
+		publish error
+		read    error
+	}{
+		{method: "readclosed", publish: nats.ErrConnectionClosed, read: nats.ErrConnectionClosed},
+		{method: "readfail", publish: nats.ErrTimeout, read: errors.New("read failed")},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			u := setupUnrecorded(t, refusingJetStream{
+				refuse: pb.State_STATE_COMPLETED, err: tc.publish, readErr: tc.read,
+			}, tc.method, func(context.Context, Message) error { return nil })
+
+			id, err := u.publishAndWait(t, tc.method)
+			require.ErrorIs(t, err, ErrTaskEndNotConfirmed)
+			require.EqualError(t, err, usercopy.TaskEndNotConfirmed)
+			require.NotErrorIs(t, err, context.DeadlineExceeded)
+			require.NotErrorIs(t, err, context.Canceled)
+			require.NotContains(t, err.Error(), "nats:")
+			require.NotEqual(t, usercopy.TaskFinishedNotSaved, err.Error())
+			u.requireNoRecordedError(t, id)
+		})
+	}
 }
 
 func TestATaskTheStreamRefusesAfterPublishedIsRecordedAsFailed(t *testing.T) {
@@ -374,6 +462,19 @@ func TestUnrecordedState(t *testing.T) {
 	require.Same(t, failed, unrecordedState(failed, errStreamFull))
 	canceled := &pb.State{State: pb.State_STATE_CANCELED}
 	require.Same(t, canceled, unrecordedState(canceled, errStreamFull))
+}
+
+func TestLostFinalState(t *testing.T) {
+	cause := "the provider has no prices for XYZ"
+	failed := &pb.State{State: pb.State_STATE_ERROR, Error: &cause}
+	require.Same(t, failed, lostFinalState(failed))
+	canceled := &pb.State{State: pb.State_STATE_CANCELED}
+	require.Same(t, canceled, lostFinalState(canceled))
+
+	got := lostFinalState(&pb.State{State: pb.State_STATE_COMPLETED})
+	require.Equal(t, pb.State_STATE_ERROR, got.GetState())
+	require.Equal(t, usercopy.TaskFinishedNotSaved, got.GetError())
+	require.NotNil(t, got.GetOccurredAt())
 }
 
 func TestUnrecordedMessageID(t *testing.T) {

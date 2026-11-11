@@ -2007,6 +2007,39 @@ def test_backtest_run_shows_short_execution_id(runner):
     assert f"Charts:  {execution_link(full_id)}" in result.stdout
 
 
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        (
+            "foreverbull couldn't record the task as finished. Run it again. If it repeats, "
+            "please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+        ),
+        (
+            "foreverbull couldn't confirm whether the task finished. Don't assume it completed. "
+            "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+        ),
+    ],
+)
+def test_backtest_run_prints_the_task_outcome_after_the_mark(monkeypatch, sentence):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.get") as get,
+        patch(
+            "foreverbull.broker.backtest.create_session",
+            side_effect=_BrokenStream(sentence, grpc.StatusCode.INTERNAL),
+        ),
+    ):
+        get.return_value = _sample_backtest()
+        result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert result.stdout.endswith(f"✖ {sentence}\n")
+    assert "Traceback" not in result.stdout
+    assert "Something went wrong" not in result.stdout
+    assert "ingest it first" not in result.stdout
+
+
 def test_backtest_run_fails_when_no_execution_started(runner):
     mock_backtest_session = _run_session_mocks()
     mock_backtest_session.run_execution.return_value = iter([])
