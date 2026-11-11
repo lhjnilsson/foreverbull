@@ -118,7 +118,7 @@ def _rejected_many(failures: list[CloseFailure]) -> str:
     else:
         where = _join([f"{item.symbol} at the close on {item.session.isoformat()}" for item in failures])
     return (
-        f"foreverbull couldn't close {where} because the close was rejected. "
+        f"foreverbull couldn't close {where} because the closes were rejected. "
         "This is a problem in foreverbull, not in your algo. The run was stopped. "
         f"Please report it at {_ISSUES} with this message."
     )
