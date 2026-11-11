@@ -20,6 +20,7 @@ from zipline.finance.blotter import Blotter
 from zipline.finance.trading import SimulationParameters
 from zipline.protocol import BarData
 from zipline.protocol import Portfolio
+from zipline.protocol import Positions
 from zipline.utils.calendar_utils import get_calendar
 
 from foreverbull.broker.storage import Storage
@@ -253,7 +254,9 @@ def ticker_on(tickers: list[tuple[pd.Timestamp, str]], day: pd.Timestamp) -> str
 
 
 def _held_amount(trading_algorithm: TradingAlgorithm, asset) -> int:
-    position = trading_algorithm.portfolio.positions.get(asset)
+    # Portfolio sets positions through MutableView, so the class body has no annotation.
+    positions = cast(Positions, vars(trading_algorithm.portfolio)["positions"])
+    position = positions.get(asset)
     if position is None:
         return 0
     return int(position.amount)

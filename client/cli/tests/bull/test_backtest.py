@@ -1327,10 +1327,11 @@ _CLOSE_HELP = (
 
 
 def test_backtest_create_help_states_the_close_on_drop_flags():
-    from typer.main import get_command
-
-    create = get_command(backtest).commands["create"]
+    group = typer.main.get_command(backtest)
+    assert isinstance(group, click.Group)
+    create = group.commands["create"]
     option = next(param for param in create.params if "--close-on-universe-drop" in param.opts)
+    assert isinstance(option, click.Option)
     assert option.opts == ["--close-on-universe-drop"]
     assert option.secondary_opts == ["--no-close-on-universe-drop"]
     assert option.help == _CLOSE_HELP
