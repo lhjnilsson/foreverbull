@@ -29,8 +29,9 @@ import pytest
 from foreverbull_zipline.data_bundles.dividends import no_dividends
 from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
-from foreverbull_zipline.data_bundles.foreverbull import drop_unpriced_bars
 from foreverbull_zipline.data_bundles.foreverbull import missing_sessions
+from foreverbull_zipline.data_bundles.foreverbull import sessions_missing_a_price
+from foreverbull_zipline.data_bundles.foreverbull import unpriced_dates
 from zipline.data import bundles
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
@@ -189,7 +190,7 @@ def test_missing_sessions_skips_good_friday():
     assert missing_sessions(bars, sessions) == []
 
 
-def test_drop_unpriced_bars_drops_zero_and_negative_prices():
+def test_unpriced_dates_names_a_missing_zero_or_negative_price():
     bars = pd.DataFrame(
         {
             "open": [1.0, 0.0, 1.0, 1.0],
@@ -199,7 +200,49 @@ def test_drop_unpriced_bars_drops_zero_and_negative_prices():
             "volume": [1, 0, 1, 1],
         }
     )
-    assert drop_unpriced_bars(bars).index.tolist() == [0]
+    assert list(unpriced_dates(bars)) == [1, 2, 3]
+
+
+def test_an_unpriced_first_or_last_bar_stays_in_the_span():
+    sessions = pd.DatetimeIndex(["2026-05-01", "2026-05-04", "2026-05-05", "2026-05-06"])
+    bars = pd.DataFrame(
+        {
+            "open": [0.0, 1.0, 1.0, 1.0],
+            "high": [0.0, 1.0, 1.0, 1.0],
+            "low": [0.0, 1.0, 1.0, 1.0],
+            "close": [0.0, 1.0, 1.0, np.nan],
+        },
+        index=sessions,
+    )
+    # Dropping the edges used to leave only 05-04 and 05-05, so neither bad
+    # day was inside the span.
+    assert sessions_missing_a_price([bars], bars.iloc[1:3], sessions) == [
+        pd.Timestamp("2026-05-01"),
+        pd.Timestamp("2026-05-06"),
+    ]
+
+
+def test_an_unpriced_row_that_is_not_a_session_is_still_named():
+    sessions = pd.DatetimeIndex(["2026-05-01", "2026-05-04"])
+    weekend = pd.Timestamp("2026-05-02")
+    bars = pd.DataFrame(
+        {"open": [1.0, 0.0], "high": [1.0, 0.0], "low": [1.0, 0.0], "close": [1.0, 0.0]},
+        index=pd.DatetimeIndex(["2026-05-01", weekend]),
+    )
+    assert sessions_missing_a_price([bars], bars.iloc[0:1], sessions) == [weekend]
+
+
+def test_another_ticker_price_still_covers_the_session():
+    sessions = pd.DatetimeIndex(["2026-05-01", "2026-05-04"])
+    bad = pd.DataFrame(
+        {"open": [0.0, 1.0], "high": [0.0, 1.0], "low": [0.0, 1.0], "close": [0.0, 1.0]},
+        index=sessions,
+    )
+    good = pd.DataFrame(
+        {"open": [2.0, 2.0], "high": [2.0, 2.0], "low": [2.0, 2.0], "close": [2.0, 2.0]},
+        index=sessions,
+    )
+    assert sessions_missing_a_price([bad, good], good, sessions) == []
 
 
 def _golden() -> pd.DataFrame:
@@ -228,6 +271,17 @@ def test_gap_fails_the_ingest_and_refetched_bars_match_the_golden_run():
     # The filled run was off on exactly the four filled sessions.
     differs = golden.index[(golden["portfolio_value"] - golden["filled_portfolio_value"]).abs() > 1e-6]
     assert [day.date() for day in differs] == [*GAP_DAYS, ZERO_DAY]
+
+
+@pytest.mark.usefixtures("zipline_root")
+def test_an_unpriced_first_and_last_bar_fail_the_ingest():
+    meta, oef = _yahoo_bars("META").copy(), _yahoo_bars("OEF")
+    meta.loc[meta.index[0], ["open", "high", "low", "close"]] = 0
+    meta.loc[meta.index[-1], "close"] = np.nan
+    with pytest.raises(MissingSessionsError) as refused:
+        _ingest("meta_edges", {"META": meta, "OEF": oef})
+    assert str(refused.value) == "missing prices on trading days: META 2021-10-01,2021-11-30"
+    assert [day.date() for day in refused.value.gaps["META"]] == [date(2021, 10, 1), date(2021, 11, 30)]
 
 
 @pytest.mark.usefixtures("zipline_root")
