@@ -22,6 +22,11 @@ func (db *Backtest) ListVisible(ctx context.Context, caller auth.Account) ([]*ba
 	where, args := visibleWhere("b", caller, auth.DomainBacktest)
 	query := `
 		SELECT b.name, b.benchmark, b.provider, b.profile,
+		       b.auto_close_on_universe_drop,
+		       EXISTS (
+		           SELECT 1 FROM universe_member AS member
+		           WHERE member.backtest_id = b.id
+		       ),
 		       COALESCE(p.username, g.github_login, '')
 		FROM backtest AS b
 		LEFT JOIN account_password AS p ON p.account_id = b.owner_id
@@ -36,9 +41,13 @@ func (db *Backtest) ListVisible(ctx context.Context, caller auth.Account) ([]*ba
 	out := []*backtest.Backtest{}
 	for rows.Next() {
 		item := &backtest.Backtest{}
-		if err := rows.Scan(&item.Name, &item.Benchmark, &item.Provider, &item.Profile, &item.OwnerLogin); err != nil {
+		var closeOnDrop bool
+		var hasUniverse bool
+		if err := rows.Scan(&item.Name, &item.Benchmark, &item.Provider, &item.Profile, &closeOnDrop, &hasUniverse, &item.OwnerLogin); err != nil {
 			return nil, fmt.Errorf("list visible backtests: %w", err)
 		}
+		assignCloseOnUniverseDrop(item, closeOnDrop)
+		item.HasUniverseMembers = hasUniverse
 		out = append(out, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -51,6 +60,11 @@ func (db *Backtest) ListVisible(ctx context.Context, caller auth.Account) ([]*ba
 func (db *Backtest) GetByID(ctx context.Context, id string) (*backtest.Backtest, error) {
 	rows, err := db.Conn.Query(ctx, `
 		SELECT b.name, b.benchmark, b.provider, b.profile,
+		       b.auto_close_on_universe_drop,
+		       EXISTS (
+		           SELECT 1 FROM universe_member AS member
+		           WHERE member.backtest_id = b.id
+		       ),
 		       COALESCE(p.username, g.github_login, ''), b.ticker_resolutions,
 		       bp.start_date, bp.end_date, bpa.symbol, bpa.enabled
 		FROM backtest AS b
@@ -120,17 +134,21 @@ func scanOwnedBacktest(rows pgx.Rows) (*backtest.Backtest, error) {
 	item := &backtest.Backtest{}
 	for rows.Next() {
 		var (
-			resolved []byte
-			start    *time.Time
-			end      *time.Time
-			symbol   *string
-			enabled  *bool
+			closeOnDrop bool
+			hasUniverse bool
+			resolved    []byte
+			start       *time.Time
+			end         *time.Time
+			symbol      *string
+			enabled     *bool
 		)
 		first := item.Name == ""
-		err := rows.Scan(&item.Name, &item.Benchmark, &item.Provider, &item.Profile, &item.OwnerLogin, &resolved, &start, &end, &symbol, &enabled)
+		err := rows.Scan(&item.Name, &item.Benchmark, &item.Provider, &item.Profile, &closeOnDrop, &hasUniverse, &item.OwnerLogin, &resolved, &start, &end, &symbol, &enabled)
 		if err != nil {
 			return nil, fmt.Errorf("scan backtest: %w", err)
 		}
+		assignCloseOnUniverseDrop(item, closeOnDrop)
+		item.HasUniverseMembers = hasUniverse
 		if first {
 			item.TickerResolutions, err = decodeTickerResolutions(resolved)
 			if err != nil {

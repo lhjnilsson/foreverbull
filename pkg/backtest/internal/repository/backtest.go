@@ -2,15 +2,18 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPB "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	"google.golang.org/protobuf/proto"
 )
 
 const BacktestTable = `
@@ -19,6 +22,7 @@ CREATE TABLE IF NOT EXISTS backtest (
 	benchmark text NOT NULL,
 	provider text NOT NULL,
 	profile text NOT NULL DEFAULT '',
+	auto_close_on_universe_drop boolean NOT NULL DEFAULT true,
 	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
 
@@ -43,6 +47,37 @@ CREATE TABLE IF NOT EXISTS backtest_period_asset (
 
 type Backtest struct {
 	Conn postgres.Query
+}
+
+// ErrCloseOnUniverseDropFixed is returned when a create would change the
+// option stored on an existing backtest.
+var ErrCloseOnUniverseDropFixed = errors.New(usercopy.CloseOnUniverseDropFixed)
+
+// closeOnUniverseDrop is the stored choice. An omitted field is on.
+func closeOnUniverseDrop(item *backtest.Backtest) bool {
+	if item == nil || item.AutoCloseOnUniverseDrop == nil {
+		return true
+	}
+	return *item.AutoCloseOnUniverseDrop
+}
+
+func assignCloseOnUniverseDrop(item *backtest.Backtest, on bool) {
+	if item == nil {
+		return
+	}
+	item.AutoCloseOnUniverseDrop = proto.Bool(on)
+}
+
+// MigrateAutoCloseOnUniverseDrop adds the create-time option. Existing rows
+// are on, which is the default. Calling it twice is safe.
+func MigrateAutoCloseOnUniverseDrop(ctx context.Context, conn postgres.Query) error {
+	_, err := conn.Exec(ctx, `
+		ALTER TABLE backtest
+		ADD COLUMN IF NOT EXISTS auto_close_on_universe_drop boolean NOT NULL DEFAULT true`)
+	if err != nil {
+		return fmt.Errorf("backtest: auto_close_on_universe_drop: %w", err)
+	}
+	return nil
 }
 
 func normalizeBacktestProvider(provider string) (string, error) {
@@ -126,6 +161,11 @@ func (db *Backtest) insertBacktest(ctx context.Context, in backtestWrite) (*back
 	if err != nil {
 		return nil, err
 	}
+	on := closeOnUniverseDrop(in.item)
+	assignCloseOnUniverseDrop(in.item, on)
+	if err := refuseCloseOnDropChange(ctx, db.Conn, in, on); err != nil {
+		return nil, err
+	}
 	tx, err := beginBacktestTx(ctx, db.Conn)
 	if err != nil {
 		return nil, err
@@ -170,10 +210,11 @@ func insertBacktestRow(ctx context.Context, conn postgres.Query, in backtestWrit
 	if in.ownerID != "" {
 		var id string
 		err := conn.QueryRow(ctx, `
-			INSERT INTO backtest (name, benchmark, provider, profile, owner_id)
-			VALUES ($1, $2, $3, $4, $5)
+			INSERT INTO backtest (name, benchmark, provider, profile, owner_id, auto_close_on_universe_drop)
+			VALUES ($1, $2, $3, $4, $5, $6)
 			RETURNING id`,
-			in.item.GetName(), in.item.GetBenchmark(), provider, in.item.GetProfile(), in.ownerID).Scan(&id)
+			in.item.GetName(), in.item.GetBenchmark(), provider, in.item.GetProfile(), in.ownerID,
+			closeOnUniverseDrop(in.item)).Scan(&id)
 		if err != nil {
 			return "", fmt.Errorf("create backtest: %w", err)
 		}
@@ -181,13 +222,36 @@ func insertBacktestRow(ctx context.Context, conn postgres.Query, in backtestWrit
 	}
 	profile := strings.TrimSpace(in.item.GetProfile())
 	_, err := conn.Exec(ctx,
-		`INSERT INTO backtest (name, benchmark, provider, profile)
-		VALUES ($1, $2, $3, $4)`,
-		in.item.Name, in.item.Benchmark, provider, profile)
+		`INSERT INTO backtest (name, benchmark, provider, profile, auto_close_on_universe_drop)
+		VALUES ($1, $2, $3, $4, $5)`,
+		in.item.Name, in.item.Benchmark, provider, profile, closeOnUniverseDrop(in.item))
 	if err != nil {
 		return "", fmt.Errorf("failed to create backtest: %w", err)
 	}
 	return "", nil
+}
+
+func refuseCloseOnDropChange(ctx context.Context, conn postgres.Query, in backtestWrite, next bool) error {
+	var query string
+	args := []any{in.item.GetName()}
+	if in.ownerID != "" {
+		query = `SELECT auto_close_on_universe_drop FROM backtest WHERE owner_id = $1 AND name = $2`
+		args = []any{in.ownerID, in.item.GetName()}
+	} else {
+		query = `SELECT auto_close_on_universe_drop FROM backtest WHERE name = $1`
+	}
+	var stored bool
+	err := conn.QueryRow(ctx, query, args...).Scan(&stored)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create backtest: %w", err)
+	}
+	if stored != next {
+		return ErrCloseOnUniverseDropFixed
+	}
+	return nil
 }
 
 func insertBacktestPeriods(ctx context.Context, conn postgres.Query, in backtestWrite, id string) error {
@@ -265,15 +329,17 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 		return nil, fmt.Errorf("get backtest by name is refused while AUTH_ENABLED=true")
 	}
 	type rowData struct {
-		Name      string
-		Benchmark string
-		Provider  string
-		Profile   string
-		Resolved  []byte
-		StartDate *time.Time
-		EndDate   *time.Time
-		Symbol    *string
-		Enabled   *bool
+		Name        string
+		Benchmark   string
+		Provider    string
+		Profile     string
+		CloseOnDrop bool
+		HasUniverse bool
+		Resolved    []byte
+		StartDate   *time.Time
+		EndDate     *time.Time
+		Symbol      *string
+		Enabled     *bool
 	}
 	rows, err := db.Conn.Query(ctx, `
 	    SELECT 
@@ -281,6 +347,11 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 			backtest.benchmark,
 			backtest.provider,
 			backtest.profile,
+			backtest.auto_close_on_universe_drop,
+			EXISTS (
+				SELECT 1 FROM universe_member AS member
+				WHERE member.backtest_name = backtest.name
+			),
 			backtest.ticker_resolutions,
 			backtest_period.start_date,
 			backtest_period.end_date,
@@ -302,7 +373,7 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 
 	for rows.Next() {
 		var row rowData
-		err = rows.Scan(&row.Name, &row.Benchmark, &row.Provider, &row.Profile, &row.Resolved, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
+		err = rows.Scan(&row.Name, &row.Benchmark, &row.Provider, &row.Profile, &row.CloseOnDrop, &row.HasUniverse, &row.Resolved, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
@@ -317,6 +388,8 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 		b.Benchmark = row.Benchmark
 		b.Provider = row.Provider
 		b.Profile = row.Profile
+		assignCloseOnUniverseDrop(&b, row.CloseOnDrop)
+		b.HasUniverseMembers = row.HasUniverse
 
 		if row.StartDate == nil || row.EndDate == nil {
 			continue
@@ -391,15 +464,17 @@ func (db *Backtest) UpdatePeriodAsset(ctx context.Context, name string, asset_sy
 
 func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 	type rowData struct {
-		Name      string
-		Benchmark string
-		Provider  string
-		Profile   string
-		Resolved  []byte
-		StartDate *time.Time
-		EndDate   *time.Time
-		Symbol    *string
-		Enabled   *bool
+		Name        string
+		Benchmark   string
+		Provider    string
+		Profile     string
+		CloseOnDrop bool
+		HasUniverse bool
+		Resolved    []byte
+		StartDate   *time.Time
+		EndDate     *time.Time
+		Symbol      *string
+		Enabled     *bool
 	}
 	rows, err := db.Conn.Query(ctx, `
 	    SELECT 
@@ -407,6 +482,11 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 			backtest.benchmark,
 			backtest.provider,
 			backtest.profile,
+			backtest.auto_close_on_universe_drop,
+			EXISTS (
+				SELECT 1 FROM universe_member AS member
+				WHERE member.backtest_name = backtest.name
+			),
 			backtest.ticker_resolutions,
 			backtest_period.start_date,
 			backtest_period.end_date,
@@ -425,7 +505,7 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 	backtests := make([]*backtest.Backtest, 0)
 	for rows.Next() {
 		var row rowData
-		err = rows.Scan(&row.Name, &row.Benchmark, &row.Provider, &row.Profile, &row.Resolved, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
+		err = rows.Scan(&row.Name, &row.Benchmark, &row.Provider, &row.Profile, &row.CloseOnDrop, &row.HasUniverse, &row.Resolved, &row.StartDate, &row.EndDate, &row.Symbol, &row.Enabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan period: %w", err)
 		}
@@ -442,12 +522,14 @@ func (db *Backtest) List(ctx context.Context) ([]*backtest.Backtest, error) {
 				return nil, fmt.Errorf("backtest %s: %w", row.Name, err)
 			}
 			b = &backtest.Backtest{
-				Name:              row.Name,
-				Benchmark:         row.Benchmark,
-				Provider:          row.Provider,
-				Profile:           row.Profile,
-				TickerResolutions: resolved,
+				Name:               row.Name,
+				Benchmark:          row.Benchmark,
+				Provider:           row.Provider,
+				Profile:            row.Profile,
+				HasUniverseMembers: row.HasUniverse,
+				TickerResolutions:  resolved,
 			}
+			assignCloseOnUniverseDrop(b, row.CloseOnDrop)
 			backtests = append(backtests, b)
 		}
 		if row.StartDate == nil || row.EndDate == nil {

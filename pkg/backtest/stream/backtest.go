@@ -50,23 +50,25 @@ func NewCreateBacktestOrchestration(name string, symbols []string, start, end st
 }
 
 type CreateBacktestFromETFCommand struct {
-	BacktestName string `json:"backtest_name"`
-	ETFName      string `json:"etf_name"`
-	StartDate    string `json:"start_date"`
-	EndDate      string `json:"end_date"`
-	Provider     string `json:"provider,omitempty"`
-	Profile      string `json:"profile,omitempty"`
-	OwnerID      string `json:"owner_id,omitempty"`
+	BacktestName            string `json:"backtest_name"`
+	ETFName                 string `json:"etf_name"`
+	StartDate               string `json:"start_date"`
+	EndDate                 string `json:"end_date"`
+	Provider                string `json:"provider,omitempty"`
+	Profile                 string `json:"profile,omitempty"`
+	OwnerID                 string `json:"owner_id,omitempty"`
+	AutoCloseOnUniverseDrop *bool  `json:"auto_close_on_universe_drop,omitempty"`
 }
 
-func NewCreateBacktestFromETFCommand(backtestName, etfName, startDate, endDate, provider, profile string) (stream.Message, error) {
+func NewCreateBacktestFromETFCommand(backtestName, etfName, startDate, endDate, provider, profile string, closeOnDrop *bool) (stream.Message, error) {
 	cmd := &CreateBacktestFromETFCommand{
-		BacktestName: backtestName,
-		ETFName:      etfName,
-		StartDate:    startDate,
-		EndDate:      endDate,
-		Provider:     provider,
-		Profile:      profile,
+		BacktestName:            backtestName,
+		ETFName:                 etfName,
+		StartDate:               startDate,
+		EndDate:                 endDate,
+		Provider:                provider,
+		Profile:                 profile,
+		AutoCloseOnUniverseDrop: closeOnDrop,
 	}
 	return stream.NewMessage("backtest", "create", "from_etf", cmd)
 }
@@ -96,13 +98,13 @@ func NewDownloadFinancialDataCommand(backtestName string) (stream.Message, error
 	return stream.NewMessage("backtest", "download", "download", cmd)
 }
 
-func CreateBacktestFromETF(backtest_name, etf_name, start_date, end_date, provider, profile string) (*streamPb.Orchestration, error) {
+func CreateBacktestFromETF(backtest_name, etf_name, start_date, end_date, provider, profile string, closeOnDrop *bool) (*streamPb.Orchestration, error) {
 	o := streamPb.Orchestration{}
 	rsp := &backtestServicePb.CreateBacktestResponse{}
 	rspFields := rsp.ProtoReflect().Descriptor().Fields()
 
 	// Create Backtest
-	cmd, err := NewCreateBacktestFromETFCommand(backtest_name, etf_name, start_date, end_date, provider, profile)
+	cmd, err := NewCreateBacktestFromETFCommand(backtest_name, etf_name, start_date, end_date, provider, profile, closeOnDrop)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
 	}
@@ -160,19 +162,20 @@ func CreateBacktestFromBacktest(backtest *backtest.Backtest) (*streamPb.Orchestr
 
 // CreateBacktestFromETFOwned stamps OwnerID on each step. An empty owner is refused
 // by the subscriber once authentication is on.
-func CreateBacktestFromETFOwned(backtestName, etfName, startDate, endDate, provider, profile, ownerID string) (*streamPb.Orchestration, error) {
+func CreateBacktestFromETFOwned(backtestName, etfName, startDate, endDate, provider, profile, ownerID string, closeOnDrop *bool) (*streamPb.Orchestration, error) {
 	o := streamPb.Orchestration{}
 	rsp := &backtestServicePb.CreateBacktestResponse{}
 	rspFields := rsp.ProtoReflect().Descriptor().Fields()
 
 	cmd, err := stream.NewMessage("backtest", "create", "from_etf", &CreateBacktestFromETFCommand{
-		BacktestName: backtestName,
-		ETFName:      etfName,
-		StartDate:    startDate,
-		EndDate:      endDate,
-		Provider:     provider,
-		Profile:      profile,
-		OwnerID:      ownerID,
+		BacktestName:            backtestName,
+		ETFName:                 etfName,
+		StartDate:               startDate,
+		EndDate:                 endDate,
+		Provider:                provider,
+		Profile:                 profile,
+		OwnerID:                 ownerID,
+		AutoCloseOnUniverseDrop: closeOnDrop,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)

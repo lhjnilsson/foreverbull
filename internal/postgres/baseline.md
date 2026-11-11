@@ -8,7 +8,7 @@ This file is the contract. Do not drop bars, do not move bars onto ISIN, and do 
 
 `pkg/strategy/internal/repository/storage.go` creates parent tables so strategy tests can attach foreign keys. Those copies must match the tables created while `AUTH_ENABLED` is false:
 
-- `backtest` includes `provider text NOT NULL DEFAULT 'yahoo'` and `profile text NOT NULL DEFAULT ''`.
+- `backtest` includes `provider text NOT NULL DEFAULT 'yahoo'`, `profile text NOT NULL DEFAULT ''`, and `auto_close_on_universe_drop boolean NOT NULL DEFAULT true`.
 - `backtest_execution` includes `function_arguments jsonb` and `provider text NOT NULL DEFAULT 'yahoo'`.
 - `instrument` and `asset_symbol` are the same SQL in `pkg/finance/internal/repository/instrument.go` and `pkg/backtest/internal/repository/instrument.go`.
 

@@ -127,7 +127,7 @@ func ownedCreateOrchestration(req *servicePb.CreateBacktestRequest, ownerID stri
 		fromETF := req.GetEtf()
 		item, err := backtestStream.CreateBacktestFromETFOwned(fromETF.GetName(), fromETF.GetBaseEtf(),
 			pb.DateToDateString(fromETF.GetStartDate()), pb.DateToDateString(fromETF.GetEndDate()),
-			fromETF.GetProvider(), fromETF.GetProfile(), ownerID)
+			fromETF.GetProvider(), fromETF.GetProfile(), ownerID, fromETF.AutoCloseOnUniverseDrop)
 		if err != nil {
 			return nil, fmt.Errorf("error creating backtest orchestration: %w", err)
 		}

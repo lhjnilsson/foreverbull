@@ -57,6 +57,8 @@ export type Backtest = {
   profile?: string;
   periods?: BacktestPeriod[];
   ownerLogin?: string;
+  autoCloseOnUniverseDrop?: boolean;
+  hasUniverseMembers?: boolean;
 };
 
 export type Strategy = {

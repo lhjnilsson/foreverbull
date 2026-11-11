@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { hasStoredDate } from "./equity.ts";
 import {
+  CLOSE_ON_DROP_CREATE_HELP,
+  CLOSE_ON_DROP_LABEL,
+  closeOnDropValue,
   dataSourceValue,
   formatDrawdown,
   formatPercent,
@@ -243,4 +246,21 @@ test("an adjusted-close run labels the return and notes dividends inside prices"
   assert.deepEqual(load.card.notes, [
     "Adjusted-close return (dividends inside prices): no dividends were booked as cash.",
   ]);
+});
+
+test("an ETF run shows close on universe drop as on or off", () => {
+  assert.equal(CLOSE_ON_DROP_LABEL, "Close on universe drop");
+  assert.equal(closeOnDropValue(true), "on");
+  assert.equal(closeOnDropValue(false), "off");
+  assert.equal(
+    CLOSE_ON_DROP_CREATE_HELP,
+    "Closes held positions at that session's close when a symbol leaves the universe. This is set when you create the backtest and can't be changed later.",
+  );
+  const stored = [period(2, { startingCash: 1_000, longsCount: 1 })];
+  const on = cells(resultCard({ stored, benchmark: "", provider: "yahoo", closeOnUniverseDrop: true }));
+  assert.deepEqual(on[3], ["Close on universe drop=on"]);
+  const off = cells(resultCard({ stored, benchmark: "", provider: "yahoo", closeOnUniverseDrop: false }));
+  assert.deepEqual(off[3], ["Close on universe drop=off"]);
+  const hidden = cells(resultCard({ stored, benchmark: "", provider: "yahoo" }));
+  assert.equal(hidden.some((row) => row.join(" ").includes("Close on universe drop")), false);
 });

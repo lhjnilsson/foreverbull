@@ -241,13 +241,14 @@ type executionFunctionView struct {
 // executionArgumentsView is one run's stored worker arguments.
 // It does not include database URL, broker port, or namespace port.
 type executionArgumentsView struct {
-	ID        string                  `json:"id"`
-	Session   string                  `json:"session"`
-	Backtest  string                  `json:"backtest"`
-	Benchmark string                  `json:"benchmark"`
-	Start     string                  `json:"start"`
-	End       string                  `json:"end"`
-	Functions []executionFunctionView `json:"functions"`
+	ID                  string                  `json:"id"`
+	Session             string                  `json:"session"`
+	Backtest            string                  `json:"backtest"`
+	Benchmark           string                  `json:"benchmark"`
+	Start               string                  `json:"start"`
+	End                 string                  `json:"end"`
+	CloseOnUniverseDrop string                  `json:"close_on_universe_drop,omitempty"`
+	Functions           []executionFunctionView `json:"functions"`
 }
 
 type executionArgumentsRequest struct {
@@ -340,34 +341,44 @@ func (ds *Datasource) GetExecutionArguments(w http.ResponseWriter, r *http.Reque
 		})
 	}
 
+	benchmark, closeOnDrop := ds.executionRunFields(r, execution.GetBacktest())
 	writeJSON(w, executionArgumentsView{
-		ID:        execution.GetId(),
-		Session:   execution.GetSession(),
-		Backtest:  execution.GetBacktest(),
-		Benchmark: ds.executionBenchmark(r, execution.GetBacktest()),
-		Start:     formatDate(execution.GetStartDate()),
-		End:       formatDate(execution.GetEndDate()),
-		Functions: functions,
+		ID:                  execution.GetId(),
+		Session:             execution.GetSession(),
+		Backtest:            execution.GetBacktest(),
+		Benchmark:           benchmark,
+		Start:               formatDate(execution.GetStartDate()),
+		End:                 formatDate(execution.GetEndDate()),
+		CloseOnUniverseDrop: closeOnDrop,
+		Functions:           functions,
 	})
+}
+
+func closeOnDropValue(item *backtestPb.Backtest) string {
+	if item == nil || !item.GetHasUniverseMembers() {
+		return ""
+	}
+	if item.AutoCloseOnUniverseDrop != nil && !item.GetAutoCloseOnUniverseDrop() {
+		return "off"
+	}
+	return "on"
 }
 
 // executionBenchmark reads the backtest row. A lookup failure leaves it empty.
 // Database URL and ports are not part of this view.
-func (ds *Datasource) executionBenchmark(r *http.Request, name string) string {
+func (ds *Datasource) executionRunFields(r *http.Request, name string) (string, string) {
 	if ds == nil || ds.backend == nil || r == nil || name == "" {
-		return ""
+		return "", ""
 	}
 	rsp, err := ds.backend.GetBacktest(r.Context(), &backtestsvc.GetBacktestRequest{Name: name})
-	if err != nil || rsp == nil {
+	if err != nil || rsp == nil || rsp.GetBacktest() == nil {
 		if err != nil && ds.log != nil {
 			ds.log.With("method", "GetExecutionArguments").Error("fail to get backtest", err)
 		}
-		return ""
+		return "", ""
 	}
-	if rsp.GetBacktest() == nil {
-		return ""
-	}
-	return rsp.GetBacktest().GetBenchmark()
+	item := rsp.GetBacktest()
+	return item.GetBenchmark(), closeOnDropValue(item)
 }
 
 func (ds *Datasource) ListMetrics(w http.ResponseWriter, r *http.Request) {

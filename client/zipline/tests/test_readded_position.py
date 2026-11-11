@@ -1,11 +1,9 @@
 """Golden run: a held member is dropped from the ETF and added back.
 
-universe_member keeps one half-open row per membership interval, so a
-member that is dropped and re-added has two rows. Zipline has one
-auto_close_date per sid. It must follow the member's final interval: a
-member that is back in the ETF at the end of the run is never
-auto-closed, and one dropped for good closes on its final drop, not on
-its first one.
+Membership on session t is the half-open interval that contains t.
+foreverbull closes a held name on the first session it is not a member,
+at that session's close, when auto_close_on_universe_drop is on. Zipline
+auto_close_date is not that drop.
 """
 
 import os
@@ -20,6 +18,8 @@ import pytest
 from foreverbull_zipline.data_bundles.dividends import no_dividends
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.engine import zero_benchmark_returns
+from foreverbull_zipline.universe_close import close_dropped_positions
+from foreverbull_zipline.universe_close import order_increases
 from zipline.data import bundles
 from zipline.data.data_portal import DataPortal
 from zipline.extensions import load
@@ -131,8 +131,33 @@ def _ingester(sessions: pd.DatetimeIndex, xyz_intervals: list[tuple[date, date |
     )
 
 
-def _run(sessions: pd.DatetimeIndex) -> pd.DataFrame:
-    """Buy AAPL and XYZ on the first session, then hold."""
+def _members(day: pd.Timestamp, xyz_intervals: list[tuple[date, date | None]]) -> set[str]:
+    """AAPL throughout, XYZ on each half-open interval."""
+    members = {"AAPL"}
+    current = day.date()
+    for start, end in xyz_intervals:
+        if start <= current and (end is None or current < end):
+            members.add("XYZ")
+    return members
+
+
+def _run(
+    sessions: pd.DatetimeIndex,
+    xyz_intervals: list[tuple[date, date | None]],
+    *,
+    auto_close: bool = True,
+    rebuy: bool = False,
+    spread: float = 0.0,
+    per_share: float = 0.0,
+    also_flatten: bool = False,
+    also_increase: bool = False,
+) -> pd.DataFrame:
+    """Buy AAPL and XYZ on the first session.
+
+    rebuy places another 100 XYZ on 2023-02-28. also_flatten sells the
+    position on the first drop session. also_increase tries to buy more
+    while XYZ is not a member.
+    """
     bundle = bundles.load(BUNDLE, os.environ, None)
     calendar = get_calendar("XNYS")
     data_portal = DataPortal(
@@ -145,15 +170,34 @@ def _run(sessions: pd.DatetimeIndex) -> pd.DataFrame:
     )
 
     def initialize(context):
-        context.set_slippage(slippage.FixedSlippage(spread=0.0))
-        context.set_commission(commission.NoCommission())
+        context.set_slippage(slippage.FixedSlippage(spread=spread))
+        if per_share:
+            context.set_commission(commission.PerShare(cost=per_share, min_trade_cost=0))
+        else:
+            context.set_commission(commission.NoCommission())
         context.ordered = False
 
     def handle_data(context, data):
+        day = cast(pd.Timestamp, pd.Timestamp(context.get_datetime().date()))
+        xyz = context.symbol("XYZ")
         if not context.ordered:
             context.order(context.symbol("AAPL"), AAPL_SHARES)
-            context.order(context.symbol("XYZ"), XYZ_SHARES)
+            context.order(xyz, XYZ_SHARES)
             context.ordered = True
+        if rebuy and day == pd.Timestamp(READDED):
+            context.order(xyz, XYZ_SHARES)
+        members = _members(day, xyz_intervals)
+        held = int(context.portfolio.positions[xyz].amount) if xyz in context.portfolio.positions else 0
+        if also_flatten and day == pd.Timestamp(FIRST_DROP) and held:
+            context.order(xyz, -held)
+        if (
+            also_increase
+            and day == pd.Timestamp("2023-02-01")
+            and ("XYZ" in members or not order_increases(held, XYZ_SHARES))
+        ):
+            context.order(xyz, XYZ_SHARES)
+        if auto_close:
+            close_dropped_positions(context, data, members, symbol_of=lambda asset: asset.symbol)
 
     algorithm = TradingAlgorithm(
         namespace={},
@@ -178,13 +222,13 @@ def _run(sessions: pd.DatetimeIndex) -> pd.DataFrame:
     return result
 
 
-def _ingest_and_run(xyz_intervals: list[tuple[date, date | None]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _ingest_and_run(xyz_intervals: list[tuple[date, date | None]], **run_kwargs) -> tuple[pd.DataFrame, pd.DataFrame]:
     sessions = _sessions()
     ingester = _ingester(sessions, xyz_intervals)
     bundles.register(BUNDLE, ingester, calendar_name="XNYS")
     try:
         bundles.ingest(BUNDLE, os.environ, pd.Timestamp("2023-04-03", tz="UTC"), [], False)
-        return pd.DataFrame(ingester._df_metadata), _run(sessions)
+        return pd.DataFrame(ingester._df_metadata), _run(sessions, xyz_intervals, **run_kwargs)
     finally:
         bundles.unregister(BUNDLE)
 
@@ -203,6 +247,21 @@ def _xyz_fills(result: pd.DataFrame) -> list[tuple[pd.Timestamp, int, float]]:
 
 
 READDED_AND_HELD = [(date(2022, 12, 31), FIRST_DROP), (READDED, None)]
+READDED_AND_DROPPED = [(date(2022, 12, 31), FIRST_DROP), (READDED, FINAL_DROP)]
+
+
+def _auto_close_is_not_a_membership_drop(metadata: pd.DataFrame) -> None:
+    rows = metadata.loc[metadata["symbol"] == "XYZ"]
+    assert len(rows) == 1
+    closed = pd.Timestamp(rows.iloc[0]["auto_close_date"])
+    assert closed == END + pd.Timedelta(days=1)
+    assert closed != pd.Timestamp(FIRST_DROP)
+    assert closed != pd.Timestamp(FINAL_DROP)
+
+
+def _cash_change(result: pd.DataFrame, sessions: pd.DatetimeIndex, day: pd.Timestamp) -> float:
+    before = sessions[sessions < day][-1]
+    return float(result.loc[day]["ending_cash"] - result.loc[before]["ending_cash"])
 
 
 @pytest.mark.parametrize(
@@ -210,32 +269,25 @@ READDED_AND_HELD = [(date(2022, 12, 31), FIRST_DROP), (READDED, None)]
     [READDED_AND_HELD, list(reversed(READDED_AND_HELD))],
     ids=["drop-first", "readd-first"],
 )
-def test_readded_member_is_not_auto_closed_at_its_first_drop(tmp_path, monkeypatch, xyz_intervals):
+def test_drop_readd_and_a_strategy_rebuy(tmp_path, monkeypatch, xyz_intervals):
     monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
-    metadata, result = _ingest_and_run(xyz_intervals)
+    metadata, result = _ingest_and_run(xyz_intervals, rebuy=True)
     sessions = _sessions()
-
-    rows = metadata.loc[metadata["symbol"] == "XYZ"]
-    # One sid row, not one per membership interval.
-    assert len(rows) == 1
-    # Back in the ETF at the end: no auto-close inside the run.
-    assert pd.Timestamp(rows.iloc[0]["auto_close_date"]) == END + pd.Timedelta(days=1)
-
-    # The only XYZ fill is the buy: nothing sells it at the first drop.
     xyz_closes = _closes(sessions, 20.0, 0.25)
-    assert _xyz_fills(result) == [(BUY_SESSION, XYZ_SHARES, pytest.approx(xyz_closes[BUY_SESSION]))]
+    _auto_close_is_not_a_membership_drop(metadata)
 
-    after_first_drop = sessions[sessions >= pd.Timestamp(FIRST_DROP)]
-    for day in after_first_drop:
-        assert _held(result.loc[day]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}, day
-
-    end = result.iloc[-1]
-    aapl_closes = _closes(sessions, 50.0, 0.5)
-    held_value = XYZ_SHARES * xyz_closes.iloc[-1] + AAPL_SHARES * aapl_closes.iloc[-1]
-    assert end["portfolio_value"] == pytest.approx(end["ending_cash"] + held_value)
-
-
-READDED_AND_DROPPED = [(date(2022, 12, 31), FIRST_DROP), (READDED, FINAL_DROP)]
+    assert _xyz_fills(result) == [
+        (BUY_SESSION, XYZ_SHARES, pytest.approx(xyz_closes[BUY_SESSION])),
+        (pd.Timestamp(FIRST_DROP), -XYZ_SHARES, pytest.approx(24.75)),
+        (pd.Timestamp("2023-03-01"), XYZ_SHARES, pytest.approx(29.75)),
+    ]
+    assert _cash_change(result, sessions, pd.Timestamp(FIRST_DROP)) == pytest.approx(2475)
+    assert _held(result.loc[pd.Timestamp("2023-01-30")]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
+    assert _held(result.loc[pd.Timestamp(FIRST_DROP)]) == {"AAPL": AAPL_SHARES}
+    for day in sessions[(sessions > pd.Timestamp(FIRST_DROP)) & (sessions < pd.Timestamp("2023-03-01"))]:
+        assert _held(result.loc[day]) == {"AAPL": AAPL_SHARES}, day
+    assert _held(result.loc[pd.Timestamp("2023-03-01")]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
+    assert _held(result.iloc[-1]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
 
 
 @pytest.mark.parametrize(
@@ -243,29 +295,88 @@ READDED_AND_DROPPED = [(date(2022, 12, 31), FIRST_DROP), (READDED, FINAL_DROP)]
     [READDED_AND_DROPPED, list(reversed(READDED_AND_DROPPED))],
     ids=["drop-first", "readd-first"],
 )
-def test_readded_member_dropped_again_closes_at_its_final_drop(tmp_path, monkeypatch, xyz_intervals):
+def test_drop_readd_and_drop_again(tmp_path, monkeypatch, xyz_intervals):
     monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
-    metadata, result = _ingest_and_run(xyz_intervals)
+    metadata, result = _ingest_and_run(xyz_intervals, rebuy=True)
     sessions = _sessions()
-
-    rows = metadata.loc[metadata["symbol"] == "XYZ"]
-    assert len(rows) == 1
-    assert pd.Timestamp(rows.iloc[0]["auto_close_date"]) == pd.Timestamp(FINAL_DROP)
-
-    held_through = sessions[(sessions >= pd.Timestamp(FIRST_DROP)) & (sessions < pd.Timestamp(FINAL_DROP))]
-    for day in held_through:
-        assert _held(result.loc[day]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}, day
-    assert _held(result.iloc[-1]) == {"AAPL": AAPL_SHARES}
-
-    # Bought once. Zipline closes it at the end of the final-drop session,
-    # the first one the broker leaves XYZ out of, at that session's close.
     xyz_closes = _closes(sessions, 20.0, 0.25)
-    closed_on = pd.Timestamp(FINAL_DROP)
+    _auto_close_is_not_a_membership_drop(metadata)
+
     assert _xyz_fills(result) == [
         (BUY_SESSION, XYZ_SHARES, pytest.approx(xyz_closes[BUY_SESSION])),
-        (closed_on, -XYZ_SHARES, pytest.approx(xyz_closes[closed_on])),
+        (pd.Timestamp(FIRST_DROP), -XYZ_SHARES, pytest.approx(24.75)),
+        (pd.Timestamp("2023-03-01"), XYZ_SHARES, pytest.approx(29.75)),
+        (pd.Timestamp(FINAL_DROP), -XYZ_SHARES, pytest.approx(32.25)),
     ]
-    assert _held(result.loc[closed_on]) == {"AAPL": AAPL_SHARES}
-    before = sessions[sessions < closed_on][-1]
-    credited = result.loc[closed_on]["ending_cash"] - result.loc[before]["ending_cash"]
-    assert credited == pytest.approx(XYZ_SHARES * xyz_closes[closed_on])
+    assert _cash_change(result, sessions, pd.Timestamp(FINAL_DROP)) == pytest.approx(3225)
+    assert _held(result.loc[pd.Timestamp("2023-03-14")]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
+    assert _held(result.loc[pd.Timestamp(FINAL_DROP)]) == {"AAPL": AAPL_SHARES}
+    assert _held(result.iloc[-1]) == {"AAPL": AAPL_SHARES}
+
+
+@pytest.mark.parametrize(
+    "xyz_intervals",
+    [READDED_AND_HELD, list(reversed(READDED_AND_HELD))],
+    ids=["drop-first", "readd-first"],
+)
+def test_option_off_holds_through_the_gap(tmp_path, monkeypatch, xyz_intervals):
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    metadata, result = _ingest_and_run(xyz_intervals, auto_close=False)
+    sessions = _sessions()
+    xyz_closes = _closes(sessions, 20.0, 0.25)
+    _auto_close_is_not_a_membership_drop(metadata)
+    assert _xyz_fills(result) == [(BUY_SESSION, XYZ_SHARES, pytest.approx(xyz_closes[BUY_SESSION]))]
+    for day in sessions[sessions >= BUY_SESSION]:
+        assert _held(result.loc[day]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}, day
+
+
+@pytest.mark.parametrize("xyz_intervals", [[(date(2022, 12, 31), FIRST_DROP)]], ids=["no-readd"])
+def test_option_off_holds_a_final_drop_with_no_readd(tmp_path, monkeypatch, xyz_intervals):
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    metadata, result = _ingest_and_run(xyz_intervals, auto_close=False)
+    sessions = _sessions()
+    _auto_close_is_not_a_membership_drop(metadata)
+    assert _xyz_fills(result) == [(BUY_SESSION, XYZ_SHARES, pytest.approx(20.25))]
+    for day in sessions[sessions >= pd.Timestamp(FIRST_DROP)]:
+        assert _held(result.loc[day]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}, day
+
+
+@pytest.mark.parametrize(
+    "xyz_intervals",
+    [READDED_AND_HELD, list(reversed(READDED_AND_HELD))],
+    ids=["drop-first", "readd-first"],
+)
+def test_costs_apply_to_the_drop_close_and_the_rebuy(tmp_path, monkeypatch, xyz_intervals):
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    _, result = _ingest_and_run(xyz_intervals, rebuy=True, spread=0.10, per_share=0.01)
+    sessions = _sessions()
+    # FixedSlippage sells at close - spread/2 and buys at close + spread/2.
+    # PerShare(0.01) costs 1.00 on 100 shares.
+    assert _xyz_fills(result)[1] == (pd.Timestamp(FIRST_DROP), -XYZ_SHARES, pytest.approx(24.70))
+    assert _cash_change(result, sessions, pd.Timestamp(FIRST_DROP)) == pytest.approx(2469)
+    assert _xyz_fills(result)[2] == (pd.Timestamp("2023-03-01"), XYZ_SHARES, pytest.approx(29.80))
+    assert _cash_change(result, sessions, pd.Timestamp("2023-03-01")) == pytest.approx(-2981)
+
+
+@pytest.mark.parametrize(
+    "xyz_intervals",
+    [READDED_AND_HELD, list(reversed(READDED_AND_HELD))],
+    ids=["drop-first", "readd-first"],
+)
+def test_a_strategy_flatten_on_the_drop_is_not_a_second_sell(tmp_path, monkeypatch, xyz_intervals):
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    _, result = _ingest_and_run(xyz_intervals, also_flatten=True)
+    sells = [fill for fill in _xyz_fills(result) if fill[1] < 0]
+    assert sells == [(pd.Timestamp("2023-02-01"), -XYZ_SHARES, pytest.approx(25.00))]
+    assert _held(result.loc[pd.Timestamp(FIRST_DROP)]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
+    assert _held(result.loc[pd.Timestamp("2023-02-01")]) == {"AAPL": AAPL_SHARES}
+
+
+def test_option_off_can_flatten_a_held_non_member_and_cannot_add(tmp_path, monkeypatch):
+    monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
+    intervals = [(date(2022, 12, 31), FIRST_DROP)]
+    _, held = _ingest_and_run(intervals, auto_close=False, also_flatten=True)
+    assert _held(held.loc[pd.Timestamp("2023-02-01")]) == {"AAPL": AAPL_SHARES}
+    _, increased = _ingest_and_run(intervals, auto_close=False, also_increase=True)
+    assert _xyz_fills(increased) == [(BUY_SESSION, XYZ_SHARES, pytest.approx(20.25))]
+    assert _held(increased.iloc[-1]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}

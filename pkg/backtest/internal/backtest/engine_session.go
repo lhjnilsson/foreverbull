@@ -55,6 +55,7 @@ type ZipelineSession struct {
 	backtests  BacktestReader
 	runFailure chan error
 	leftOut    *leftOut
+	drops      *universeDrops
 	events     []repository.SymbolEvent
 }
 
@@ -72,7 +73,8 @@ func (z *ZipelineSession) RunFailure() error {
 // channel has closed.
 func (z *ZipelineSession) RunNotices() []string {
 	lines := z.leftOut.notices()
-	return append(lines, coverageNotices(z.events, z.leftOut)...)
+	lines = append(lines, coverageNotices(z.events, z.leftOut)...)
+	return append(lines, z.drops.notices()...)
 }
 
 // ListingLine is the run-summary line for a confirmed listing.
@@ -107,6 +109,14 @@ func coverageNotices(events []repository.SymbolEvent, left *leftOut) []string {
 // symbolSource returns the tickers Process receives on date t.
 type symbolSource func(ctx context.Context, t time.Time) ([]string, error)
 
+// sessionSymbols is where one run's Process list and, for an ETF universe,
+// the membership at t come from. members is nil for a symbol-list backtest.
+type sessionSymbols struct {
+	process   symbolSource
+	members   symbolSource
+	autoClose bool
+}
+
 func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Execution, workers worker.Pool) (chan *servicePb.RunExecutionResponse, error) {
 	members, backtests, pool, err := z.lookups(ctx)
 	if err != nil {
@@ -119,7 +129,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 	}
 
 	left := newLeftOut()
-	stored, symbolsAt, events, err := runPlan(ctx, backtests, members, execution, left)
+	stored, symbols, events, err := runPlan(ctx, backtests, members, execution, left)
 	if err != nil {
 		closePool()
 		return nil, err
@@ -152,6 +162,7 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 	ch := make(chan *servicePb.RunExecutionResponse)
 	z.runFailure = make(chan error, 1)
 	z.leftOut = left
+	z.drops = newUniverseDrops()
 
 	runner := func() {
 		defer closePool()
@@ -183,28 +194,49 @@ func (z *ZipelineSession) RunBacktest(ctx context.Context, execution *pb.Executi
 			t := period.Portfolio.Timestamp.AsTime()
 			// The filter names a left-out member held in this portfolio.
 			left.sawPortfolio(period.Portfolio)
-			symbols, err := symbolsAt(ctx, t)
+			var raw []string
+			if symbols.members != nil {
+				raw, err = symbols.members(ctx, t)
+				if err != nil {
+					log.Error().Err(err).Msg("error listing members at timestamp")
+					runErr = err
+					return
+				}
+			}
+			process, err := symbols.process(ctx, t)
 			if err != nil {
 				log.Error().Err(err).Msg("error listing members at timestamp")
 				runErr = err
 				return
 			}
-			orders, err := workers.Process(ctx, t, symbols, period.Portfolio)
+			// Option off: a held name that left the universe stays open, and
+			// Process has to see it or a strategy that only walks the symbol
+			// list cannot flatten it.
+			if symbols.members != nil && !symbols.autoClose {
+				process = heldNonMembers(raw, process, period.Portfolio)
+			}
+			orders, err := workers.Process(ctx, t, process, period.Portfolio)
 			if err != nil {
 				log.Error().Err(err).Msg("error processing orders")
 				runErr = err
 				return
 			}
 
-			_, err = z.client.PlaceOrdersAndContinue(ctx,
-				&servicePb.PlaceOrdersAndContinueRequest{
-					Orders: orders,
-				},
-			)
+			request := &servicePb.PlaceOrdersAndContinueRequest{Orders: orders}
+			if symbols.members != nil {
+				request.Universe = &servicePb.UniverseSession{
+					Members:                 raw,
+					AutoCloseOnUniverseDrop: symbols.autoClose,
+				}
+			}
+			placed, err := z.client.PlaceOrdersAndContinue(ctx, request)
 			if err != nil {
 				log.Error().Err(err).Msg("error placing orders")
 				runErr = err
 				return
+			}
+			if placed != nil {
+				z.drops.add(t, placed.GetUniverseDropCloses())
 			}
 		}
 	}
@@ -245,9 +277,9 @@ func (z *ZipelineSession) lookups(ctx context.Context) (MemberSymbols, BacktestR
 // An ETF member whose prices ended before t (a delisting the next month-end
 // list has not dropped yet) is left out of Process and recorded in left, so
 // the run summary names it instead of the algorithm reading a stale price.
-func runPlan(ctx context.Context, backtests BacktestReader, members MemberSymbols, execution *pb.Execution, left *leftOut) (*pb.Backtest, symbolSource, []repository.SymbolEvent, error) {
+func runPlan(ctx context.Context, backtests BacktestReader, members MemberSymbols, execution *pb.Execution, left *leftOut) (*pb.Backtest, sessionSymbols, []repository.SymbolEvent, error) {
 	if execution == nil {
-		return nil, nil, nil, errors.New("execution has no backtest")
+		return nil, sessionSymbols{}, nil, errors.New("execution has no backtest")
 	}
 	if environment.GetAuthEnabled() {
 		return runPlanOwned(ctx, backtests, members, execution, left)
@@ -255,39 +287,41 @@ func runPlan(ctx context.Context, backtests BacktestReader, members MemberSymbol
 	return runPlanNamed(ctx, backtests, members, execution.GetBacktest(), left)
 }
 
-func runPlanNamed(ctx context.Context, backtests BacktestReader, members MemberSymbols, backtestName string, left *leftOut) (*pb.Backtest, symbolSource, []repository.SymbolEvent, error) {
+func runPlanNamed(ctx context.Context, backtests BacktestReader, members MemberSymbols, backtestName string, left *leftOut) (*pb.Backtest, sessionSymbols, []repository.SymbolEvent, error) {
 	if backtestName == "" {
-		return nil, nil, nil, errors.New("execution has no backtest")
+		return nil, sessionSymbols{}, nil, errors.New("execution has no backtest")
 	}
 	stored, err := backtests.Get(ctx, backtestName)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error getting backtest %s: %w", backtestName, err)
+		return nil, sessionSymbols{}, nil, fmt.Errorf("error getting backtest %s: %w", backtestName, err)
 	}
 	events, err := readSymbolEvents(ctx, backtests, backtestName)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, sessionSymbols{}, nil, err
 	}
 	intervals, err := members.List(ctx, backtestName)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error listing universe members of %s: %w", backtestName, err)
+		return nil, sessionSymbols{}, nil, fmt.Errorf("error listing universe members of %s: %w", backtestName, err)
 	}
 	if len(intervals) > 0 {
 		source := symbolSource(func(ctx context.Context, t time.Time) ([]string, error) {
 			return memberSymbolsAt(ctx, members, backtestName, t)
 		})
+		plan := sessionSymbols{members: source, process: source, autoClose: autoCloseOnUniverseDrop(stored)}
 		reader, ok := members.(lastBarsByName)
 		if !ok {
-			return stored, source, events, nil
+			return stored, plan, events, nil
 		}
 		aliases, err := reader.LastBars(ctx, backtestName, barsProvider(stored), barsEnd(stored))
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("error reading last prices of %s: %w", backtestName, err)
+			return nil, sessionSymbols{}, nil, fmt.Errorf("error reading last prices of %s: %w", backtestName, err)
 		}
-		return stored, withoutEndedPrices(source, aliases, left, confirmedDelistings(events)), events, nil
+		plan.process = withoutEndedPrices(source, aliases, left, confirmedDelistings(events))
+		return stored, plan, events, nil
 	}
-	return stored, func(_ context.Context, t time.Time) ([]string, error) {
+	return stored, sessionSymbols{process: func(_ context.Context, t time.Time) ([]string, error) {
 		return periodSymbolsAt(stored.GetPeriods(), t), nil
-	}, events, nil
+	}}, events, nil
 }
 
 type symbolEventLister interface {
@@ -326,27 +360,27 @@ type membersByID interface {
 	SymbolsAtID(ctx context.Context, backtestID string, t time.Time) ([]string, error)
 }
 
-func runPlanOwned(ctx context.Context, backtests BacktestReader, members MemberSymbols, execution *pb.Execution, left *leftOut) (*pb.Backtest, symbolSource, []repository.SymbolEvent, error) {
+func runPlanOwned(ctx context.Context, backtests BacktestReader, members MemberSymbols, execution *pb.Execution, left *leftOut) (*pb.Backtest, sessionSymbols, []repository.SymbolEvent, error) {
 	ids, ok := backtests.(backtestByID)
 	listed, membersOK := members.(membersByID)
 	if !ok || !membersOK {
-		return nil, nil, nil, errors.New("backtest id is empty")
+		return nil, sessionSymbols{}, nil, errors.New("backtest id is empty")
 	}
 	backtestID, err := ids.IDForSession(ctx, execution.GetSession())
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error getting backtest for session: %w", err)
+		return nil, sessionSymbols{}, nil, fmt.Errorf("error getting backtest for session: %w", err)
 	}
 	stored, err := ids.GetByID(ctx, backtestID)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error getting backtest %s: %w", backtestID, err)
+		return nil, sessionSymbols{}, nil, fmt.Errorf("error getting backtest %s: %w", backtestID, err)
 	}
 	events, err := readSymbolEvents(ctx, backtests, stored.GetName())
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, sessionSymbols{}, nil, err
 	}
 	intervals, err := listed.ListByID(ctx, backtestID)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error listing universe members of %s: %w", backtestID, err)
+		return nil, sessionSymbols{}, nil, fmt.Errorf("error listing universe members of %s: %w", backtestID, err)
 	}
 	if len(intervals) > 0 {
 		source := symbolSource(func(ctx context.Context, t time.Time) ([]string, error) {
@@ -359,19 +393,21 @@ func runPlanOwned(ctx context.Context, backtests BacktestReader, members MemberS
 			}
 			return symbols, nil
 		})
+		plan := sessionSymbols{members: source, process: source, autoClose: autoCloseOnUniverseDrop(stored)}
 		reader, ok := members.(lastBarsByID)
 		if !ok {
-			return stored, source, events, nil
+			return stored, plan, events, nil
 		}
 		aliases, err := reader.LastBarsByID(ctx, backtestID, barsProvider(stored), barsEnd(stored))
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("error reading last prices of %s: %w", backtestID, err)
+			return nil, sessionSymbols{}, nil, fmt.Errorf("error reading last prices of %s: %w", backtestID, err)
 		}
-		return stored, withoutEndedPrices(source, aliases, left, confirmedDelistings(events)), events, nil
+		plan.process = withoutEndedPrices(source, aliases, left, confirmedDelistings(events))
+		return stored, plan, events, nil
 	}
-	return stored, func(_ context.Context, t time.Time) ([]string, error) {
+	return stored, sessionSymbols{process: func(_ context.Context, t time.Time) ([]string, error) {
 		return periodSymbolsAt(stored.GetPeriods(), t), nil
-	}, events, nil
+	}}, events, nil
 }
 
 // periodSymbolsAt returns the enabled assets of every period whose

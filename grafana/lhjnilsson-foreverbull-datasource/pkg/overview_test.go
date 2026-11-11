@@ -352,6 +352,8 @@ func (test *DatasouceTest) TestOverviewExcludesExecutionEndingBeforePicker() {
 	test.Equal("Price return", overviewField(frame, "price_return").Config.DisplayNameFromDS)
 	test.Equal("percentunit", overviewUnit(frame, "price_return"))
 	test.Equal("Benchmark", overviewField(frame, "benchmark").Config.DisplayNameFromDS)
+	test.Equal("Close on universe drop", overviewField(frame, "close_on_universe_drop").Config.DisplayNameFromDS)
+	test.Equal("", test.overviewString(frame, "close_on_universe_drop", 0))
 	test.Equal("Sharpe", overviewField(frame, "sharpe").Config.DisplayNameFromDS)
 	test.Equal("Sortino", overviewField(frame, "sortino").Config.DisplayNameFromDS)
 	test.Equal("Max drawdown", overviewField(frame, "max_drawdown").Config.DisplayNameFromDS)

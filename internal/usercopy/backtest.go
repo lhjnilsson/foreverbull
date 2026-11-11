@@ -2,6 +2,11 @@ package usercopy
 
 import "fmt"
 
+// CloseOnUniverseDropFixed is the refusal when a create would change the
+// option on a backtest that already exists. The setting is chosen once.
+const CloseOnUniverseDropFixed = "Close on universe drop is set when the backtest is created and can't be changed. " +
+	"To use a different setting, create a new backtest with `fbull backtest create`."
+
 // BacktestNotSaved says a failed create kept nothing. It is only true when
 // the backtest was removed.
 const BacktestNotSaved = "The backtest wasn't saved."

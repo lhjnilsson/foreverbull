@@ -38,6 +38,8 @@ from foreverbull_zipline.returns import DividendBook
 from foreverbull_zipline.returns import UnpaidDividendError
 from foreverbull_zipline.returns import dividend_metrics
 from foreverbull_zipline.returns import total_return_frame
+from foreverbull_zipline.universe_close import close_dropped_positions
+from foreverbull_zipline.universe_close import order_increases
 from zipline import TradingAlgorithm
 
 
@@ -248,6 +250,13 @@ def ticker_on(tickers: list[tuple[pd.Timestamp, str]], day: pd.Timestamp) -> str
             break
         current = symbol
     return current
+
+
+def _held_amount(trading_algorithm: TradingAlgorithm, asset) -> int:
+    position = trading_algorithm.portfolio.positions.get(asset)
+    if position is None:
+        return 0
+    return int(position.amount)
 
 
 def _session_day(value) -> pd.Timestamp:
@@ -492,9 +501,11 @@ class Engine(multiprocessing.Process):
             ).to_binary(),
         )
 
-    def _place_orders(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
+    def _place_orders(self, data: bytes, trading_algorithm: TradingAlgorithm, bar_data: BarData | None = None) -> bytes:
         req = engine_service_pb.PlaceOrdersAndContinueRequest()
         merge_from_binary(req, data)
+        universe = req.universe if req.has_field("universe") else None
+        members = set(universe.members) if universe is not None else None
         for order in req.orders:
             self.log.info("Placing order: %s", order)
             # TradingAlgorithm.symbol resolves as of the last session. A
@@ -504,10 +515,25 @@ class Engine(multiprocessing.Process):
                 order.symbol,
                 as_of_date=_session_day(trading_algorithm.datetime),
             )
+            symbol = self._position_symbol(trading_algorithm, asset)
+            if members is not None and symbol not in members:
+                held = _held_amount(trading_algorithm, asset)
+                if order_increases(held, int(order.amount)):
+                    continue
             order_id = trading_algorithm.order(asset=asset, amount=order.amount)
             self.log.debug("Placed order: %s", order_id)
 
-        return engine_service_pb.PlaceOrdersAndContinueResponse().to_binary()
+        closed: list[str] = []
+        if universe is not None and universe.auto_close_on_universe_drop:
+            if bar_data is None:
+                raise RuntimeError("place orders was called with no bar")
+            closed = close_dropped_positions(
+                trading_algorithm,
+                bar_data,
+                set(universe.members),
+                symbol_of=lambda asset: self._position_symbol(trading_algorithm, asset),
+            )
+        return engine_service_pb.PlaceOrdersAndContinueResponse(universe_drop_closes=closed).to_binary()
 
     def _get_current_period(self, data: bytes, trading_algorithm: TradingAlgorithm) -> bytes:
         req = engine_service_pb.GetCurrentPeriodRequest()
@@ -687,7 +713,7 @@ class Engine(multiprocessing.Process):
                                 rsp.error = "Execution not running"
                                 context_socket.send(rsp.to_binary())
                             else:
-                                rsp.data = self._place_orders(req.data, trading_algorithm)
+                                rsp.data = self._place_orders(req.data, trading_algorithm, bar_data)
                                 context_socket.send(rsp.to_binary())
                                 return
                         case "stop":

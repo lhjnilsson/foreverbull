@@ -78,10 +78,11 @@ func (h backtestRoutes) get(w http.ResponseWriter, r *http.Request) {
 }
 
 type backtestCreateBody struct {
-	Name     string `json:"name"`
-	Start    string `json:"start"`
-	End      string `json:"end"`
-	Provider string `json:"provider"`
+	Name                    string `json:"name"`
+	Start                   string `json:"start"`
+	End                     string `json:"end"`
+	Provider                string `json:"provider"`
+	AutoCloseOnUniverseDrop *bool  `json:"autoCloseOnUniverseDrop"`
 }
 
 func (h backtestRoutes) create(w http.ResponseWriter, r *http.Request) {
@@ -170,14 +171,18 @@ func backtestFromRequest(r *http.Request) (*backtest.Backtest, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &backtest.Backtest{
+	item := &backtest.Backtest{
 		Name:     name,
 		Provider: provider,
 		Periods: []*backtest.Backtest_Period{{
 			StartDate: start,
 			EndDate:   end,
 		}},
-	}, nil
+	}
+	if body.AutoCloseOnUniverseDrop != nil {
+		item.AutoCloseOnUniverseDrop = body.AutoCloseOnUniverseDrop
+	}
+	return item, nil
 }
 
 func parseDate(value string) (*pb.Date, error) {

@@ -33,7 +33,12 @@ class SessionServiceServicer(engine_service_pb_grpc.EngineSessionServiceSync):
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, redact_text(str(exc)))
 
     def place_orders_and_continue(self, request, context):
-        return self.engine.place_orders_and_continue(request)
+        try:
+            return self.engine.place_orders_and_continue(request)
+        except PlainSentence as exc:
+            # A universe-drop close that could not fill. The broker shows
+            # this sentence to fbull as it is written.
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, redact_text(str(exc)))
 
     def get_result(self, request, context):
         try:

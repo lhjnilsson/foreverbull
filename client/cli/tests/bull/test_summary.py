@@ -272,6 +272,68 @@ def test_run_notice_lines_names_five_symbols_then_the_rest_as_a_count():
     ]
 
 
+def test_run_notice_lines_folds_universe_drops_apart_from_delistings():
+    one = "1 symbol left the universe on 2023-01-31 and a held position was closed at that session's close: XYZ."
+    two = (
+        "3 symbols left the universe on 2023-02-28 and held positions were closed at that session's close: "
+        "ABC, DEF, GHI."
+    )
+    three = (
+        "8 symbols left the universe on 2023-03-15 and held positions were closed at that session's close: "
+        "A, B, C, D, E and 3 more."
+    )
+    assert run_notice_lines([one], verbose=False) == [one]
+    assert run_notice_lines([one, two], verbose=False) == [one, two]
+    summary = "12 symbols left the universe before the run ended and held positions were closed at the close."
+    assert run_notice_lines([one, two, three], verbose=False) == [f"{summary} Run with --verbose for the list."]
+    assert run_notice_lines([one, two, three], verbose=True) == [summary, one, two, three]
+    delisted = "1 symbol was delisted after its last price on 2024-03-01 and was left out: OLD."
+    assert run_notice_lines([delisted, one], verbose=False) == [delisted, one]
+
+
+def test_run_summary_prints_close_on_universe_drop_next_to_the_provider(monkeypatch):
+    from foreverbull_cli.bull import summary as summary_mod
+
+    buf = StringIO()
+    monkeypatch.setattr(summary_mod, "console", Console(file=buf, width=160, force_terminal=False, color_system=None))
+    period = execution_pb.Period(
+        date=execution_pb.Period().date,
+        starting_cash=100_000,
+        starting_value=0,
+        portfolio_value=100_000,
+        algorithm_period_return=0,
+        max_drawdown=0,
+        longs_count=1,
+        shorts_count=0,
+    )
+    print_run_summary(
+        backtest_name="sp100",
+        benchmark="OEF",
+        provider="yahoo",
+        start_iso="2023-01-03",
+        end_iso="2023-03-31",
+        execution_id="01234567-89ab-cdef-0123-456789abcdef",
+        execution=execution_pb.Execution(),
+        periods=[period],
+        close_on_universe_drop="on",
+    )
+    assert "provider: yahoo · close on universe drop: on" in buf.getvalue()
+    buf.truncate(0)
+    buf.seek(0)
+    print_run_summary(
+        backtest_name="sp100",
+        benchmark="OEF",
+        provider="yahoo",
+        start_iso="2023-01-03",
+        end_iso="2023-03-31",
+        execution_id="01234567-89ab-cdef-0123-456789abcdef",
+        execution=execution_pb.Execution(),
+        periods=[period],
+        close_on_universe_drop="off",
+    )
+    assert "provider: yahoo · close on universe drop: off" in buf.getvalue()
+
+
 def test_run_notice_lines_shows_a_listing_next_to_an_auto_close():
     # A confirmed delisting uses the same left-out line as a symbol the run
     # left out. A confirmed listing is printed beside it, as stored.

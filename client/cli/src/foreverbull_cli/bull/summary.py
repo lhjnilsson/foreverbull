@@ -28,6 +28,11 @@ _LEFT_OUT_LINE = re.compile(
 LEFT_OUT_SYMBOLS_SHOWN = 5
 # Up to this many last-price dates print one line each; more fold into one line.
 LEFT_OUT_DATES_SHOWN = 2
+# A universe-drop close is its own family. It folds on its own, not into a delisting line.
+_UNIVERSE_DROP_LINE = re.compile(
+    r"^(?P<count>\d+) symbols? left the universe on (?P<date>\d{4}-\d{2}-\d{2}) "
+    r"and (?:a held position was|held positions were) closed at that session's close: .+\.$"
+)
 NOTICE_PREFIX = "⚠ "
 
 
@@ -41,6 +46,17 @@ def _left_out_line(count: int, last_date: str, symbols: list[str], held: str) ->
     return f"{count} symbols were delisted after their last price on {last_date} and were left out: {shown}.{held}"
 
 
+def _universe_drop_lines(matches: list[re.Match[str]], *, verbose: bool) -> list[str]:
+    """One or two close sessions print as stored. Three or more fold, on their own."""
+    if len(matches) <= LEFT_OUT_DATES_SHOWN:
+        return [match.string for match in matches]
+    total = sum(int(match["count"]) for match in matches)
+    summary = f"{total} symbols left the universe before the run ended and held positions were closed at the close."
+    if verbose:
+        return [summary, *(match.string for match in matches)]
+    return [f"{summary} Run with --verbose for the list."]
+
+
 def run_notice_lines(notices: list[str], *, verbose: bool) -> list[str]:
     """The notice lines `fbull backtest run` prints, without the ⚠ prefix.
 
@@ -48,12 +64,18 @@ def run_notice_lines(notices: list[str], *, verbose: bool) -> list[str]:
     symbols. Three or more fold into one line with the total; --verbose
     adds every stored per-date line, with every symbol, under it. A line
     whose symbols were held keeps its "Positions held were closed" sentence, and
-    the folded line says so when any line does. A notice that is not a
-    left-out line prints as stored.
+    the folded line says so when any line does. Universe-drop closes fold
+    the same way, as their own family, and are not mixed into a delisting
+    sentence. A notice that is neither prints as stored.
     """
     left_out: list[re.Match[str]] = []
+    universe: list[re.Match[str]] = []
     other: list[str] = []
     for line in notices:
+        dropped = _UNIVERSE_DROP_LINE.match(line)
+        if dropped is not None:
+            universe.append(dropped)
+            continue
         match = _LEFT_OUT_LINE.match(line)
         if match is None:
             other.append(line)
@@ -64,15 +86,17 @@ def run_notice_lines(notices: list[str], *, verbose: bool) -> list[str]:
             _left_out_line(int(match["count"]), match["date"], match["symbols"].split(", "), match["held"] or "")
             for match in left_out
         ]
-        return [*shown, *other]
-    total = sum(int(match["count"]) for match in left_out)
-    summary = f"{total} symbols were delisted before the run ended and were left out."
-    if any(match["held"] for match in left_out):
-        # A position Zipline auto-closed is a trade the strategy never placed.
-        summary = f"{summary} Positions held were closed at their last price."
-    if verbose:
-        return [summary, *(match.string for match in left_out), *other]
-    return [f"{summary} Run with --verbose for the list.", *other]
+    else:
+        total = sum(int(match["count"]) for match in left_out)
+        summary = f"{total} symbols were delisted before the run ended and were left out."
+        if any(match["held"] for match in left_out):
+            # A position closed after a delisting is a trade the strategy never placed.
+            summary = f"{summary} Positions held were closed at their last price."
+        if verbose:
+            shown = [summary, *(match.string for match in left_out)]
+        else:
+            shown = [f"{summary} Run with --verbose for the list."]
+    return [*shown, *_universe_drop_lines(universe, verbose=verbose), *other]
 
 
 # Eight hex characters of a UUID are enough to tell a user's executions apart;
@@ -288,6 +312,7 @@ def print_run_summary(
     notices: list[str] | None = None,
     resolutions: Sequence[LaterTicker] = (),
     verbose: bool = False,
+    close_on_universe_drop: str | None = None,
 ) -> None:
     if not periods:
         # Imported here: backtest imports this module while it is still loading.
@@ -304,9 +329,10 @@ def print_run_summary(
             "or check the broker log."
         )
     else:
-        console.print(
-            f"[green]✔[/green] Backtest finished: {escape(backtest_name)} · {start_iso} → {end_iso} · provider: {provider}"
-        )
+        finished = f"[green]✔[/green] Backtest finished: {escape(backtest_name)} · {start_iso} → {end_iso} · provider: {provider}"
+        if close_on_universe_drop:
+            finished += f" · close on universe drop: {close_on_universe_drop}"
+        console.print(finished)
         console.print()
         console.print(Padding(metrics_table(benchmark, periods, _return_basis(execution)), (0, 0, 0, 2), expand=False))
         console.print()

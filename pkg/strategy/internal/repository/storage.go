@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS backtest (
 	benchmark text NOT NULL,
 	provider text NOT NULL DEFAULT 'yahoo',
 	profile text NOT NULL DEFAULT '',
+	auto_close_on_universe_drop boolean NOT NULL DEFAULT true,
 	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
 

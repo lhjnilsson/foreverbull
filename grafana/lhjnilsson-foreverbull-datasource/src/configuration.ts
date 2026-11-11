@@ -19,10 +19,18 @@ export function metadataFrame(refId: string, execution: ExecutionArguments | nul
         execution: execution.id,
       }
     : null;
+  const fields = METADATA_FIELDS.map((name) => column(name, row ? [row[name]] : []));
+  const closeOnDrop = execution?.close_on_universe_drop;
+  if (closeOnDrop === 'on' || closeOnDrop === 'off') {
+    fields.push({
+      ...column('close_on_universe_drop', [closeOnDrop]),
+      config: { displayName: 'Close on universe drop' },
+    });
+  }
   return createDataFrame({
     refId,
     name: 'Run',
-    fields: METADATA_FIELDS.map((name) => column(name, row ? [row[name]] : [])),
+    fields,
   });
 }
 

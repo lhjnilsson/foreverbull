@@ -174,6 +174,30 @@ def _shown_provider(entity: backtest_pb.Backtest) -> str:
     return provider or _DEFAULT_PROVIDER
 
 
+_CLOSE_ON_DROP_HELP = (
+    "Close held positions at that session's close when a symbol leaves the universe. "
+    "Default: on. Stored with the backtest and can't be changed on a later run."
+)
+
+
+def _shown_close(entity: backtest_pb.Backtest) -> str:
+    """on or off. An omitted value is on, the create default."""
+    if entity.auto_close_on_universe_drop is None or entity.auto_close_on_universe_drop:
+        return "on"
+    return "off"
+
+
+def _close_choice(flag: bool | None, raw: object) -> bool:
+    """The flag wins, then the YAML boolean, then on."""
+    if flag is not None:
+        return flag
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    _fail("auto_close_on_universe_drop must be true or false.")
+
+
 def _read_line(prompt: Prompt, default: str | None = None) -> str:
     shown = default if default is not None else ...
     try:
@@ -351,6 +375,8 @@ def _print_backtest(title: str, entity: backtest_pb.Backtest, *, show_disabled: 
             ("Provider", [_shown_provider(entity)]),
         ]
     )
+    if entity.has_universe_members:
+        rows.append(("Close on universe drop", [_shown_close(entity)]))
     _print_record(title, rows)
 
 
@@ -490,6 +516,14 @@ def create(
             help="Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: yahoo.",
         ),
     ] = None,
+    close_on_universe_drop: Annotated[
+        bool | None,
+        typer.Option(
+            "--close-on-universe-drop/--no-close-on-universe-drop",
+            show_default=False,
+            help=_CLOSE_ON_DROP_HELP,
+        ),
+    ] = None,
 ):
     """Create a backtest from a YAML file or a known iShares ETF.
 
@@ -516,12 +550,14 @@ def create(
         chosen, source = _choose_provider(flag_provider, data.get("provider"), file.name)
         if chosen is None:
             raise typer.Exit(code=1)
+        close_on_drop = _close_choice(close_on_universe_drop, data.get("auto_close_on_universe_drop"))
         entity = backtest_service_pb.CreateBacktestRequest.CreateFromBacktest(
             backtest=backtest_pb.Backtest(
                 name=data["name"],
                 benchmark=data["benchmark"],
                 provider=chosen,
                 profile=_optional_profile(data.get("profile")),
+                auto_close_on_universe_drop=close_on_drop,
                 periods=[
                     backtest_pb.Backtest.Period(
                         start_date=from_pydate_to_proto_date(date.fromisoformat(period["start_date"])),
@@ -558,6 +594,7 @@ def create(
             start_date=from_pydate_to_proto_date(start),
             end_date=from_pydate_to_proto_date(end),
             provider=chosen,
+            auto_close_on_universe_drop=_close_choice(close_on_universe_drop, None),
         )
 
     console.print(f"Using provider: {chosen} ({source})", markup=False)
@@ -844,6 +881,7 @@ def run(
         notices=list(stored.notices),
         resolutions=later_tickers(entity),
         verbose=_verbose(),
+        close_on_universe_drop=_shown_close(entity) if entity.has_universe_members else None,
     )
 
 
@@ -894,6 +932,9 @@ def execution(
         _shown_execution_provider(provider),
     )
     console.print(summary)
+    stored_backtest = broker.backtest.get(entity.backtest)
+    if stored_backtest.has_universe_members:
+        console.print(f"Close on universe drop  {_shown_close(stored_backtest)}", markup=False, highlight=False)
     _print_execution_link(entity.id)
     _print_execution_inputs(functions)
 

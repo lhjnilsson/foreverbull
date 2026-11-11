@@ -1320,6 +1320,77 @@ def test_backtest_create_provider_flag_overrides_file(runner):
     assert "Using provider: stooq (from --provider)" in result.stdout
 
 
+_CLOSE_HELP = (
+    "Close held positions at that session's close when a symbol leaves the universe. "
+    "Default: on. Stored with the backtest and can't be changed on a later run."
+)
+
+
+def test_backtest_create_help_states_the_close_on_drop_flags():
+    from typer.main import get_command
+
+    create = get_command(backtest).commands["create"]
+    option = next(param for param in create.params if "--close-on-universe-drop" in param.opts)
+    assert option.opts == ["--close-on-universe-drop"]
+    assert option.secondary_opts == ["--no-close-on-universe-drop"]
+    assert option.help == _CLOSE_HELP
+    result = CliRunner().invoke(backtest, ["create", "--help"])
+    assert result.exit_code == 0
+    shown = " ".join(result.stdout.replace("│", " ").split())
+    assert _CLOSE_HELP in shown
+
+
+def test_backtest_create_from_file_sends_close_on_drop(runner):
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(auto_close_on_universe_drop=False), cfg_file)
+        cfg_file.flush()
+        mock_create.return_value = iter(
+            [
+                backtest_service_pb.CreateBacktestResponse(
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    backtest=_sample_backtest(name="from_file", benchmark="QQQ"),
+                )
+            ]
+        )
+        result = runner(backtest, ["create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 0, result.stdout
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.backtest.auto_close_on_universe_drop is False
+    assert "Close on universe drop" not in result.stdout
+
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(auto_close_on_universe_drop=False), cfg_file)
+        cfg_file.flush()
+        mock_create.return_value = iter(
+            [
+                backtest_service_pb.CreateBacktestResponse(
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    backtest=_sample_backtest(name="from_file", benchmark="QQQ"),
+                )
+            ]
+        )
+        result = runner(backtest, ["create", "--file", cfg_file.name, "--close-on-universe-drop"])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 0, result.stdout
+    assert mock_create.call_args.kwargs["entity"].backtest.auto_close_on_universe_drop is True
+
+
+def test_backtest_get_shows_close_on_drop_for_a_universe(monkeypatch):
+    stored = _sample_backtest()
+    stored.has_universe_members = True
+    stored.auto_close_on_universe_drop = False
+    lines = _get_lines(monkeypatch, stored, columns=80)
+    assert "  Close on universe drop  off" in lines
+    assert lines[lines.index("  Provider                yahoo") + 1] == "  Close on universe drop  off"
+
+
 def test_backtest_create_unknown_provider_does_not_call_broker():
     # CliRunner catches typer.Exit; the shared runner fixture re-raises it.
     with patch("foreverbull.broker.backtest.create") as mock_create:
@@ -2259,6 +2330,7 @@ def test_backtest_execution(runner):
     with (
         patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
         patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
+        patch("foreverbull.broker.backtest.get", return_value=_sample_backtest()),
     ):
         mock_get_execution.return_value = (_sample_execution(full_id), [period], [], "yahoo")
         result = runner(backtest, ["execution", full_id])
@@ -2271,6 +2343,22 @@ def test_backtest_execution(runner):
         assert "1.50000" in result.stdout
         assert "2020-01-02" in result.stdout
         assert f"Link: {execution_link(full_id)}" in result.stdout
+        assert "Close on universe drop" not in result.stdout
+
+
+def test_backtest_execution_shows_close_on_drop_for_a_universe(runner):
+    full_id = "01234567-89ab-cdef-0123-456789abcdef"
+    stored = _sample_backtest()
+    stored.has_universe_members = True
+    stored.auto_close_on_universe_drop = True
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.get", return_value=stored),
+    ):
+        mock_get_execution.return_value = (_sample_execution(full_id), [], [], "yahoo")
+        result = runner(backtest, ["execution", full_id])
+    assert result.exit_code == 0, result.stdout
+    assert "Close on universe drop  on" in result.stdout
 
 
 def test_backtest_execution_shows_total_and_price_return_under_the_periods(runner):
@@ -2296,7 +2384,10 @@ def test_backtest_execution_shows_total_and_price_return_under_the_periods(runne
         sharpe=-2.012345,
         sortino=-2.371234,
     )
-    with patch("foreverbull.broker.backtest.get_execution") as mock_get_execution:
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.get", return_value=_sample_backtest()),
+    ):
         mock_get_execution.return_value = (execution, [first, last], [], "yahoo")
         result = runner(backtest, ["execution", full_id])
     assert result.exit_code == 0
@@ -2314,7 +2405,10 @@ def test_backtest_execution_labels_an_adjusted_close_return(runner):
     period = execution_pb.Period(
         date=from_pydate_to_proto_date(date(2020, 1, 2)), portfolio_value=1000.5, algorithm_period_return=0.12
     )
-    with patch("foreverbull.broker.backtest.get_execution") as mock_get_execution:
+    with (
+        patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
+        patch("foreverbull.broker.backtest.get", return_value=_sample_backtest()),
+    ):
         mock_get_execution.return_value = (execution, [period], [], "stooq")
         result = runner(backtest, ["execution", full_id])
     assert result.exit_code == 0
@@ -2336,6 +2430,7 @@ def test_backtest_execution_shows_pinned_inputs(runner):
     with (
         patch("foreverbull.broker.backtest.get_execution") as mock_get_execution,
         patch("foreverbull.broker.backtest.list_executions") as mock_list_executions,
+        patch("foreverbull.broker.backtest.get", return_value=_sample_backtest()),
     ):
         mock_get_execution.return_value = (_sample_execution(full_id), [], functions, "stooq")
         result = runner(backtest, ["execution", full_id])
@@ -2360,7 +2455,8 @@ def test_backtest_execution_resolves_short_id(runner):
             _sample_execution("fedcba98-0000-0000-0000-000000000000"),
         ]
         mock_get_execution.return_value = (_sample_execution(full_id), [], [], "yahoo")
-        result = runner(backtest, ["execution", "01234567"])
+        with patch("foreverbull.broker.backtest.get", return_value=_sample_backtest()):
+            result = runner(backtest, ["execution", "01234567"])
         assert result.exit_code == 0
         mock_get_execution.assert_called_once_with(full_id)
 
@@ -2403,7 +2499,8 @@ def test_backtest_execution_resolves_distinguishing_prefix(runner):
             _sample_execution("01234567-ffff-cdef-0123-456789abcdef"),
         ]
         mock_get_execution.return_value = (_sample_execution(full_id), [], [], "yahoo")
-        result = runner(backtest, ["execution", "01234567-89ab"])
+        with patch("foreverbull.broker.backtest.get", return_value=_sample_backtest()):
+            result = runner(backtest, ["execution", "01234567-89ab"])
         assert result.exit_code == 0
         mock_get_execution.assert_called_once_with(full_id)
 

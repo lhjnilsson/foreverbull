@@ -43,4 +43,15 @@ message Backtest {
   // Empty when every symbol was read under its own ticker. A client value
   // is ignored.
   repeated TickerResolution ticker_resolutions = 10;
+
+  // Close held positions at that session's close when a symbol leaves the
+  // universe. Set when the backtest is created. Omitted means on. A later
+  // run of the same backtest cannot change it. It has no effect on a
+  // symbol-list backtest.
+  optional bool auto_close_on_universe_drop = 11;
+
+  // Server-filled. True when the backtest has universe_member rows. A
+  // client value is ignored. A symbol-list backtest stays false, and the
+  // close-on-drop option is not shown for it.
+  bool has_universe_members = 12;
 }
