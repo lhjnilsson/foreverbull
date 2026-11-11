@@ -42,8 +42,8 @@ func (test *BacktestCommandTest) TestOneCutoffAgreesAcrossNoticeBarsAndBundle() 
 	test.requireNotice(err, "2024-03-28 isn't included because its trading session hasn't closed yet "+
 		"(sessions count as closed at 16:30 New York time).")
 	test.Require().NotNil(sent)
-	test.Equal(&pb.Date{Year: 2024, Month: 3, Day: 27}, sent.GetEndDate())
-	test.Equal(&pb.Date{Year: 2024, Month: 3, Day: 27}, sent.GetSessionCutoff())
+	test.Equal("2024-03-27", pb.DateToDateString(sent.GetEndDate()))
+	test.Equal("2024-03-27", pb.DateToDateString(sent.GetSessionCutoff()))
 
 	var onExcluded int
 	test.Require().NoError(test.db.QueryRow(context.Background(), `
