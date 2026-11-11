@@ -16,7 +16,7 @@ The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures 
 | `asset_manager` | function | yes | Load the start/end testing `Asset` / `Assets` subclasses from that database |
 | `portfolio_manager` | function | yes | Build a `Portfolio` with optional positions |
 | `session` | function | yes | Insert synthetic OHLC bars (`constant`, `trend`, `cross_up`), call production `Algorithm.process`, and `replay` that order trace |
-| `backtest` | function | no | Optional broker run via `create_session` when `--backtest <name>` is passed; otherwise skipped |
+| `backtest` | function | no | Broker session when `--backtest <name>` is passed. An omitted flag skips. A named backtest that cannot start fails |
 
 `fb_database` starts (or reuses) a Docker Postgres named `fbull_client_testing_pg`. SQL stays on Postgres. Do not switch SQL tests to SQLite. Do not convert these tests to Kind.
 
@@ -50,13 +50,13 @@ Namespace-only tests request `namespace_server` (and optionally `fb_env`) instea
 
 ## Live backtests
 
-`--backtest` skips unless the flag is passed, and it does not place live orders. Without `--backtest <name>`, the `backtest` fixture skips with `pass --backtest <name> to run live backtest tests against a broker`. Package tests do not pass the flag, so they stay local and do not need a broker or Kind.
+`--backtest` skips only when the flag is omitted, and it does not place live orders. Without `--backtest <name>`, the `backtest` fixture skips with `pass --backtest <name> to run live backtest tests against a broker`. Package tests do not pass the flag, so they stay local and do not need a broker or Kind.
 
 ```bash
 uv run pytest --backtest demo
 ```
 
-With a name, the fixture looks the backtest up with `foreverbull.broker.backtest.get`. If the broker is unreachable or the name is missing, the test skips with that reason and does not error. If the broker returns the backtest, the fixture opens `broker.backtest.create_session`, connects with `Foreverbull.backtest_session`, and yields the existing `foreverbull_testing.models.Backtest`. Runs go through `Backtest.run_execution`. The fixture does not call `trading_session` or `PlaceOrder`, and it does not set `TRADING_ENABLED`. The broker is the Kind/Helm stack (`task build`, then `fbenv create` and `fbenv start`), not this plugin.
+With a name, the fixture looks the backtest up with `foreverbull.broker.backtest.get`. A broker error or a missing name fails the test and names the cause. A found backtest opens `broker.backtest.create_session`. A session that fails to start, or a session that never starts, fails the test and names the cause. A started session connects with `Foreverbull.backtest_session` and yields the existing `foreverbull_testing.models.Backtest`. Runs go through `Backtest.run_execution`. The fixture does not call `trading_session` or `PlaceOrder`, and it does not set `TRADING_ENABLED`. The broker is the Kind/Helm stack (`task build`, then `fbenv create` and `fbenv start`), not this plugin.
 
 ## Tests for this package
 
