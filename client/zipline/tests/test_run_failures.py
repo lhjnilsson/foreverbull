@@ -18,6 +18,7 @@ from foreverbull_zipline.returns import UnpaidDividendError
 from foreverbull_zipline.session_service import ENGINE_RESULT_ERROR_TAG
 from foreverbull_zipline.session_service import SessionServiceServicer
 from protobuf import merge_from_binary
+from pynng.exceptions import nng as _nng
 
 from foreverbull.pb.foreverbull import common_pb
 
@@ -175,7 +176,7 @@ class _ReplyOnce:
     def send(self, data: bytes):
         self.sends += 1
         if self.sends > 1:
-            raise pynng.BadState("already answered")
+            raise pynng.BadState("already answered", _nng.NNG_ESTATE)
         self.socket.sent.append(data)
 
 

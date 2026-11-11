@@ -27,7 +27,8 @@ def test_the_data_service_does_not_ignore_every_warning():
 def test_a_numpy_divide_warning_is_not_silenced():
     install_warning_filters()
     with warnings.catch_warnings(record=True) as caught, np.errstate(divide="warn", invalid="warn"):
-        np.array([1.0]) / 0.0
+        quotient = np.array([1.0]) / 0.0
+    assert not np.isfinite(quotient).all()
     assert any(issubclass(item.category, RuntimeWarning) for item in caught)
 
 
