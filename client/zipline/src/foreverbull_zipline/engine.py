@@ -23,6 +23,7 @@ from zipline.protocol import Portfolio
 from zipline.utils.calendar_utils import get_calendar
 
 from foreverbull.broker.storage import Storage
+from foreverbull.broker.utils import describe_exception
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import engine_pb as engine_service_pb
@@ -284,7 +285,7 @@ class Engine(multiprocessing.Process):
         self._dividend_book = DividendBook(set())
         self._benchmark: BenchmarkReturns | None = None
         # Why the last run stopped before its end, told on the next period
-        # request; None when it ran to its end or crashed.
+        # request. None when the run finished.
         self._run_failure: PlainSentence | None = None
         self._capital_base = 0.0
         super().__init__()
@@ -605,16 +606,26 @@ class Engine(multiprocessing.Process):
     def _run_algorithm(self, trading_algorithm) -> None:
         """Run the algorithm to its end.
 
-        A dividend the run didn't pay stops it the same way every time, so it
-        is kept as the run's failure and told on the next period request,
-        not left to look like a crash. Any other error propagates as before.
+        The run reply was already sent, so an error here must not be raised
+        into that request: answering it again raises BadState and the broker
+        only sees a timeout. The failure is told on the next period request.
+        An unpaid dividend keeps its own sentence. Any other failure keeps
+        its own cause. A stop still ends the process.
         """
         self._run_failure = None
         try:
             trading_algorithm.run()
+        except StopExcecution:
+            raise
         except UnpaidDividendError as exc:
             self.log.error("The backtest run stopped: %s", exc)
             self._run_failure = PlainSentence(UNPAID_DIVIDEND_LINE)
+        except PlainSentence as exc:
+            self.log.error("The backtest run stopped: %s", exc)
+            self._run_failure = exc
+        except Exception as exc:
+            self.log.exception("The backtest run stopped")
+            self._run_failure = PlainSentence(describe_exception(exc))
 
     def _process_request(
         self,

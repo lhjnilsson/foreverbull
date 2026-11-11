@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import grpc
 import pandas as pd
+import pynng
 import pytest
 
 from foreverbull_zipline.engine import PLAIN_SENTENCE_TAG
@@ -74,12 +75,19 @@ def test_an_unpaid_dividend_is_kept_as_the_runs_failure():
     assert str(engine._run_failure) == UNPAID
 
 
-def test_a_crash_is_not_kept_as_a_named_failure():
+def test_a_mid_run_failure_is_kept_with_its_cause():
     engine = _engine()
-    with pytest.raises(ValueError, match="boom"):
-        engine._run_algorithm(_Algorithm(ValueError("boom")))
-    assert engine._run_failure is None
+    engine._run_algorithm(_Algorithm(ValueError("prices missing for META on 2024-03-14")))
+    assert isinstance(engine._run_failure, PlainSentence)
+    assert str(engine._run_failure) == "ValueError: prices missing for META on 2024-03-14"
     engine._run_algorithm(_Algorithm(None))
+    assert engine._run_failure is None
+
+
+def test_a_stop_during_the_run_is_not_stored_as_a_failure():
+    engine = _engine()
+    with pytest.raises(StopExcecution):
+        engine._run_algorithm(_Algorithm(StopExcecution()))
     assert engine._run_failure is None
 
 
@@ -144,6 +152,62 @@ class _Socket:
 
     def send(self, data: bytes):
         self.sent.append(data)
+
+
+class _ReplyOnce:
+    """One request/reply. A second send is the BadState that used to kill the engine."""
+
+    def __init__(self, socket: "_Requests"):
+        self.socket = socket
+        self.sends = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def recv(self) -> bytes:
+        if not self.socket.requests:
+            raise StopExcecution()
+        return self.socket.requests.pop(0)
+
+    def send(self, data: bytes):
+        self.sends += 1
+        if self.sends > 1:
+            raise pynng.BadState("already answered")
+        self.socket.sent.append(data)
+
+
+class _Requests:
+    def __init__(self, *requests: common_pb.Request):
+        self.requests = [request.to_binary() for request in requests]
+        self.sent: list[bytes] = []
+
+    def new_context(self):
+        return _ReplyOnce(self)
+
+
+def test_a_failure_after_the_run_reply_is_told_on_the_next_request():
+    engine = _engine()
+    cause = RuntimeError("prices missing for META on 2024-03-14")
+    engine._run = lambda _data, _socket: (_Algorithm(cause), b"ready")  # type: ignore[method-assign]
+    socket = _Requests(common_pb.Request(task="run"), common_pb.Request(task="get_current_period"))
+
+    engine._process_request(None, None, socket)  # type: ignore[arg-type]
+    with pytest.raises(StopExcecution):
+        engine._process_request(None, None, socket)  # type: ignore[arg-type]
+
+    replied, told = socket.sent
+    started = common_pb.Response()
+    merge_from_binary(started, replied)
+    assert not started.has_field("error")
+    assert started.data == b"ready"
+    failed = common_pb.Response()
+    merge_from_binary(failed, told)
+    with pytest.raises(PlainSentence, match="prices missing for META on 2024-03-14") as raised:
+        raise_response_error(failed)
+    assert "RuntimeError" in str(raised.value)
 
 
 def test_the_engine_answers_the_next_period_request_with_the_runs_failure():
