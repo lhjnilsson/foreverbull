@@ -173,8 +173,43 @@ def test_run_summary_without_periods_exits(monkeypatch):
             periods=[],
         )
     assert exc.value.exit_code == 1
-    assert buf.getvalue() == "✖ Backtest finished, but no results were stored for this execution.\n"
+    assert buf.getvalue() == (
+        "✖ Backtest finished, but no results were stored for this execution. "
+        "Inspect the run with `fbull backtest execution 01234567`, or check the broker log.\n"
+    )
     assert "Details:" not in buf.getvalue()
+    assert "Charts:" not in buf.getvalue()
+
+
+def test_run_summary_without_periods_prints_notices_before_the_refusal(monkeypatch):
+    buf = StringIO()
+    monkeypatch.setattr(
+        "foreverbull_cli.bull.backtest.console",
+        Console(file=buf, width=200, force_terminal=False, color_system=None),
+    )
+    monkeypatch.setattr(
+        "foreverbull_cli.bull.summary.console",
+        Console(file=buf, width=200, force_terminal=False, color_system=None),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        print_run_summary(
+            backtest_name="flat",
+            benchmark="",
+            provider="yahoo",
+            start_iso="2024-01-02",
+            end_iso="2024-01-03",
+            execution_id="01234567-89ab-cdef-0123-456789abcdef",
+            execution=execution_pb.Execution(),
+            periods=[],
+            notices=["Something else the broker said."],
+        )
+    assert exc.value.exit_code == 1
+    assert buf.getvalue() == (
+        "  ⚠ Something else the broker said.\n"
+        "\n"
+        "✖ Backtest finished, but no results were stored for this execution. "
+        "Inspect the run with `fbull backtest execution 01234567`, or check the broker log.\n"
+    )
 
 
 def test_no_trades_line_is_singular_for_one_day_and_plural_otherwise():

@@ -1073,7 +1073,7 @@ def test_backtest_create_without_input_fails(monkeypatch):
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
     assert result.stdout.count("✖") == 1
-    assert "✖ Cancelled: no input." in result.stdout
+    assert result.stdout.splitlines()[-1] == "✖ No input was given. Pass --file, or answer the prompts in a terminal."
     assert "Traceback" not in result.stdout
     mock_create.assert_not_called()
 
@@ -1084,7 +1084,7 @@ def test_backtest_create_eof_after_the_name_fails(monkeypatch):
         result = CliRunner().invoke(backtest, ["create"], input="demo\n")
 
     assert result.exit_code == 1
-    assert "✖ Cancelled: no input." in result.stdout
+    assert result.stdout.splitlines()[-1] == "✖ No input was given. Pass --file, or answer the prompts in a terminal."
     mock_create.assert_not_called()
 
 
@@ -1098,7 +1098,7 @@ def test_backtest_create_unknown_etf_then_eof_does_not_call_broker(monkeypatch):
     assert isinstance(result.exception, SystemExit)
     mock_create.assert_not_called()
     assert "Unknown ETF 'not-a-fund'. Known funds: iShares S&P 100." in result.stdout
-    assert "✖ Cancelled: no input." in result.stdout
+    assert result.stdout.splitlines()[-1] == "✖ No input was given. Pass --file, or answer the prompts in a terminal."
     assert "Creating" not in result.stdout
     assert "Traceback" not in result.stdout
 
@@ -1343,10 +1343,27 @@ def _create_from_yaml(stream):
     return result
 
 
+_CREATE_NOTHING_SAVED = (
+    "✖ Creating the backtest ended before it finished. Nothing was changed. Run the same create again."
+)
+_CREATE_PARTLY_SAVED = (
+    "✖ Creating the backtest ended before it finished. The backtest was partly saved. "
+    "Delete it with `fbull backtest delete from_file`, then run the same create again."
+)
+
+
 @pytest.mark.parametrize(
     ("frames", "line"),
     [
-        ([], "✖ Creating the backtest ended before a step started."),
+        ([], _CREATE_NOTHING_SAVED),
+        (
+            [
+                backtest_service_pb.CreateBacktestResponse(
+                    DOWNLOADING=common_pb.Step(state=common_pb.State.RUNNING),
+                )
+            ],
+            _CREATE_NOTHING_SAVED,
+        ),
         (
             [
                 backtest_service_pb.CreateBacktestResponse(
@@ -1354,7 +1371,7 @@ def _create_from_yaml(stream):
                     DOWNLOADING=common_pb.Step(state=common_pb.State.RUNNING),
                 )
             ],
-            "✖ Creating the backtest ended at Downloading.",
+            _CREATE_PARTLY_SAVED,
         ),
         (
             [
@@ -1365,9 +1382,10 @@ def _create_from_yaml(stream):
                     STORING=common_pb.Step(state=common_pb.State.COMPLETED),
                 )
             ],
-            "✖ Creating the backtest ended at Storing.",
+            _CREATE_PARTLY_SAVED,
         ),
     ],
+    ids=["empty", "before-creating", "after-creating", "storing-without-backtest"],
 )
 def test_backtest_create_fails_when_the_stream_ends_early(monkeypatch, frames, line):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
@@ -1379,7 +1397,7 @@ def test_backtest_create_fails_when_the_stream_ends_early(monkeypatch, frames, l
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
     assert result.stdout.count("✖") == 1
-    assert line in result.stdout
+    assert result.stdout.splitlines()[-1] == line
     assert "Created Backtest" not in result.stdout
     assert "Traceback" not in result.stdout
 
@@ -1964,10 +1982,15 @@ def test_backtest_run_without_stored_periods_fails(monkeypatch):
     result, get_execution = _invoke_run(lambda app, args: CliRunner().invoke(app, args), _run_session_mocks(), [])
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
+    refusal = (
+        "✖ Backtest finished, but no results were stored for this execution. "
+        "Inspect the run with `fbull backtest execution exec-1`, or check the broker log."
+    )
     assert result.stdout.count("✖") == 1
-    assert "✖ Backtest finished, but no results were stored for this execution." in result.stdout
+    assert result.stdout.endswith(refusal + "\n")
     assert "Backtest finished:" not in result.stdout
     assert "Details:" not in result.stdout
+    assert "Charts:" not in result.stdout
     get_execution.assert_called_once_with("exec-1")
 
 
@@ -2060,9 +2083,9 @@ def test_backtest_run_other_lookup_errors_are_not_reported_as_missing():
 @pytest.mark.parametrize(
     ("flag", "value", "line"),
     [
-        ("--start", "not-a-date", "✖ Invalid start date: not-a-date."),
-        ("--end", "not-a-date", "✖ Invalid end date: not-a-date."),
-        ("--end", "2020-02-31", "✖ Invalid end date: 2020-02-31."),
+        ("--start", "not-a-date", "✖ --start 'not-a-date' isn't a date. Use YYYY-MM-DD, for example 2024-01-31."),
+        ("--end", "not-a-date", "✖ --end 'not-a-date' isn't a date. Use YYYY-MM-DD, for example 2024-01-31."),
+        ("--end", "2020-02-31", "✖ --end '2020-02-31' isn't a date. Use YYYY-MM-DD, for example 2024-01-31."),
     ],
 )
 def test_backtest_run_invalid_date_exits_1(monkeypatch, flag, value, line):
@@ -2094,7 +2117,10 @@ def test_backtest_run_missing_period_date_exits_1(monkeypatch):
         )
         result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py"])
     assert result.exit_code == 1
-    assert result.output == "✖ Backtest 'test_name' is missing a period date.\n"
+    assert result.output == (
+        "✖ Backtest 'test_name' is missing a period date. "
+        "Delete it with `fbull backtest delete test_name`, then create it again with `fbull backtest create`.\n"
+    )
     create_session.assert_not_called()
 
 

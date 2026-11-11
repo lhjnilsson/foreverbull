@@ -12,7 +12,6 @@ import grpc
 import typer
 import yaml
 
-from protobuf import DescFieldValueMessage
 from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
@@ -102,30 +101,18 @@ def _fail(message: str) -> NoReturn:
     raise typer.Exit(code=1)
 
 
-def _last_reported_step(message) -> str | None:
-    """The furthest step on this frame, in protobuf field order.
+def _backtest_create_ended(name: str, *, stored: bool) -> str:
+    """A clean stream end. Cleanup runs only when the stream raises.
 
-    UNSPECIFIED is the zero value and is not a step the broker reported.
+    CREATING completed means the backtest record is already stored, and this
+    path does not delete it.
     """
-    step_type = common_pb.Step.desc().type_name
-    last: str | None = None
-    for field in message.desc().fields:
-        value = field.value
-        if not isinstance(value, DescFieldValueMessage) or value.message.type_name != step_type:
-            continue
-        if field not in message:
-            continue
-        step = message[field]
-        if step.state == common_pb.State.UNSPECIFIED:
-            continue
-        last = " ".join(part.capitalize() for part in field.name.split("_"))
-    return last
-
-
-def _stream_ended(kind: str, last_step: str | None) -> str:
-    if last_step is None:
-        return f"Creating the {kind} ended before a step started."
-    return f"Creating the {kind} ended at {last_step}."
+    if not stored:
+        return "Creating the backtest ended before it finished. Nothing was changed. Run the same create again."
+    return (
+        "Creating the backtest ended before it finished. The backtest was partly saved. "
+        f"Delete it with `fbull backtest delete {name}`, then run the same create again."
+    )
 
 
 def _rpc_details(exc: grpc.RpcError) -> str:
@@ -192,7 +179,9 @@ def _read_line(prompt: Prompt, default: str | None = None) -> str:
     try:
         line = Prompt.get_input(console, prompt.make_prompt(shown), password=False)
     except EOFError:
-        _fail("Cancelled: no input.")
+        # The prompt is still on this line. Finish it so the ✖ line stands alone.
+        console.print()
+        _fail("No input was given. Pass --file, or answer the prompts in a terminal.")
     return line.strip()
 
 
@@ -573,7 +562,6 @@ def create(
 
     console.print(f"Using provider: {chosen} ({source})", markup=False)
 
-    last_step: str | None = None
     created: backtest_pb.Backtest | None = None
     stored = False
     ingested = False
@@ -582,9 +570,6 @@ def create(
         try:
             for backtest_rsp in broker.backtest.create(entity=entity):
                 progress.update_from_message(backtest_rsp)
-                reported = _last_reported_step(backtest_rsp)
-                if reported is not None:
-                    last_step = reported
                 creating = backtest_rsp.CREATING
                 if creating is not None and creating.state == common_pb.State.COMPLETED:
                     stored = True
@@ -609,7 +594,7 @@ def create(
     if failure is not None:
         _fail(failure)
     if created is None:
-        _fail(_stream_ended("backtest", last_step))
+        _fail(_backtest_create_ended(_entity_name(entity), stored=stored))
 
     notices = progress.notices
     if (notices or created is not None) and not console.is_terminal:
@@ -704,18 +689,21 @@ def _parse_run_dates(
     start_date = entity.periods[0].start_date
     end_date = entity.periods[-1].end_date
     if start_date is None or end_date is None:
-        _fail(f"Backtest '{entity.name}' is missing a period date.")
+        _fail(
+            f"Backtest '{entity.name}' is missing a period date. "
+            f"Delete it with `fbull backtest delete {entity.name}`, then create it again with `fbull backtest create`."
+        )
     if start:
         try:
             start_date = from_pydate_to_proto_date(date.fromisoformat(start))
         except ValueError:
-            _fail(f"Invalid start date: {start}.")
+            _fail(f"--start {start!r} isn't a date. Use YYYY-MM-DD, for example 2024-01-31.")
 
     if end:
         try:
             end_date = from_pydate_to_proto_date(date.fromisoformat(end))
         except ValueError:
-            _fail(f"Invalid end date: {end}.")
+            _fail(f"--end {end!r} isn't a date. Use YYYY-MM-DD, for example 2024-01-31.")
 
     _check_run_dates_in_range(entity, start_date, end_date, start=bool(start), end=bool(end))
     return start_date, end_date

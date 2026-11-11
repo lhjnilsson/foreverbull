@@ -222,8 +222,10 @@ def test_trading_run_missing_portfolio_fails(monkeypatch):
         result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
-    assert result.stdout.count("✖") == 1
-    assert "✖ The portfolio is missing." in result.stdout
+    assert result.output == (
+        "✖ The portfolio is missing. This is a problem in foreverbull, not in your algo. "
+        "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.\n"
+    )
     assert "Traceback" not in result.stdout
     mocks["create_session"].assert_not_called()
     mocks["place_orders"].assert_not_called()
@@ -261,8 +263,10 @@ def test_trading_run_fails_when_no_port_arrives(monkeypatch, frames):
         result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
-    assert result.stdout.count("✖") == 1
-    assert "✖ The trading session ended before trading started." in result.stdout
+    assert result.output == (
+        "✖ The trading session ended before trading started. "
+        "Run `fbull trading run` again. If it repeats, check the broker log.\n"
+    )
     assert "Traceback" not in result.stdout
     mocks["session"].run_trading.assert_not_called()
     mocks["place_orders"].assert_not_called()
@@ -284,8 +288,7 @@ def test_trading_run_uses_the_session_failure_when_no_port_arrives(monkeypatch):
         )
         result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
     assert result.exit_code == 1
-    assert "✖ the worker did not start" in result.stdout
-    assert "ended before trading started" not in result.stdout
+    assert result.output == "✖ the worker did not start\n"
     mocks["session"].run_trading.assert_not_called()
 
 

@@ -161,7 +161,10 @@ def run(
     portfolio = broker.finance.get_portfolio()
     book = portfolio.portfolio
     if book is None:
-        _fail("The portfolio is missing.")
+        _fail(
+            "The portfolio is missing. This is a problem in foreverbull, not in your algo. "
+            "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+        )
     held = list(book.positions)
 
     denied: str | None = None
@@ -188,7 +191,16 @@ def run(
                         raise
                     denied = market_data_denied_line(backtest_name)
                     progress.transient = True
+        if denied is None and not has_run:
+            # The ✖ line is the whole error, so the progress rows are cleared.
+            progress.transient = True
     if denied is not None:
         _fail(denied)
     if not has_run:
-        _fail(progress.failure or "The trading session ended before trading started.")
+        _fail(
+            progress.failure
+            or (
+                "The trading session ended before trading started. "
+                "Run `fbull trading run` again. If it repeats, check the broker log."
+            )
+        )

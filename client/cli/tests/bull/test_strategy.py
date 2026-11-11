@@ -217,7 +217,9 @@ def test_strategy_version_add_invalid_parameters(monkeypatch):
         )
 
     assert result.exit_code == 1
-    assert result.output == "✖ Invalid parameters JSON: not-json.\n"
+    assert result.output == (
+        "✖ --parameters 'not-json' isn't valid JSON. Pass a JSON object, for example '{\"long_window\": 50}'.\n"
+    )
     mock_create.assert_not_called()
 
 
@@ -231,7 +233,9 @@ def test_strategy_version_add_parameters_must_be_an_object(monkeypatch):
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
-    assert result.output == "✖ Parameters must be a JSON object.\n"
+    assert result.output == (
+        "✖ Parameters must be a JSON object, for example '{\"long_window\": 50}', not a list or a number.\n"
+    )
     mock_create.assert_not_called()
 
 
@@ -253,22 +257,26 @@ def test_strategy_experiment_backtest(runner):
     assert f"Link: {execution_link('exec-1')}" in result.stdout
 
 
-@pytest.mark.parametrize(
-    ("frames", "line"),
-    [
-        ([], "✖ Creating the experiment ended before a step started."),
-        (
-            [
-                strategy_service_pb.CreateExperimentResponse(
-                    QUEUED=common_pb.Step(state=common_pb.State.COMPLETED),
-                    RUNNING=common_pb.Step(state=common_pb.State.RUNNING),
-                )
-            ],
-            "✖ Creating the experiment ended at Running.",
-        ),
-    ],
+_EXPERIMENT_ENDED = (
+    "✖ Creating the experiment ended before it finished. "
+    "Run `fbull strategy experiments mean-rev` to see whether it was saved."
 )
-def test_strategy_experiment_fails_when_the_stream_ends_early(monkeypatch, frames, line):
+
+
+@pytest.mark.parametrize(
+    "frames",
+    [
+        [],
+        [
+            strategy_service_pb.CreateExperimentResponse(
+                QUEUED=common_pb.Step(state=common_pb.State.COMPLETED),
+                RUNNING=common_pb.Step(state=common_pb.State.RUNNING),
+            )
+        ],
+    ],
+    ids=["empty", "running"],
+)
+def test_strategy_experiment_fails_when_the_stream_ends_early(monkeypatch, frames):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
 
     def stream(**_kwargs):
@@ -279,9 +287,7 @@ def test_strategy_experiment_fails_when_the_stream_ends_early(monkeypatch, frame
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
-    assert result.stdout.count("✖") == 1
-    assert line in result.stdout
-    assert "Experiment" not in result.stdout
+    assert result.output == f"{_EXPERIMENT_ENDED}\n"
     assert "Traceback" not in result.stdout
 
 
@@ -549,7 +555,7 @@ def test_strategy_deploy_refuses_live(monkeypatch):
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
-    assert result.output == "✖ Live mode is not enabled; deploy with --mode paper.\n"
+    assert result.output == "✖ Live mode isn't supported. Deploy with --mode paper.\n"
     mock_deploy.assert_not_called()
 
 
@@ -559,7 +565,7 @@ def test_strategy_deploy_refuses_live_with_yes(monkeypatch):
         result = CliRunner().invoke(strategy, ["deploy", "mean-rev", "--mode", "live", "--no-dry-run", "--yes"])
 
     assert result.exit_code == 1
-    assert result.output == "✖ Live mode is not enabled; deploy with --mode paper.\n"
+    assert result.output == "✖ Live mode isn't supported. Deploy with --mode paper.\n"
     mock_deploy.assert_not_called()
 
 
