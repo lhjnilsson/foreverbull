@@ -595,7 +595,7 @@ func (y *YahooClient) GetOHLC(ctx context.Context, symbol string, start time.Tim
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 
-	now := clockNow(y.now)
+	now := sessionNow(ctx, y.now)
 	until := now
 	if end != nil {
 		// period2 is exclusive, so the end date's bar needs the next

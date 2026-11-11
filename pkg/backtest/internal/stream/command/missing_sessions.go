@@ -509,10 +509,12 @@ func unitBars(units []checkUnit, bars map[string]*repository.SymbolBars) map[str
 // closedPeriod is the backtest period as the check reads it: its end capped
 // at the last completed session, which every provider's fetch stops at, so
 // today's unfinished session is not missing, and the period's sessions up
-// to there. notices say which sessions the cap left out, for the
-// DOWNLOADING step to show once create passes.
+// to there. cutoff is that last completed session date, from the one clock
+// reading. notices say which sessions the cap left out, for the DOWNLOADING
+// step to show once create passes.
 type closedPeriod struct {
 	start, end time.Time
+	cutoff     time.Time
 	sessions   []time.Time
 	notices    []string
 }
@@ -538,7 +540,7 @@ func readClosedPeriod(ctx context.Context, msg stream.Message, backtests reposit
 	name, id string, start, end time.Time,
 ) (closedPeriod, error) {
 	last := finance.LastCompletedSessionDate(sessionClock())
-	period := closedPeriod{start: start, end: end}
+	period := closedPeriod{start: start, end: end, cutoff: last}
 	if last.Before(end) {
 		period.end = last
 	}

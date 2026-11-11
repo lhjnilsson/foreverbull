@@ -52,6 +52,11 @@ message DownloadHistoricalDataRequest {
   string provider = 4;
   // Profile name when provider is alpaca. Ignored for yahoo and stooq.
   string profile = 5;
+  // session_cutoff is the last completed XNYS session from the broker's one
+  // clock reading. When set, a fetch stores no later session and does not
+  // read the clock to choose another cutoff. Unset keeps the provider clock,
+  // for a caller that is not that reading.
+  foreverbull.common.Date session_cutoff = 6;
 }
 
 message DownloadHistoricalDataResponse {

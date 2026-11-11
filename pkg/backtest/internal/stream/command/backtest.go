@@ -735,14 +735,18 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return err
 	}
+	if err := recordSessionCutoff(ctx, backtests, command.BacktestName, backtestID, period.end); err != nil {
+		return err
+	}
 	progress := newDownloadProgress(ctx, finance.DownloadSymbolCount(symbols))
 	progress.start()
 	rsp, err := financeClient.DownloadHistoricalData(ctx, &financeServicePB.DownloadHistoricalDataRequest{
-		Symbols:   symbols,
-		StartDate: startDate,
-		EndDate:   endDate,
-		Provider:  provider,
-		Profile:   b.GetProfile(),
+		Symbols:       symbols,
+		StartDate:     startDate,
+		EndDate:       pb.GoTimeToDate(period.end),
+		SessionCutoff: pb.GoTimeToDate(period.cutoff),
+		Provider:      provider,
+		Profile:       b.GetProfile(),
 	})
 	if err != nil {
 		if position, ok := invalidTickerPosition(err, len(symbols)); ok {
@@ -1156,7 +1160,16 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return errors.New("error casting zipline engine")
 	}
 
-	notices, err := engine.Ingest(ctx, b, object)
+	closed, err := loadSessionCutoff(ctx, backtests, b.Name, backtestID)
+	if err != nil {
+		return err
+	}
+	capped, err := backtestThroughCutoff(b, closed)
+	if err != nil {
+		return discardUnusableCutoff(ctx, backtests, b.Name, backtestID, err)
+	}
+
+	notices, err := engine.Ingest(ctx, capped, object)
 	if err != nil {
 		if refused := ingestMissingSessions(ctx, engine, db, backtests, b, backtestID, err); refused != nil {
 			return refused

@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -36,6 +37,40 @@ func clockNow(now func() time.Time) time.Time {
 	return time.Now()
 }
 
+// sessionAsOfKey carries the broker's one clock reading. Providers clamp a
+// fetch with it and do not read the wall clock to choose another cutoff.
+type sessionAsOfKey struct{}
+
+// WithSessionAsOf returns a ctx whose session cap is asOf. asOf is the
+// instant SessionAsOf builds: 16:30 America/New_York on the cutoff date.
+func WithSessionAsOf(ctx context.Context, asOf time.Time) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, sessionAsOfKey{}, asOf)
+}
+
+// SessionAsOf is 16:30 America/New_York on day's UTC date, the instant at
+// which that date is the last completed XNYS session. Providers clamp with
+// it when the broker passed the cutoff, instead of reading the clock.
+func SessionAsOf(day time.Time) time.Time {
+	year, month, date := day.UTC().Date()
+	return time.Date(year, month, date, int(sessionFinalAt/time.Hour),
+		int(sessionFinalAt%time.Hour/time.Minute), 0, 0, xnysZone)
+}
+
+// sessionNow is the broker's cutoff when ctx carries one, and the provider
+// clock otherwise. A zero as-of is not a cutoff.
+func sessionNow(ctx context.Context, now func() time.Time) time.Time {
+	if ctx != nil {
+		asOf, ok := ctx.Value(sessionAsOfKey{}).(time.Time)
+		if ok && !asOf.IsZero() {
+			return asOf
+		}
+	}
+	return clockNow(now)
+}
+
 // lastCompletedSessionEnd clamps a fetch end so that today's unfinished
 // XNYS session is never asked for. A session counts as completed at
 // 16:30 America/New_York (sessionFinalAt), not at the 16:00 close. Before
@@ -46,9 +81,11 @@ func clockNow(now func() time.Time) time.Time {
 //     at 16:30. That leaves a finished session out for three and a half
 //     hours. It never lets an unfinished one in.
 //
-// Every provider clamps with it: Yahoo, Alpaca and Stooq. A provider whose
-// end is inclusive, or counted in days, stops just before the limit when it
-// applies, so a bar stamped at midnight New York today is left out too.
+// Every provider clamps with it: Yahoo, Alpaca and Stooq. When the broker
+// passed a cutoff, the clock in that clamp is that reading (sessionNow),
+// not a new one. A provider whose end is inclusive, or counted in days,
+// stops just before the limit when it applies, so a bar stamped at midnight
+// New York today is left out too.
 func lastCompletedSessionEnd(end, now time.Time) time.Time {
 	local := now.In(xnysZone)
 	year, month, day := local.Date()

@@ -304,7 +304,7 @@ func (c *StooqClient) GetOHLC(ctx context.Context, symbol string, start time.Tim
 		return nil, err
 	}
 
-	now := clockNow(c.now)
+	now := sessionNow(ctx, c.now)
 	endTime := now.UTC()
 	if end != nil {
 		endTime = *end

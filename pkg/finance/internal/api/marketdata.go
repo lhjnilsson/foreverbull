@@ -407,7 +407,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	// empties it) answers with no bars that say nothing about the ticker.
 	// The symbol has nothing to store yet, so it is neither fetched nor
 	// looked up under a later ticker.
-	if nothingToFetch(bars, start, end) {
+	if nothingToFetch(ctx, bars, start, end) {
 		log.Info().Str("symbol", symbol).Str("provider", provider).
 			Msg("historical data download skipped: nothing completed to fetch in the range yet")
 		sender.send(rsp)
@@ -541,16 +541,16 @@ func missingPriceDownloadError(symbol, provider string, err error) error {
 // emptyRangeSupplier is a provider that can tell, before a request, that a
 // fetch from start to end would ask it for nothing.
 type emptyRangeSupplier interface {
-	NothingToFetch(start time.Time, end *time.Time) bool
+	NothingToFetch(ctx context.Context, start time.Time, end *time.Time) bool
 }
 
 var _ emptyRangeSupplier = (*marketdata.AlpacaBars)(nil)
 
 // nothingToFetch reports that bars would ask its provider for nothing from
 // start to end, so an empty answer is not the provider's "no bars".
-func nothingToFetch(bars supplier.Marketdata, start time.Time, end *time.Time) bool {
+func nothingToFetch(ctx context.Context, bars supplier.Marketdata, start time.Time, end *time.Time) bool {
 	ranged, ok := bars.(emptyRangeSupplier)
-	return ok && ranged.NothingToFetch(start, end)
+	return ok && ranged.NothingToFetch(ctx, start, end)
 }
 
 // askedTickerBars fetches the bars of the asked ticker. Empty bars with a
@@ -842,6 +842,20 @@ func candidateSymbol(isin, symbol string) bool {
 	return false
 }
 
+// sessionCutoffAsOf is the broker's cutoff as the instant providers clamp
+// with. A date that is not a calendar day is refused: the fetch must not
+// guess one.
+func sessionCutoffAsOf(day *internal_pb.Date) (time.Time, error) {
+	if day == nil || day.GetYear() < 1 || day.GetMonth() < 1 || day.GetMonth() > 12 || day.GetDay() < 1 || day.GetDay() > 31 {
+		return time.Time{}, errors.New("session_cutoff is not a date")
+	}
+	parsed := time.Date(int(day.GetYear()), time.Month(day.GetMonth()), int(day.GetDay()), 0, 0, 0, 0, time.UTC)
+	if parsed.Year() != int(day.GetYear()) || int(parsed.Month()) != int(day.GetMonth()) || parsed.Day() != int(day.GetDay()) {
+		return time.Time{}, errors.New("session_cutoff is not a date")
+	}
+	return marketdata.SessionAsOf(parsed), nil
+}
+
 func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistoricalDataRequest, serverStream servicePb.Marketdata_DownloadHistoricalDataServer) error {
 	ctx := serverStream.Context()
 	if err := requireTradingEditor(ctx); err != nil {
@@ -879,6 +893,13 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	if req.GetEndDate() != nil {
 		e := internal_pb.DateToTime(req.GetEndDate())
 		end = &e
+	}
+	if req.GetSessionCutoff() != nil {
+		asOf, err := sessionCutoffAsOf(req.GetSessionCutoff())
+		if err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+		ctx = marketdata.WithSessionAsOf(ctx, asOf)
 	}
 
 	assetRepo := repository.Asset{Conn: fs.pgx}
