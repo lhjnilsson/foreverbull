@@ -208,7 +208,7 @@ A finished run prints a spinner for the session, an `execution` progress bar, th
 
 - Return, Sharpe, Sortino, and max drawdown are for the whole run. A ratio that is not defined yet prints `-`. The benchmark cell says `not set` or `not available` when there is no benchmark return.
 - `No trades: the strategy held no position on any of the N trading days.` means the run worked but your strategy never held anything. Check that its conditions can be true with the bars it gets (for example a `long_window` longer than the range).
-- `✔ Backtest finished, but no results were stored for this execution.` means the execution has no stored per-day results. Check the broker log (end of [Common errors](#7-common-errors)).
+- `✖ Backtest finished, but no results were stored for this execution.` means the execution has no stored per-day results. The command exits with code 1. Check the broker log (end of [Common errors](#7-common-errors)).
 
 ### Per-day results and the inputs used
 
