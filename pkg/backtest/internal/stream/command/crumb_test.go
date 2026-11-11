@@ -33,6 +33,7 @@ func TestFailedLookupDoesNotLogYahooCrumb(t *testing.T) {
 	require.Equal(t, "AAPL", miss.symbol)
 	require.Contains(t, buf.String(), "listing or delisting lookup failed")
 	require.Contains(t, buf.String(), "query2.finance.yahoo.com/v8/finance/chart/AAPL")
+	require.NotContains(t, buf.String(), "interval=")
 	require.NotContains(t, buf.String(), "crumb=")
 	require.NotContains(t, buf.String(), "s3cr3tCrumb")
 }

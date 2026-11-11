@@ -132,7 +132,13 @@ def request_json(
             return response.status, _json_body(response.headers, response.read(HTTP_RESPONSE_CAP_BYTES + 1))
     except urllib.error.HTTPError as exc:
         if 300 <= exc.code < 400:
-            log.info("broker request %s %s redirected (%s) to %s", method, path, exc.code, exc.headers.get("Location"))
+            log.info(
+                "broker request %s %s redirected (%s) to %s",
+                method,
+                path,
+                exc.code,
+                _url_for_log(exc.headers.get("Location")),
+            )
             raise SignInError(
                 f"foreverbull at {broker_url} answered with a redirect, so fbull stopped. "
                 "Set FOREVERBULL_BROKER_URL or remote.broker_url to the address foreverbull answers on."
@@ -141,6 +147,32 @@ def request_json(
     except (urllib.error.URLError, OSError) as exc:
         log.info("broker request %s %s failed: %s", method, path, getattr(exc, "reason", exc))
         raise BrokerUnreachable(broker_url) from None
+
+
+def _url_for_log(raw: str | None) -> str:
+    """Scheme, host and path. A query or fragment can carry a token, so it is left out.
+
+    An unparsable value is cut at the first ``?`` or ``#``.
+    """
+    if not raw:
+        return ""
+    parts = urllib.parse.urlsplit(raw)
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        cut = raw
+        for mark in ("?", "#"):
+            index = cut.find(mark)
+            if index >= 0:
+                cut = cut[:index]
+        return cut
+    host = parts.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = host
+    if parts.port is not None:
+        default_port = (parts.scheme == "http" and parts.port == 80) or (parts.scheme == "https" and parts.port == 443)
+        if not default_port:
+            netloc = f"{host}:{parts.port}"
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _json_body(headers, raw: bytes) -> dict:

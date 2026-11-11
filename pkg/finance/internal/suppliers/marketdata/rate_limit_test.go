@@ -1,10 +1,12 @@
 package marketdata
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"sync"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -375,4 +379,36 @@ func TestYahooRequestRefusedPastItsDeadlineIsAProviderTimeout(t *testing.T) {
 	require.ErrorAs(t, err, &refused)
 	require.True(t, IsProviderTimeout(err))
 	require.Empty(t, seen.sorted(), "nothing reaches the provider")
+}
+
+// A retry that fails on the deadline logs the request. The URL keeps scheme,
+// host and path. The query (a page token) and the fragment do not.
+func TestEndedRetryLogDropsRequestQuery(t *testing.T) {
+	var buf bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = prev })
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Millisecond))
+	defer cancel()
+	const raw = "https://data.alpaca.markets/v2/stocks/bars?symbols=AAPL&page_token=s3cr3tToken#frag"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	require.NoError(t, err)
+	transport := &limitedTransport{provider: "alpaca", keepFailedStatus: true}
+	last := &http.Response{StatusCode: http.StatusServiceUnavailable, Status: "503 Service Unavailable", Body: http.NoBody}
+
+	resp, retryErr := transport.endedRetry(req, last, &url.Error{
+		Op: "Get", URL: raw, Err: context.DeadlineExceeded,
+	})
+
+	require.NoError(t, retryErr)
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	logged := buf.String()
+	require.Contains(t, logged, "price provider's retry ran into the deadline")
+	require.Contains(t, logged, "https://data.alpaca.markets/v2/stocks/bars")
+	require.NotContains(t, logged, "page_token")
+	require.NotContains(t, logged, "s3cr3tToken")
+	require.NotContains(t, logged, "symbols=")
+	require.NotContains(t, logged, "frag")
+	require.NotContains(t, logged, "?")
 }

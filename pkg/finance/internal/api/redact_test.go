@@ -106,6 +106,7 @@ func TestDownloadSymbolKeepsYahooCrumbOutOfStatusAndLog(t *testing.T) {
 	assertNoCrumb(t, buf.String())
 	assert.Contains(t, buf.String(), "historical data download failed")
 	assert.Contains(t, buf.String(), "query2.finance.yahoo.com/v8/finance/chart/AAPL")
+	assert.NotContains(t, buf.String(), "interval=")
 }
 
 func assertNoCrumb(t *testing.T, text string) {
