@@ -302,16 +302,63 @@ def resolve_group_bars(
 _PRICE_COLUMNS = ["open", "high", "low", "close"]
 
 
-def drop_unpriced_bars(bars: pd.DataFrame) -> pd.DataFrame:
-    """Leave out rows with a missing, zero, or negative price.
+def unpriced_dates(bars: pd.DataFrame) -> pd.Index:
+    """Rows whose open, high, low, or close is missing or not positive.
 
-    Such a row is a missing bar, not a price: the broker stored Yahoo's
-    null as 0 before it refused non-positive prices, and Zipline would
-    read a 0 close as a -100% day. A dropped row is a missing session, which
-    fails the create.
+    Such a row is not a price: the broker stored Yahoo's null as 0 before
+    it refused non-positive prices, and Zipline would read a 0 close as a
+    -100% day. A frame with none of the price columns is left alone.
     """
-    priced = bars[_PRICE_COLUMNS].gt(0).all(axis=1)
-    return cast(pd.DataFrame, bars[priced])
+    columns = [column for column in _PRICE_COLUMNS if column in bars.columns]
+    if bars.empty or not columns:
+        return bars.index[:0]
+    priced = bars[columns].gt(0).all(axis=1)
+    return bars.index[~priced]
+
+
+def without_unpriced(bars: pd.DataFrame) -> pd.DataFrame:
+    """The rows that are a price. The caller still fails on the ones left out."""
+    bad = unpriced_dates(bars)
+    if len(bad) == 0:
+        return bars
+    return cast(pd.DataFrame, bars.drop(index=bad))
+
+
+def sessions_missing_a_price(
+    stored: list[pd.DataFrame],
+    priced: pd.DataFrame | None,
+    sessions: pd.DatetimeIndex,
+) -> list[pd.Timestamp]:
+    """Sessions from the first stored row to the last with no positive price.
+
+    An unpriced row is not a price, and it still bounds the span, so a bad
+    first or last row is named instead of shortening the sid. A session
+    another ticker of the same ISIN prices is not missing. A row that is
+    not a session is still named.
+    """
+    have = pd.DatetimeIndex([]) if priced is None or len(priced) == 0 else pd.DatetimeIndex(priced.index)
+    bad = [pd.Timestamp(day) for frame in stored for day in unpriced_dates(frame)]
+    bounds: list[pd.DatetimeIndex] = []
+    if len(have):
+        bounds.append(have)
+    if bad:
+        bounds.append(pd.DatetimeIndex(bad))
+    if not bounds:
+        return []
+    first = min(bound.min() for bound in bounds)
+    last = max(bound.max() for bound in bounds)
+    in_range = sessions[(sessions >= first) & (sessions <= last)]
+    missing = list(in_range.difference(have))
+    seen = set(missing)
+    extra: list[pd.Timestamp] = []
+    for day in bad:
+        if day in have or day in seen:
+            continue
+        seen.add(day)
+        extra.append(day)
+    if not extra:
+        return missing
+    return sorted(missing + extra)
 
 
 def missing_sessions(bars: pd.DataFrame, sessions: pd.DatetimeIndex) -> list[pd.Timestamp]:
@@ -637,17 +684,22 @@ class SQLIngester:
                     symbol: self._bars(symbol, from_date, to_date)
                     for symbol in dict.fromkeys(alias.symbol for alias in group.aliases)
                 }
-                combined, mapping_rows = resolve_group_bars(group, frames, from_date, to_date)
+                # Unpriced rows are taken out of what can be written, but the
+                # stored frames still bound the span, so a bad first or last
+                # row is named. Another ticker of the ISIN can still fill a
+                # session it does have a price for.
+                priced = {symbol: without_unpriced(frame) for symbol, frame in frames.items()}
+                combined, mapping_rows = resolve_group_bars(group, priced, from_date, to_date)
+                missing = sessions_missing_a_price(list(frames.values()), combined, sessions)
                 if combined is None:
                     empty.append(group)
-                    continue
-                missing = missing_sessions(combined, sessions)
                 if missing:
                     # The broker checks this before the ingest. If a bar went
                     # missing in between, fail rather than write a bundle
                     # Zipline would refuse or a price nobody sent.
                     for day in missing:
                         gaps.setdefault(ticker_on_day(group, from_date, to_date, day), []).append(day)
+                if combined is None or missing:
                     continue
                 resolved.append((group, combined, mapping_rows))
         if empty:
@@ -787,9 +839,12 @@ class SQLIngester:
         return frame
 
     def _bars(self, symbol: str, from_date: date, to_date: date) -> pd.DataFrame:
-        data = self.get_stock_data(symbol, from_date, to_date)
-        data.dropna(inplace=True)
-        return drop_unpriced_bars(data)
+        """Stored bars, including a row whose price is missing or not positive.
+
+        That row is not dropped here. Dropping a first or last one would
+        move the sid's start or end, and the day would not be named.
+        """
+        return self.get_stock_data(symbol, from_date, to_date)
 
     def __call__(
         self,
