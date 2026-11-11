@@ -195,7 +195,10 @@ def _close_choice(flag: bool | None, raw: object) -> bool:
         return True
     if isinstance(raw, bool):
         return raw
-    _fail("auto_close_on_universe_drop must be true or false.")
+    _fail(
+        "auto_close_on_universe_drop must be true or false. "
+        "Set it to one of those in the backtest file, or leave it out to keep the default (true)."
+    )
 
 
 def _read_line(prompt: Prompt, default: str | None = None) -> str:
