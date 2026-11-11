@@ -160,7 +160,9 @@ def run(
 
     portfolio = broker.finance.get_portfolio()
     book = portfolio.portfolio
-    held = list(book.positions) if book is not None else []
+    if book is None:
+        _fail("The portfolio is missing.")
+    held = list(book.positions)
 
     denied: str | None = None
     with LiveProgress() as progress:
@@ -188,3 +190,5 @@ def run(
                     progress.transient = True
     if denied is not None:
         _fail(denied)
+    if not has_run:
+        _fail(progress.failure or "The trading session ended before trading started.")

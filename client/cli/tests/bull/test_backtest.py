@@ -346,6 +346,13 @@ def _notices_stream(lines: list[str]):
         )
         yield completed
         yield completed
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+            INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+            STORING=common_pb.Step(state=common_pb.State.COMPLETED),
+            backtest=_sample_backtest(),
+        )
 
     return stream
 
@@ -395,6 +402,13 @@ def _download_notice_stream(lines: list[str]):
             DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED, notices=lines),
             INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
         )
+        yield backtest_service_pb.CreateBacktestResponse(
+            CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+            DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+            INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+            STORING=common_pb.Step(state=common_pb.State.COMPLETED),
+            backtest=_sample_backtest(),
+        )
 
     return stream
 
@@ -409,16 +423,12 @@ def test_backtest_create_prints_the_unclosed_end_session_line(provider, monkeypa
 
     assert result.exit_code == 0
     assert result.output.splitlines()[0] == f"Using provider: {provider} (from --provider)"
-    assert [line for line in result.output.splitlines() if "⚠" in line] == [
-        (
-            "⚠ 2026-10-30 isn't included because its trading session hasn't closed yet "
-            "(sessions count as closed at 16:30 New York time)."
-        )
-    ]
-    assert result.output.endswith(
-        "\n⚠ 2026-10-30 isn't included because its trading session hasn't closed yet "
-        "(sessions count as closed at 16:30 New York time).\n"
+    notice = (
+        "⚠ 2026-10-30 isn't included because its trading session hasn't closed yet "
+        "(sessions count as closed at 16:30 New York time)."
     )
+    assert [line for line in result.output.splitlines() if "⚠" in line] == [notice]
+    assert result.output.index(notice) < result.output.index("Created Backtest")
 
 
 def test_backtest_create_without_a_download_notice_prints_no_warning(monkeypatch):
@@ -1055,13 +1065,40 @@ def _created_backtest_response():
     )
 
 
-def test_backtest_create_unknown_etf_does_not_call_broker(runner):
+def test_backtest_create_without_input_fails(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.backtest.create") as mock_create:
-        result = runner(backtest, ["create"], input="demo\nnot-a-fund\n")
+        result = CliRunner().invoke(backtest, ["create"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert "✖ Cancelled: no input." in result.stdout
+    assert "Traceback" not in result.stdout
+    mock_create.assert_not_called()
+
+
+def test_backtest_create_eof_after_the_name_fails(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        result = CliRunner().invoke(backtest, ["create"], input="demo\n")
+
+    assert result.exit_code == 1
+    assert "✖ Cancelled: no input." in result.stdout
+    mock_create.assert_not_called()
+
+
+def test_backtest_create_unknown_etf_then_eof_does_not_call_broker(monkeypatch):
+    # The bad name is rejected and the prompt asks again. EOF then cancels the create.
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        result = CliRunner().invoke(backtest, ["create"], input="demo\nnot-a-fund\n")
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
     mock_create.assert_not_called()
     assert "Unknown ETF 'not-a-fund'. Known funds: iShares S&P 100." in result.stdout
+    assert "✖ Cancelled: no input." in result.stdout
     assert "Creating" not in result.stdout
     assert "Traceback" not in result.stdout
 
@@ -1292,6 +1329,59 @@ def test_backtest_create_unknown_provider_does_not_call_broker():
     mock_create.assert_not_called()
     assert "Unknown price provider 'binance'" in result.stdout
     assert "Valid providers: yahoo, stooq, alpaca" in result.stdout
+
+
+def _create_from_yaml(stream):
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=stream),
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    return result
+
+
+@pytest.mark.parametrize(
+    ("frames", "line"),
+    [
+        ([], "✖ Creating the backtest ended before a step started."),
+        (
+            [
+                backtest_service_pb.CreateBacktestResponse(
+                    CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    DOWNLOADING=common_pb.Step(state=common_pb.State.RUNNING),
+                )
+            ],
+            "✖ Creating the backtest ended at Downloading.",
+        ),
+        (
+            [
+                backtest_service_pb.CreateBacktestResponse(
+                    CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    DOWNLOADING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    INGESTING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
+                )
+            ],
+            "✖ Creating the backtest ended at Storing.",
+        ),
+    ],
+)
+def test_backtest_create_fails_when_the_stream_ends_early(monkeypatch, frames, line):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+
+    def stream(**_kwargs):
+        yield from frames
+
+    result = _create_from_yaml(stream)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert line in result.stdout
+    assert "Created Backtest" not in result.stdout
+    assert "Traceback" not in result.stdout
 
 
 def test_backtest_create_etf_sends_provider_flag(runner):
@@ -1869,12 +1959,16 @@ def test_backtest_run_labels_a_stooq_return_adjusted_close(runner):
     assert "Price return" not in result.stdout
 
 
-def test_backtest_run_without_stored_periods_says_so(runner):
-    result, _ = _invoke_run(runner, _run_session_mocks(), [])
-    assert result.exit_code == 0
-    assert "✔ Backtest finished, but no results were stored for this execution." in result.stdout
+def test_backtest_run_without_stored_periods_fails(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    result, get_execution = _invoke_run(lambda app, args: CliRunner().invoke(app, args), _run_session_mocks(), [])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert "✖ Backtest finished, but no results were stored for this execution." in result.stdout
     assert "Backtest finished:" not in result.stdout
-    assert "Details: uv run fbull backtest execution exec-1" in result.stdout
+    assert "Details:" not in result.stdout
+    get_execution.assert_called_once_with("exec-1")
 
 
 def test_backtest_run_shows_short_execution_id(runner):
@@ -1963,12 +2057,45 @@ def test_backtest_run_other_lookup_errors_are_not_reported_as_missing():
     assert "no backtest named" not in result.output
 
 
-def test_backtest_run_invalid_start(runner):
-    with patch("foreverbull.broker.backtest.get") as get:
+@pytest.mark.parametrize(
+    ("flag", "value", "line"),
+    [
+        ("--start", "not-a-date", "✖ Invalid start date: not-a-date."),
+        ("--end", "not-a-date", "✖ Invalid end date: not-a-date."),
+        ("--end", "2020-02-31", "✖ Invalid end date: 2020-02-31."),
+    ],
+)
+def test_backtest_run_invalid_date_exits_1(monkeypatch, flag, value, line):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+    ):
         get.return_value = _sample_backtest()
-        result = runner(backtest, ["run", "test_name", "demo.py", "--start", "not-a-date"])
-        assert result.exit_code == 0
-        assert "Invalid start date" in result.stdout
+        result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py", flag, value])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.output == f"{line}\n"
+    assert "Traceback" not in result.output
+    create_session.assert_not_called()
+
+
+def test_backtest_run_missing_period_date_exits_1(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with (
+        patch("foreverbull.broker.backtest.get") as get,
+        patch("foreverbull.broker.backtest.create_session") as create_session,
+    ):
+        get.return_value = backtest_pb.Backtest(
+            name="test_name",
+            periods=[
+                backtest_pb.Backtest.Period(assets=[backtest_pb.Backtest.Period.Asset(symbol="AAPL", enabled=True)])
+            ],
+        )
+        result = CliRunner().invoke(backtest, ["run", "test_name", "demo.py"])
+    assert result.exit_code == 1
+    assert result.output == "✖ Backtest 'test_name' is missing a period date.\n"
+    create_session.assert_not_called()
 
 
 def _invoke_run_with_dates(args):
