@@ -28,8 +28,13 @@ const (
 	alpacaAccountPath   = "/v2/account"
 	alpacaPositionsPath = "/v2/positions"
 
-	// Documented maximum for GET /v2/orders. One request, no paging.
-	alpacaOpenOrderLimit = "500"
+	// alpacaOpenOrderLimit is the documented maximum for GET /v2/orders.
+	// alpacaOpenOrderPages caps how many of those pages one GetOrders
+	// follows. A full page after the cap fails, so the book is not
+	// truncated at 500.
+	// https://docs.alpaca.markets/us/reference/getallorders-1
+	alpacaOpenOrderLimit = 500
+	alpacaOpenOrderPages = 20
 
 	defaultAlpacaCurrency = "USD"
 )
@@ -211,14 +216,74 @@ func (c *AlpacaClient) PlaceOrder(ctx context.Context, order *pb.Order) (*pb.Ord
 	return placed, nil
 }
 
-// GetOrders reads open orders. An empty slice is returned only when the body is empty.
+// GetOrders reads every open order. An empty slice is returned only when
+// the broker has none. Pages walk before_order_id, newest first, until a
+// short page or an empty page. A full page past the cap fails instead of
+// returning a truncated book.
 func (c *AlpacaClient) GetOrders(ctx context.Context) ([]*pb.Order, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]*pb.Order, 0)
+	seen := make(map[string]struct{})
+	var before string
+	for page := 0; page < alpacaOpenOrderPages; page++ {
+		raws, err := c.openOrderPage(ctx, before)
+		if err != nil {
+			return nil, err
+		}
+		if len(raws) == 0 {
+			return out, nil
+		}
+		if len(raws) > alpacaOpenOrderLimit {
+			return nil, fmt.Errorf("alpaca orders: page has %d orders, above limit %d: %w",
+				len(raws), alpacaOpenOrderLimit, supplier.ErrUnavailable)
+		}
+		for _, raw := range raws {
+			hit, ok := c.bySymbol[strings.TrimSpace(raw.Symbol)]
+			if !ok || hit.ambiguous {
+				return nil, fmt.Errorf("order %s: %w", raw.Symbol, supplier.ErrNotTradable)
+			}
+			mapped, err := c.mapOrder(raw, hit.listing, false)
+			if err != nil {
+				return nil, err
+			}
+			id := mapped.GetBrokerOrderId()
+			if _, ok := seen[id]; ok {
+				return nil, fmt.Errorf("alpaca order %s repeated: %w", id, supplier.ErrUnavailable)
+			}
+			seen[id] = struct{}{}
+			out = append(out, mapped)
+		}
+		if len(raws) < alpacaOpenOrderLimit {
+			return out, nil
+		}
+		next := strings.TrimSpace(raws[len(raws)-1].ID)
+		if next == "" || next == before {
+			return nil, fmt.Errorf("alpaca orders: page cursor %q did not advance: %w", next, supplier.ErrUnavailable)
+		}
+		before = next
+	}
+	return nil, fmt.Errorf("alpaca orders: more than %d pages, so the list would be truncated: %w",
+		alpacaOpenOrderPages, supplier.ErrUnavailable)
+}
+
+// openOrderPage reads one GET /v2/orders page. before is the previous
+// page's last id. Empty before is the first page. direction is desc so
+// before_order_id walks older orders, and it is not combined with after
+// or until.
+// https://docs.alpaca.markets/us/reference/getallorders-1
+func (c *AlpacaClient) openOrderPage(ctx context.Context, before string) ([]alpacaOrder, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	query := url.Values{}
 	query.Set("status", "open")
-	query.Set("limit", alpacaOpenOrderLimit)
+	query.Set("limit", strconv.Itoa(alpacaOpenOrderLimit))
+	query.Set("direction", "desc")
+	if before != "" {
+		query.Set("before_order_id", before)
+	}
 	body, err := c.get(ctx, alpacaOrdersPath+"?"+query.Encode())
 	if err != nil {
 		return nil, err
@@ -227,19 +292,7 @@ func (c *AlpacaClient) GetOrders(ctx context.Context) ([]*pb.Order, error) {
 	if err := json.Unmarshal(body, &raws); err != nil {
 		return nil, fmt.Errorf("alpaca orders: %w", supplier.ErrUnavailable)
 	}
-	out := make([]*pb.Order, 0, len(raws))
-	for _, raw := range raws {
-		hit, ok := c.bySymbol[strings.TrimSpace(raw.Symbol)]
-		if !ok || hit.ambiguous {
-			return nil, fmt.Errorf("order %s: %w", raw.Symbol, supplier.ErrNotTradable)
-		}
-		mapped, err := c.mapOrder(raw, hit.listing, false)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, mapped)
-	}
-	return out, nil
+	return raws, nil
 }
 
 // alpacaOrderRequest is POST /v2/orders. Field names match CreateOrderRequest.

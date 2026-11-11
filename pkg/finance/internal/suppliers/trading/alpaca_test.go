@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -425,20 +428,150 @@ func TestAlpacaGetOrders(t *testing.T) {
 	require.InDelta(t, 150, got[0].GetLimitPrice(), 1e-9)
 
 	require.NotEmpty(t, b.calls)
-	var sawOpen bool
+	gets := 0
 	for _, call := range b.calls {
 		if call.method == http.MethodGet && call.path == "/v2/orders" {
-			sawOpen = true
+			gets++
 			require.Contains(t, call.query, "status=open")
+			require.Contains(t, call.query, "limit=500")
+			require.Contains(t, call.query, "direction=desc")
+			require.NotContains(t, call.query, "before_order_id")
 		}
 	}
-	require.True(t, sawOpen)
+	require.Equal(t, 1, gets)
 
 	emptyBroker := &broker{ordersBody: `[]`}
 	emptyClient, _ := newAlpaca(t, emptyBroker)
 	none, err := emptyClient.GetOrders(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, none)
+}
+
+// alpacaOpenOrderBody is one unfilled equity order. id is the broker id
+// the next page's before_order_id repeats.
+// https://docs.alpaca.markets/us/reference/getallorders-1
+func alpacaOpenOrderBody(id int) string {
+	return fmt.Sprintf(`{"id":"%d","symbol":"AAPL","qty":"1","filled_qty":"0","side":"buy","type":"market","time_in_force":"day","status":"accepted"}`, id)
+}
+
+func alpacaOpenOrderPage(start, count, total int) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	written := 0
+	for id := start; id < total && written < count; id++ {
+		if written > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(alpacaOpenOrderBody(id))
+		written++
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+// alpacaOrderPages serves GET /v2/orders. A before_order_id continues after
+// that id. total is how many orders exist. pageSize is the requested limit.
+func alpacaOrderPages(t *testing.T, total int, queries *[]string) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v2/orders" {
+			http.Error(w, `{"message":"not found"}`, http.StatusNotFound)
+			return
+		}
+		q := r.URL.Query()
+		*queries = append(*queries, r.URL.RawQuery)
+		require.Equal(t, "open", q.Get("status"))
+		require.Equal(t, "500", q.Get("limit"))
+		require.Equal(t, "desc", q.Get("direction"))
+		require.Empty(t, q.Get("after"))
+		require.Empty(t, q.Get("until"))
+		start := 0
+		if token := q.Get("before_order_id"); token != "" {
+			n, err := strconv.Atoi(token)
+			require.NoError(t, err)
+			start = n + 1
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(alpacaOpenOrderPage(start, 500, total)))
+	})
+}
+
+func newAlpacaServer(t *testing.T, handler http.Handler) *trading.AlpacaClient {
+	t.Helper()
+	book, err := trading.Load("")
+	require.NoError(t, err)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	client, err := trading.NewAlpaca(trading.AlpacaConfig{BaseURL: srv.URL}, book, srv.Client())
+	require.NoError(t, err)
+	return client
+}
+
+func TestAlpacaGetOrdersPages(t *testing.T) {
+	const page = 500
+	var queries []string
+	client := newAlpacaServer(t, alpacaOrderPages(t, page+1, &queries))
+
+	got, err := client.GetOrders(context.Background())
+	require.NoError(t, err)
+	require.Len(t, got, page+1)
+	require.Equal(t, "0", got[0].GetBrokerOrderId())
+	require.Equal(t, "500", got[page].GetBrokerOrderId())
+	require.Equal(t, "AAPL", got[page].GetSymbol())
+	require.Equal(t, aaplISIN, got[page].GetIsin())
+	require.Len(t, queries, 2)
+	require.NotContains(t, queries[0], "before_order_id")
+	require.Contains(t, queries[1], "before_order_id=499")
+}
+
+func TestAlpacaGetOrdersExactPageThenEmpty(t *testing.T) {
+	const page = 500
+	var queries []string
+	client := newAlpacaServer(t, alpacaOrderPages(t, page, &queries))
+
+	got, err := client.GetOrders(context.Background())
+	require.NoError(t, err)
+	require.Len(t, got, page)
+	require.Equal(t, "499", got[page-1].GetBrokerOrderId())
+	require.Len(t, queries, 2)
+	require.Contains(t, queries[1], "before_order_id=499")
+}
+
+func TestAlpacaGetOrdersSecondPageUnavailable(t *testing.T) {
+	var calls int
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if calls == 1 {
+			_, _ = w.Write([]byte(alpacaOpenOrderPage(0, 500, 500)))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"unavailable"}`))
+	})
+	client := newAlpacaServer(t, handler)
+
+	got, err := client.GetOrders(context.Background())
+	require.ErrorIs(t, err, supplier.ErrUnavailable)
+	require.Nil(t, got)
+	require.Equal(t, 2, calls)
+}
+
+func TestAlpacaGetOrdersPageCap(t *testing.T) {
+	var calls int
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := calls * 500
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(alpacaOpenOrderPage(start, 500, start+500)))
+	})
+	client := newAlpacaServer(t, handler)
+
+	got, err := client.GetOrders(context.Background())
+	require.Nil(t, got)
+	require.ErrorIs(t, err, supplier.ErrUnavailable)
+	require.ErrorContains(t, err, "more than 20 pages, so the list would be truncated")
+	require.Equal(t, 20, calls)
 }
 
 func TestAlpacaGetOrdersZeroQty(t *testing.T) {
