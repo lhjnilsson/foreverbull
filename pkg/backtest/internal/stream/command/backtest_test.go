@@ -413,10 +413,11 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
 	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, &financeServicePB.DownloadHistoricalDataRequest{
-		Symbols:   []string{"OEF", "AAPL", "FB", "META", "MSFT"},
-		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
-		EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
-		Provider:  supplier.DefaultProvider,
+		Symbols:       []string{"OEF", "AAPL", "FB", "META", "MSFT"},
+		StartDate:     &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:       &pb.Date{Year: 2023, Month: 12, Day: 31},
+		SessionCutoff: &pb.Date{Year: 2026, Month: 10, Day: 30},
+		Provider:      supplier.DefaultProvider,
 	}).Return(clientStreamMock, nil)
 
 	// Yahoo keeps FB's whole history under META, so FB has no bars of its
@@ -683,10 +684,11 @@ func (test *BacktestCommandTest) TestDownloadFinancialData() {
 	clientStreamMock.On("Recv", mock.Anything).Return(nil, io.EOF)
 
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, &financeServicePB.DownloadHistoricalDataRequest{
-		Symbols:   []string{"SPY", "AAPL"},
-		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
-		EndDate:   &pb.Date{Year: 2023, Month: 12, Day: 31},
-		Provider:  supplier.DefaultProvider,
+		Symbols:       []string{"SPY", "AAPL"},
+		StartDate:     &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:       &pb.Date{Year: 2023, Month: 12, Day: 31},
+		SessionCutoff: &pb.Date{Year: 2026, Month: 10, Day: 30},
+		Provider:      supplier.DefaultProvider,
 	}).Return(clientStreamMock, nil)
 
 	test.coverDays(msg, []string{"2022-01-03", "2022-01-04"}, "SPY", "AAPL")
@@ -1181,6 +1183,11 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataIgnoresAmbiguousSenten
 }
 
 func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine.Engine) *stream.MockMessage {
+	test.recordClosedEndIfMissing(name)
+	return test.ingestMessageRaw(name, ziplineEngine)
+}
+
+func (test *BacktestCommandTest) ingestMessageRaw(name string, ziplineEngine engine.Engine) *stream.MockMessage {
 	store := new(storage.MockStorage)
 	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).
 		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: name}, nil)
@@ -1193,6 +1200,23 @@ func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine
 		payload.BacktestName = name
 	})
 	return msg
+}
+
+// recordClosedEndIfMissing stores the backtest's last period end as the
+// cut-off when a test ingests without running the download. A cut-off the
+// download already recorded is left as it is.
+func (test *BacktestCommandTest) recordClosedEndIfMissing(name string) {
+	var closed *time.Time
+	err := test.db.QueryRow(context.Background(), `SELECT closed_end FROM backtest WHERE name = $1`, name).Scan(&closed)
+	test.Require().NoError(err)
+	if closed != nil {
+		return
+	}
+	_, err = test.db.Exec(context.Background(), `
+		UPDATE backtest SET closed_end = (
+			SELECT max(end_date) FROM backtest_period WHERE backtest_name = $1
+		) WHERE name = $1`, name)
+	test.Require().NoError(err)
 }
 
 // An ingest error reported by the data service removes the backtest, its

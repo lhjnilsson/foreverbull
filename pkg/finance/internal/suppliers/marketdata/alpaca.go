@@ -239,7 +239,7 @@ func alpacaDailyBars(start, end time.Time) marketdata.GetBarsRequest {
 }
 
 func (a *AlpacaBars) GetOHLC(ctx context.Context, symbol string, start time.Time, end *time.Time) ([]*pb.OHLC, error) {
-	now := clockNow(a.now)
+	now := sessionNow(ctx, a.now)
 	endAt, ok := alpacaFetchEnd(start, end, now)
 	if !ok {
 		return []*pb.OHLC{}, nil
@@ -286,8 +286,8 @@ func (a *AlpacaBars) GetOHLC(ctx context.Context, symbol string, start time.Time
 // without a request. That empty answer is not Alpaca saying the ticker has
 // no prices, so the download checks this first and neither fetches nor
 // looks for a later ticker.
-func (a *AlpacaBars) NothingToFetch(start time.Time, end *time.Time) bool {
-	_, ok := alpacaFetchEnd(start, end, clockNow(a.now))
+func (a *AlpacaBars) NothingToFetch(ctx context.Context, start time.Time, end *time.Time) bool {
+	_, ok := alpacaFetchEnd(start, end, sessionNow(ctx, a.now))
 	return !ok
 }
 

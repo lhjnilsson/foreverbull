@@ -323,7 +323,7 @@ type emptyRangeBars struct {
 	asked int
 }
 
-func (b *emptyRangeBars) NothingToFetch(time.Time, *time.Time) bool {
+func (b *emptyRangeBars) NothingToFetch(context.Context, time.Time, *time.Time) bool {
 	b.asked++
 	return true
 }

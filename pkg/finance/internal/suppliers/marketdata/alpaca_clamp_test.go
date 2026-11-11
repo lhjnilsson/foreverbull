@@ -238,12 +238,12 @@ func TestAlpacaNothingToFetchWhenTheCapEmptiesTheRange(t *testing.T) {
 	now := newYork(t, "2026-10-29 20:10")
 	bars.now = func() time.Time { return now }
 
-	require.True(t, bars.NothingToFetch(start, nil))
+	require.True(t, bars.NothingToFetch(context.Background(), start, nil))
 	require.Empty(t, alpacaDays(t, bars, start, nil))
 	require.Empty(t, *ends, "no request is sent")
 
 	// Ten minutes later the capped end, 20:05, is after start.
 	later := newYork(t, "2026-10-29 20:20")
 	bars.now = func() time.Time { return later }
-	require.False(t, bars.NothingToFetch(start, nil))
+	require.False(t, bars.NothingToFetch(context.Background(), start, nil))
 }
