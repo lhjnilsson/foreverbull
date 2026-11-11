@@ -68,12 +68,11 @@ describe('execution configuration frames', () => {
   });
 
   it('shows close on universe drop as on or off for an ETF universe', () => {
-    const frame = metadataFrame('A', { ...stored, close_on_universe_drop: 'on' });
-    const field = frame.fields.find((item) => item.name === 'close_on_universe_drop');
-    expect(field?.config?.displayName).toBe('Close on universe drop');
-    expect(frameText(frame)).toContain('on');
-    const off = metadataFrame('A', { ...stored, close_on_universe_drop: 'off' });
-    expect(frameText(off)).toContain('off');
-    expect(frameText(off)).not.toMatch(/true|false|enabled|disabled/i);
+    for (const value of ['on', 'off'] as const) {
+      const frame = metadataFrame('A', { ...stored, close_on_universe_drop: value });
+      const field = frame.fields.find((item) => item.name === 'close_on_universe_drop');
+      expect(field?.config?.displayName).toBe('Close on universe drop');
+      expect(field?.values.toArray()).toEqual([value]);
+    }
   });
 });
