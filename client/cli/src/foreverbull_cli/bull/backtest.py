@@ -546,6 +546,13 @@ def create(
         | backtest_service_pb.CreateBacktestRequest.CreateFromBacktest
     )
     if file:
+        # A symbol list has no membership drops. The default stays on and is
+        # hidden. Turning the option off is only meaningful for an ETF universe.
+        if close_on_universe_drop is False:
+            _fail(
+                "Close on universe drop only applies to backtests that use an ETF universe. "
+                "Remove --no-close-on-universe-drop, or use an ETF universe."
+            )
         if not file.exists():
             raise FileNotFoundError(f"File {file} not found")
         with open(file, "r") as f:

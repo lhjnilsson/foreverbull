@@ -1329,6 +1329,10 @@ _BAD_CLOSE_VALUE = (
     "auto_close_on_universe_drop must be true or false. "
     "Set it to one of those in the backtest file, or leave it out to keep the default (true)."
 )
+_SYMBOL_LIST_CLOSE_OFF = (
+    "Close on universe drop only applies to backtests that use an ETF universe. "
+    "Remove --no-close-on-universe-drop, or use an ETF universe."
+)
 
 
 def _plain_output(text: str) -> str:
@@ -1409,6 +1413,34 @@ def test_backtest_create_rejects_a_close_on_drop_value_that_is_not_a_boolean():
     assert result.exit_code == 1
     mock_create.assert_not_called()
     assert _plain_output(result.stdout) == f"✖ {_BAD_CLOSE_VALUE}"
+
+
+def test_backtest_create_refuses_close_on_drop_off_for_a_symbol_list():
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--no-close-on-universe-drop"])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 1
+    mock_create.assert_not_called()
+    assert _plain_output(result.stdout) == f"✖ {_SYMBOL_LIST_CLOSE_OFF}"
+
+
+def test_backtest_create_etf_can_turn_close_on_drop_off(runner):
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        mock_create.return_value = _created_backtest_response()
+        result = runner(
+            backtest,
+            ["create", "--no-close-on-universe-drop"],
+            input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
+        )
+
+    assert result.exit_code == 0
+    request = mock_create.call_args.kwargs["entity"]
+    assert request.auto_close_on_universe_drop is False
 
 
 def test_backtest_get_shows_close_on_drop_for_a_universe(monkeypatch):
