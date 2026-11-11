@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/auth"
@@ -118,18 +120,139 @@ func (gs *grpcSessionServer) Run(ctx context.Context, req *servicePb.RunRequest)
 	}, nil
 }
 
+// PlaceOrders attempts every order. A placed order is the order PlaceOrder
+// returned. A failure is that request order with status REJECTED and
+// reject_reason set to the cause. Any failure fails the call. The response
+// still lists the orders that placed and every rejection, and the status
+// carries the same response: a unary RPC does not send the reply when the
+// handler returns an error.
 func (gs *grpcSessionServer) PlaceOrders(ctx context.Context, req *servicePb.PlaceOrderRequest) (*servicePb.PlaceOrderResponse, error) {
 	rsp := &servicePb.PlaceOrderResponse{
-		Orders: make([]*pb.Order, len(req.Orders)),
+		Orders: make([]*pb.Order, len(req.GetOrders())),
 	}
-	for i, order := range req.Orders {
-		placed, err := gs.trading.PlaceOrder(ctx, order)
-		if err != nil {
-			return nil, err
+	var failed []error
+	var placed []string
+	for i, order := range req.GetOrders() {
+		filled, err := gs.trading.PlaceOrder(ctx, order)
+		if err == nil && filled == nil {
+			err = fmt.Errorf("place order returned no order: %w", supplier.ErrUnavailable)
 		}
-		rsp.Orders[i] = placed
+		if err != nil {
+			rsp.Orders[i] = rejectedOrder(order, err)
+			failed = append(failed, fmt.Errorf("%s: %w", orderCauseLabel(order, i), err))
+			continue
+		}
+		rsp.Orders[i] = filled
+		placed = append(placed, placedOrderNote(filled, i))
 	}
-	return rsp, nil
+	if len(failed) == 0 {
+		return rsp, nil
+	}
+	parts := make([]error, 0, 1+len(placed)+len(failed))
+	parts = append(parts, errors.New("place orders failed"))
+	for _, note := range placed {
+		parts = append(parts, errors.New("placed "+note))
+	}
+	parts = append(parts, failed...)
+	return rsp, &placeOrdersError{
+		orders: rsp,
+		err:    errors.Join(parts...),
+		code:   placeOrdersCode(ctx, failed),
+	}
+}
+
+// placeOrdersError is a PlaceOrders call that did not place every order.
+// orders is the full request: placed orders and rejected ones with causes.
+type placeOrdersError struct {
+	orders *servicePb.PlaceOrderResponse
+	err    error
+	code   codes.Code
+}
+
+func (e *placeOrdersError) Error() string {
+	if e == nil || e.err == nil {
+		return "place orders failed"
+	}
+	return e.err.Error()
+}
+
+func (e *placeOrdersError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+// GRPCStatus puts the order list on the status. The unary handler's reply
+// is not delivered when the call fails.
+func (e *placeOrdersError) GRPCStatus() *status.Status {
+	st := status.New(e.code, e.Error())
+	if e.orders == nil {
+		return st
+	}
+	with, err := st.WithDetails(e.orders)
+	if err != nil {
+		return st
+	}
+	return with
+}
+
+func placeOrdersCode(ctx context.Context, failed []error) codes.Code {
+	if err := ctx.Err(); err != nil {
+		return status.FromContextError(err).Code()
+	}
+	for _, err := range failed {
+		if errors.Is(err, supplier.ErrUnavailable) {
+			return codes.Unavailable
+		}
+	}
+	return codes.FailedPrecondition
+}
+
+func rejectedOrder(order *pb.Order, cause error) *pb.Order {
+	out := &pb.Order{
+		Status:       pb.OrderStatus_ORDER_STATUS_REJECTED,
+		RejectReason: cause.Error(),
+	}
+	if order == nil {
+		return out
+	}
+	out.Symbol = order.GetSymbol()
+	out.Isin = order.GetIsin()
+	out.Amount = order.GetAmount()
+	out.Type = order.GetType()
+	out.TimeInForce = order.GetTimeInForce()
+	out.LimitPrice = order.GetLimitPrice()
+	return out
+}
+
+func orderCauseLabel(order *pb.Order, index int) string {
+	ident := fmt.Sprintf("order %d", index+1)
+	if order == nil {
+		return ident
+	}
+	symbol := strings.TrimSpace(order.GetSymbol())
+	isin := strings.TrimSpace(order.GetIsin())
+	switch {
+	case symbol != "" && isin != "":
+		ident = fmt.Sprintf("order %d %s %s", index+1, symbol, isin)
+	case symbol != "":
+		ident = fmt.Sprintf("order %d %s", index+1, symbol)
+	case isin != "":
+		ident = fmt.Sprintf("order %d %s", index+1, isin)
+	}
+	return fmt.Sprintf("%s amount %d", ident, order.GetAmount())
+}
+
+func placedOrderNote(order *pb.Order, index int) string {
+	note := orderCauseLabel(order, index)
+	if order == nil {
+		return note
+	}
+	if id := strings.TrimSpace(order.GetBrokerOrderId()); id != "" {
+		return note + " broker " + id
+	}
+	return note
 }
 
 func (gs *grpcSessionServer) StopServer(ctx context.Context, req *servicePb.StopServerRequest) (*servicePb.StopServerResponse, error) {
