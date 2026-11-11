@@ -1,7 +1,11 @@
 import os
+import re
+import subprocess
+import sys
 
 from datetime import UTC
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -78,7 +82,7 @@ def test_backtest_fixture_skips_without_option(monkeypatch):
         _advance(None)
 
 
-def test_backtest_fixture_skips_when_broker_unreachable(monkeypatch):
+def test_backtest_fixture_fails_when_broker_unreachable(monkeypatch):
     def fail_get(name):
         raise OSError(f"connection refused for {name}")
 
@@ -87,30 +91,66 @@ def test_backtest_fixture_skips_when_broker_unreachable(monkeypatch):
         "foreverbull.broker.backtest.create_session",
         lambda name: (_ for _ in ()).throw(AssertionError("create_session should not be called")),
     )
-    with pytest.raises(pytest.skip.Exception, match="connection refused"):
+    with pytest.raises(pytest.fail.Exception, match="connection refused for demo"):
         _advance("demo")
 
 
-def test_backtest_fixture_skips_when_backtest_missing(monkeypatch):
+def test_backtest_fixture_fails_when_broker_get_names_the_cause(monkeypatch):
     def fail_get(name):
         raise _LookupError(f"error getting backtest {name}: no rows in result set")
 
     monkeypatch.setattr("foreverbull.broker.backtest.get", fail_get)
-    with pytest.raises(pytest.skip.Exception, match="no rows in result set"):
+    monkeypatch.setattr(
+        "foreverbull.broker.backtest.create_session",
+        lambda name: (_ for _ in ()).throw(AssertionError("create_session should not be called")),
+    )
+    with pytest.raises(pytest.fail.Exception, match="no rows in result set") as failed:
+        _advance("missing")
+    assert "rpc failed" not in str(failed.value)
+
+
+def test_backtest_fixture_fails_when_backtest_missing(monkeypatch):
+    monkeypatch.setattr("foreverbull.broker.backtest.get", lambda name: None)
+    monkeypatch.setattr(
+        "foreverbull.broker.backtest.create_session",
+        lambda name: (_ for _ in ()).throw(AssertionError("create_session should not be called")),
+    )
+    with pytest.raises(pytest.fail.Exception, match="backtest 'missing' was not found"):
         _advance("missing")
 
 
-def test_backtest_fixture_skips_when_session_does_not_start(monkeypatch):
+def test_backtest_fixture_fails_when_backtest_name_empty(monkeypatch):
+    monkeypatch.setattr("foreverbull.broker.backtest.get", lambda name: backtest_pb.Backtest())
+    monkeypatch.setattr(
+        "foreverbull.broker.backtest.create_session",
+        lambda name: (_ for _ in ()).throw(AssertionError("create_session should not be called")),
+    )
+    with pytest.raises(pytest.fail.Exception, match="backtest 'missing' was not found"):
+        _advance("missing")
+
+
+def test_backtest_fixture_fails_when_session_does_not_start(monkeypatch):
     monkeypatch.setattr(
         "foreverbull.broker.backtest.get",
         lambda name: backtest_pb.Backtest(name=name),
     )
     monkeypatch.setattr("foreverbull.broker.backtest.create_session", lambda name: iter(()))
-    with pytest.raises(pytest.skip.Exception, match="session did not start"):
+    with pytest.raises(pytest.fail.Exception, match="backtest 'demo' session did not start"):
         _advance("demo")
 
 
-def test_backtest_fixture_skips_when_create_session_fails(monkeypatch):
+def test_backtest_fixture_fails_when_session_has_no_port(monkeypatch):
+    idle = backtest_service_pb.CreateSessionResponse(session=session_pb.Session(id="sess-1", backtest="demo"))
+    monkeypatch.setattr(
+        "foreverbull.broker.backtest.get",
+        lambda name: backtest_pb.Backtest(name=name),
+    )
+    monkeypatch.setattr("foreverbull.broker.backtest.create_session", lambda name: iter((idle,)))
+    with pytest.raises(pytest.fail.Exception, match="backtest 'demo' session did not start"):
+        _advance("demo")
+
+
+def test_backtest_fixture_fails_when_create_session_fails(monkeypatch):
     def fail(name):
         raise OSError(f"session failed for {name}")
 
@@ -119,18 +159,124 @@ def test_backtest_fixture_skips_when_create_session_fails(monkeypatch):
         lambda name: backtest_pb.Backtest(name=name),
     )
     monkeypatch.setattr("foreverbull.broker.backtest.create_session", fail)
-    with pytest.raises(pytest.skip.Exception, match="session failed"):
+    with pytest.raises(pytest.fail.Exception, match="session failed for demo"):
         _advance("demo")
 
 
-def test_backtest_fixture_skips_when_backtest_name_empty(monkeypatch):
-    monkeypatch.setattr("foreverbull.broker.backtest.get", lambda name: backtest_pb.Backtest())
+def test_backtest_fixture_fails_when_session_start_names_the_cause(monkeypatch):
+    def fail(name):
+        raise _LookupError(f"error starting session for {name}: engine refused")
+
     monkeypatch.setattr(
-        "foreverbull.broker.backtest.create_session",
-        lambda name: (_ for _ in ()).throw(AssertionError("create_session should not be called")),
+        "foreverbull.broker.backtest.get",
+        lambda name: backtest_pb.Backtest(name=name),
     )
-    with pytest.raises(pytest.skip.Exception, match="was not found"):
-        _advance("missing")
+    monkeypatch.setattr("foreverbull.broker.backtest.create_session", fail)
+    with pytest.raises(pytest.fail.Exception, match="engine refused") as failed:
+        _advance("demo")
+    assert "rpc failed" not in str(failed.value)
+
+
+def _run_backtest_pytest(tmp_path: Path, conftest: str, *, backtest: str | None) -> subprocess.CompletedProcess[str]:
+    (tmp_path / "conftest.py").write_text(conftest)
+    (tmp_path / "test_named.py").write_text(
+        "def test_named(backtest):\n    raise AssertionError('the fixture should finish before the test body')\n"
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-p",
+        "no:cacheprovider",
+        "-ra",
+        "--tb=short",
+        str(tmp_path / "test_named.py"),
+    ]
+    if backtest is not None:
+        command.extend(["--backtest", backtest])
+    return subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False)
+
+
+def _assert_run_failed(result: subprocess.CompletedProcess[str], cause: str) -> None:
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, output
+    assert cause in output
+    assert re.search(r"=+ .* (error|failed).* =+", output), output
+    assert not re.search(r"\d+ skipped", output), output
+    assert "passed" not in output.splitlines()[-1]
+
+
+def test_omitted_backtest_skips_the_run(tmp_path):
+    conftest = (
+        "import foreverbull.broker.backtest as backtest_api\n"
+        "def get(name):\n"
+        "    raise AssertionError(f'broker get should not be called for {name}')\n"
+        "backtest_api.get = get\n"
+    )
+    result = _run_backtest_pytest(tmp_path, conftest, backtest=None)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "pass --backtest <name>" in output
+    assert re.search(r"1 skipped", output), output
+    assert not re.search(r"\d+ (failed|error)", output), output
+
+
+def test_named_backtest_broker_error_fails_the_run(tmp_path):
+    conftest = (
+        "import foreverbull.broker.backtest as backtest_api\n"
+        "def get(name):\n"
+        "    raise OSError(f'connection refused for {name}')\n"
+        "def create_session(name):\n"
+        "    raise AssertionError('create_session should not be called')\n"
+        "backtest_api.get = get\n"
+        "backtest_api.create_session = create_session\n"
+    )
+    result = _run_backtest_pytest(tmp_path, conftest, backtest="demo")
+    _assert_run_failed(result, "connection refused for demo")
+
+
+def test_named_backtest_missing_fails_the_run(tmp_path):
+    conftest = (
+        "import foreverbull.broker.backtest as backtest_api\n"
+        "def get(name):\n"
+        "    return None\n"
+        "def create_session(name):\n"
+        "    raise AssertionError('create_session should not be called')\n"
+        "backtest_api.get = get\n"
+        "backtest_api.create_session = create_session\n"
+    )
+    result = _run_backtest_pytest(tmp_path, conftest, backtest="missing")
+    _assert_run_failed(result, "backtest 'missing' was not found")
+
+
+def test_named_backtest_session_error_fails_the_run(tmp_path):
+    conftest = (
+        "import foreverbull.broker.backtest as backtest_api\n"
+        "from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb\n"
+        "def get(name):\n"
+        "    return backtest_pb.Backtest(name=name)\n"
+        "def create_session(name):\n"
+        "    raise OSError(f'session failed for {name}')\n"
+        "backtest_api.get = get\n"
+        "backtest_api.create_session = create_session\n"
+    )
+    result = _run_backtest_pytest(tmp_path, conftest, backtest="demo")
+    _assert_run_failed(result, "session failed for demo")
+
+
+def test_named_backtest_session_never_starts_fails_the_run(tmp_path):
+    conftest = (
+        "import foreverbull.broker.backtest as backtest_api\n"
+        "from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb\n"
+        "def get(name):\n"
+        "    return backtest_pb.Backtest(name=name)\n"
+        "def create_session(name):\n"
+        "    return iter(())\n"
+        "backtest_api.get = get\n"
+        "backtest_api.create_session = create_session\n"
+    )
+    result = _run_backtest_pytest(tmp_path, conftest, backtest="demo")
+    _assert_run_failed(result, "backtest 'demo' session did not start")
 
 
 def test_backtest_fixture_yields_broker_backtest(monkeypatch):
