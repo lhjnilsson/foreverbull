@@ -293,7 +293,16 @@ def print_run_summary(
         # Imported here: backtest imports this module while it is still loading.
         from foreverbull_cli.bull.backtest import _fail
 
-        _fail("Backtest finished, but no results were stored for this execution.")
+        if notices:
+            # The same lines a finished summary prints, before the refusal.
+            for line in run_notice_lines(notices, verbose=verbose):
+                console.print(f"  {NOTICE_PREFIX}{line}", markup=False, highlight=False, soft_wrap=True)
+            console.print()
+        _fail(
+            "Backtest finished, but no results were stored for this execution. "
+            f"Inspect the run with `fbull backtest execution {short_execution_id(execution_id)}`, "
+            "or check the broker log."
+        )
     else:
         console.print(
             f"[green]✔[/green] Backtest finished: {escape(backtest_name)} · {start_iso} → {end_iso} · provider: {provider}"

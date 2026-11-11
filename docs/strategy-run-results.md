@@ -208,7 +208,7 @@ A finished run prints a spinner for the session, an `execution` progress bar, th
 
 - Return, Sharpe, Sortino, and max drawdown are for the whole run. A ratio that is not defined yet prints `-`. The benchmark cell says `not set` or `not available` when there is no benchmark return.
 - `No trades: the strategy held no position on any of the N trading days.` means the run worked but your strategy never held anything. Check that its conditions can be true with the bars it gets (for example a `long_window` longer than the range).
-- `✖ Backtest finished, but no results were stored for this execution.` means the execution has no stored per-day results. The command exits with code 1. Check the broker log (end of [Common errors](#7-common-errors)).
+- ``✖ Backtest finished, but no results were stored for this execution. Inspect the run with `fbull backtest execution 01234567`, or check the broker log.`` means the execution has no stored per-day results. The command exits with code 1. The id is the same short id the summary's Details line uses. Check the broker log (end of [Common errors](#7-common-errors)).
 
 ### Per-day results and the inputs used
 
@@ -245,7 +245,13 @@ Messages that start with `✖` are one line and exit with code 1. Fix the cause 
 | `✖ There's no backtest named 'my-demo'. …` | The name passed to `run` does not exist. | `uv run fbull backtest list`, then use a listed name or run step 2. |
 | `✖ Backtest 'my-demo' has no data to run. …` | The backtest record exists but its data is missing. | `uv run fbull backtest delete my-demo`, then step 2 again. |
 | `✖ --start 2022-06-01 is before backtest 'my-demo' begins. …` (or `--end … is after …`) | `--start`/`--end` is outside the backtest's range. | Use dates inside the range shown by `fbull backtest get`, or leave both out. |
-| `Invalid start date: …` | `--start`/`--end` is not `YYYY-MM-DD`. | Use an ISO date such as `2023-03-01`. |
+| `✖ --start 'not-a-date' isn't a date. Use YYYY-MM-DD, for example 2024-01-31.` (or the same line for `--end`) | `--start` or `--end` is not `YYYY-MM-DD`. | Use an ISO date such as `2024-01-31`. |
+| `✖ No input was given. Pass --file, or answer the prompts in a terminal.` | `fbull backtest create` was run without `--file` and without answers. This includes CI and a closed terminal. | Pass `--file`, or run the command in a terminal and answer the prompts. |
+| `✖ Creating the backtest ended before it finished. Nothing was changed. Run the same create again.` | The create stream ended before the backtest record was stored. | Run the same create again. |
+| ``✖ Creating the backtest ended before it finished. The backtest was partly saved. Delete it with `fbull backtest delete my-demo`, then run the same create again.`` | The create stream ended after the backtest record was saved. That record is left in place. | Delete it with the command in the message, then run the same create again. |
+| ``✖ Creating the experiment ended before it finished. Run `fbull strategy experiments mean-rev` to see whether it was saved.`` | The experiment stream ended before it returned an experiment. | Run the command in the message. It shows whether the experiment was saved. |
+| `✖ The portfolio is missing. This is a problem in foreverbull, not in your algo. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.` | `fbull trading run` got a portfolio response with no portfolio. An empty book is not this error. | Report the message. There is nothing to change in the strategy. |
+| ``✖ The trading session ended before trading started. Run `fbull trading run` again. If it repeats, check the broker log.`` | The trading session closed before a port arrived. | Run `fbull trading run` again. If it repeats, check the broker log below. |
 | `FileNotFoundError: … No such file or directory` | The strategy path is wrong, relative to the current directory. | Run from the directory in [Conventions](#conventions), or pass an absolute path. |
 | `ConfigurationError: No algorithm found in …` | The file has no module-level `Algorithm(...)`. | Add `algo = Algorithm(functions=[Function(callable=handle_data)])` at the bottom. |
 | `TypeError: Function handle_data must have a parameter of type Asset or Assets` | No argument is annotated `Asset` or `Assets`. | Annotate one, as in step 3. |

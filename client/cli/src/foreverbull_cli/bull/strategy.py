@@ -13,8 +13,6 @@ from foreverbull import broker
 from foreverbull.models.finance import present_market_data_failure
 from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
 from foreverbull_cli.bull.backtest import _fail
-from foreverbull_cli.bull.backtest import _last_reported_step
-from foreverbull_cli.bull.backtest import _stream_ended
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -67,9 +65,9 @@ def _parse_parameters(raw: str | None) -> dict | None:
     try:
         loaded = json.loads(raw)
     except json.JSONDecodeError:
-        _fail(f"Invalid parameters JSON: {raw}.")
+        _fail(f"--parameters {raw!r} isn't valid JSON. Pass a JSON object, for example '{{\"long_window\": 50}}'.")
     if not isinstance(loaded, dict):
-        _fail("Parameters must be a JSON object.")
+        _fail("Parameters must be a JSON object, for example '{\"long_window\": 50}', not a list or a number.")
     return loaded
 
 
@@ -242,7 +240,6 @@ def experiment(
     rev: Annotated[int | None, typer.Option("--rev", help="strategy version revision")] = None,
     version: Annotated[str | None, typer.Option("--version", help="strategy version id")] = None,
 ):
-    last_step: str | None = None
     created: strategy_pb.Experiment | None = None
     failed: str | None = None
     with LiveProgress() as progress:
@@ -254,9 +251,6 @@ def experiment(
                 version_rev=rev,
             ):
                 progress.update_from_message(rsp)
-                reported = _last_reported_step(rsp)
-                if reported is not None:
-                    last_step = reported
                 if rsp.has_field("experiment"):
                     created = rsp.experiment
         except grpc.RpcError as exc:
@@ -277,7 +271,10 @@ def experiment(
         )
         raise typer.Exit(code=1)
     if created is None:
-        _fail(_stream_ended("experiment", last_step))
+        _fail(
+            "Creating the experiment ended before it finished. "
+            f"Run `fbull strategy experiments {name}` to see whether it was saved."
+        )
     _print_experiments([created], title="Experiment")
 
 
@@ -336,7 +333,7 @@ def deploy(
     Live mode is not supported.
     """
     if mode == DeployMode.LIVE:
-        _fail("Live mode is not enabled; deploy with --mode paper.")
+        _fail("Live mode isn't supported. Deploy with --mode paper.")
     if not dry_run and not yes:
         _fail("Paper PlaceOrder requires --yes or --confirm.")
     profile = backend.strip() if backend else ""
