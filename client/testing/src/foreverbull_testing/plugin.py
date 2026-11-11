@@ -204,7 +204,8 @@ class _UnsetAlgorithm:
     """Stand-in until Backtest.run_execution installs the algorithm."""
 
 
-def _broker_skip_reason(exc: Exception) -> str:
+def _failure_cause(exc: Exception) -> str:
+    # gRPC puts the broker sentence on details(). str() is the status dump.
     details = getattr(exc, "details", None)
     message = details() if callable(details) else None
     if not message:
@@ -238,7 +239,11 @@ def _started_session(name: str):
 
 
 def _backtest(request):
-    """Open the optional broker backtest described by request's --backtest option."""
+    """Open the broker backtest named by --backtest.
+
+    Skips only when the option is omitted. A broker error, a missing
+    backtest, or a session that does not start fails and names the cause.
+    """
     name = request.config.getoption("--backtest")
     if not name:
         pytest.skip("pass --backtest <name> to run live backtest tests against a broker")
@@ -246,18 +251,18 @@ def _backtest(request):
     try:
         entity = broker.backtest.get(name)
     except Exception as exc:  # noqa: BLE001
-        pytest.skip(_broker_skip_reason(exc))
+        pytest.fail(_failure_cause(exc))
 
     if entity is None or not entity.name:
-        pytest.skip(f"backtest {name!r} was not found")
+        pytest.fail(f"backtest {name!r} was not found")
 
     try:
         started = _started_session(name)
     except Exception as exc:  # noqa: BLE001
-        pytest.skip(_broker_skip_reason(exc))
+        pytest.fail(_failure_cause(exc))
 
     if started is None or started.session is None:
-        pytest.skip(f"backtest {name!r} session did not start")
+        pytest.fail(f"backtest {name!r} session did not start")
 
     # Foreverbull requires a model. The test algorithm replaces it inside run_execution.
     with Foreverbull(cast(Algorithm, _UnsetAlgorithm())).backtest_session(
@@ -270,10 +275,11 @@ def _backtest(request):
 
 @pytest.fixture
 def backtest(request):
-    """Optional broker backtest. Skips unless --backtest <name> is passed.
+    """Optional broker backtest. Skips only when --backtest is omitted.
 
-    Looks the name up with foreverbull.broker.backtest.get. An unreachable
-    broker or a missing name skips with that reason and does not error. A found
+    Looks the name up with foreverbull.broker.backtest.get. When a name is
+    given, a broker error, a missing backtest, a session that fails to start,
+    or a session that never starts fails the test and names the cause. A found
     backtest is yielded as models.Backtest, connected with
     broker.backtest.create_session and Foreverbull.backtest_session.
     Backtest.run_execution is the only runner. Does not call trading_session
