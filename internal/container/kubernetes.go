@@ -18,13 +18,14 @@ import (
 )
 
 const (
-	defaultNamespace = "foreverbull"
-	saNamespaceFile  = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
-
 	// OHLCProviderEnv is the backtest price source for a worker pod.
 	// Unset means yahoo. An empty value is not written.
 	OHLCProviderEnv = "OHLC_PROVIDER"
 )
+
+// saNamespaceFile is the ServiceAccount volume's namespace file.
+// Tests point it at a fixture; the process reads the in-cluster path.
+var saNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 
 type ohlcProviderContextKey struct{}
 
@@ -61,6 +62,8 @@ type container struct {
 // NewEngine builds a Kubernetes engine. In-cluster it uses rest.InClusterConfig
 // and the ServiceAccount namespace. Out-of-cluster it loads kubeconfig from
 // KUBECONFIG or the default cluster config path (~/.kube/config).
+// POD_NAMESPACE or KUBERNETES_NAMESPACE selects the namespace when set.
+// A missing namespace or a missing in-cluster serviceaccount volume stops NewEngine.
 func NewEngine() (Engine, error) {
 	cfg, ns, err := restConfig()
 	if err != nil {
@@ -72,21 +75,32 @@ func NewEngine() (Engine, error) {
 		return nil, fmt.Errorf("error creating kubernetes client: %w", err)
 	}
 
-	return NewEngineWithClient(client, ns), nil
+	return NewEngineWithClient(client, ns)
 }
 
 // NewEngineWithClient is used by tests (fake clientset) and by NewEngine.
-func NewEngineWithClient(client kubernetes.Interface, namespace string) Engine {
+// An empty namespace is an error.
+func NewEngineWithClient(client kubernetes.Interface, namespace string) (Engine, error) {
+	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
-		namespace = defaultNamespace
+		return nil, fmt.Errorf("kubernetes namespace is missing")
 	}
 
-	return &engine{client: client, namespace: namespace}
+	return &engine{client: client, namespace: namespace}, nil
 }
 
 func restConfig() (*rest.Config, string, error) {
+	cfg, err := loadRESTConfig()
+	if err != nil {
+		return nil, "", err
+	}
+
 	if ns, ok := explicitNamespace(); ok {
-		cfg, err := loadRESTConfig()
+		return cfg, ns, nil
+	}
+
+	if inClusterEnv() {
+		ns, err := inClusterNamespace()
 		if err != nil {
 			return nil, "", err
 		}
@@ -94,28 +108,17 @@ func restConfig() (*rest.Config, string, error) {
 		return cfg, ns, nil
 	}
 
-	if cfg, err := rest.InClusterConfig(); err == nil {
-		return cfg, inClusterNamespace(), nil
-	}
-
-	loader := kubeconfigLoader()
-
-	cfg, err := loader.ClientConfig()
+	ns, err := kubeconfigNamespace(kubeconfigLoader())
 	if err != nil {
-		return nil, "", fmt.Errorf("error loading kubernetes config: %w", err)
-	}
-
-	ns, _, err := loader.Namespace()
-	if err != nil || ns == "" {
-		ns = defaultNamespace
+		return nil, "", err
 	}
 
 	return cfg, ns, nil
 }
 
 func loadRESTConfig() (*rest.Config, error) {
-	if cfg, err := rest.InClusterConfig(); err == nil {
-		return cfg, nil
+	if inClusterEnv() {
+		return inClusterRESTConfig()
 	}
 
 	cfg, err := kubeconfigLoader().ClientConfig()
@@ -124,6 +127,31 @@ func loadRESTConfig() (*rest.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// inClusterEnv matches rest.InClusterConfig: both service env vars must be set.
+func inClusterEnv() bool {
+	return os.Getenv("KUBERNETES_SERVICE_HOST") != "" && os.Getenv("KUBERNETES_SERVICE_PORT") != ""
+}
+
+// loadInClusterConfig reads the in-cluster REST config. Tests replace it.
+// Production calls rest.InClusterConfig, which reads the serviceaccount token.
+var loadInClusterConfig = rest.InClusterConfig
+
+// inClusterRESTConfig refuses to continue when the serviceaccount volume is
+// not mounted. rest.InClusterConfig's error is the missing token file, and a
+// kubeconfig on the side is not a substitute.
+func inClusterRESTConfig() (*rest.Config, error) {
+	cfg, err := loadInClusterConfig()
+	if err == nil {
+		return cfg, nil
+	}
+
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("kubernetes serviceaccount volume is missing: %w", err)
+	}
+
+	return nil, fmt.Errorf("in-cluster kubernetes config: %w", err)
 }
 
 func kubeconfigLoader() clientcmd.ClientConfig {
@@ -143,17 +171,42 @@ func explicitNamespace() (string, bool) {
 	return "", false
 }
 
-func inClusterNamespace() string {
+func kubeconfigNamespace(loader clientcmd.ClientConfig) (string, error) {
+	// Namespace reports "default" when the context namespace is empty.
+	// The raw context field is the configured namespace.
+	if _, _, err := loader.Namespace(); err != nil {
+		return "", fmt.Errorf("kubernetes namespace: %w", err)
+	}
+
+	raw, err := loader.RawConfig()
+	if err != nil {
+		return "", fmt.Errorf("kubernetes namespace: %w", err)
+	}
+
+	ctx := raw.Contexts[raw.CurrentContext]
+	if ctx == nil || strings.TrimSpace(ctx.Namespace) == "" {
+		return "", fmt.Errorf("kubernetes namespace is missing: kubeconfig context %q has no namespace", raw.CurrentContext)
+	}
+
+	return strings.TrimSpace(ctx.Namespace), nil
+}
+
+func inClusterNamespace() (string, error) {
 	data, err := os.ReadFile(saNamespaceFile)
 	if err != nil {
-		return defaultNamespace
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("kubernetes namespace is missing: %w", err)
+		}
+
+		return "", fmt.Errorf("kubernetes namespace: %w", err)
 	}
 
-	if ns := strings.TrimSpace(string(data)); ns != "" {
-		return ns
+	ns := strings.TrimSpace(string(data))
+	if ns == "" {
+		return "", fmt.Errorf("kubernetes namespace is missing: %s is empty", saNamespaceFile)
 	}
 
-	return defaultNamespace
+	return ns, nil
 }
 
 func workerLabels(name string) map[string]string {
