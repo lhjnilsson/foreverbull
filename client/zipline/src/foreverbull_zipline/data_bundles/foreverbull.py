@@ -225,17 +225,39 @@ def final_drop(drops: list[date | None]) -> date | None:
     return max(cast(list[date], drops))
 
 
-def _as_date(value) -> date | None:
-    if value is None:
-        return None
+def _missing_date(value) -> bool:
+    """True for SQL NULL and NaT. A bad string is not missing."""
+    if value is None or value is pd.NaT:
+        return True
+    if isinstance(value, str):
+        return False
     if isinstance(value, float) and isnan(value):
+        return True
+    try:
+        missing = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(missing, (bool, np.bool_)) and bool(missing)
+
+
+def _as_date(value) -> date | None:
+    """A date, or None for SQL NULL and NaT.
+
+    None is an open alias or a member that has not been dropped. An
+    unparseable value is not that: it raises and names the value, so a bad
+    drop date cannot keep the name in the universe.
+    """
+    if _missing_date(value):
         return None
     if type(value) is date:
         return value
-    ts = pd.to_datetime(value, errors="coerce")
-    if not isinstance(ts, pd.Timestamp) or ts is pd.NaT:
-        return None
-    return date(int(ts.year), int(ts.month), int(ts.day))
+    try:
+        parsed = pd.to_datetime(value, errors="coerce")
+    except (ValueError, OverflowError) as exc:
+        raise ValueError(f"unparseable date {value!r}") from exc
+    if not isinstance(parsed, pd.Timestamp) or pd.isna(parsed):
+        raise ValueError(f"unparseable date {value!r}")
+    return date(int(parsed.year), int(parsed.month), int(parsed.day))
 
 
 def alias_windows(aliases: tuple[AliasSpec, ...], from_date: date, to_date: date) -> list[tuple[AliasSpec, date, date]]:

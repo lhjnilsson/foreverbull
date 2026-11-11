@@ -8,6 +8,7 @@ import pytest
 from foreverbull_zipline.data_bundles.dividends import no_dividends
 from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
+from foreverbull_zipline.data_bundles.foreverbull import _as_date
 from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
 from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_date
@@ -188,6 +189,34 @@ def test_group_symbols_by_instrument_follows_the_final_membership_interval():
     assert group([None, date(2023, 1, 31)]) is None
     assert group([date(2023, 1, 31), date(2023, 3, 15)]) == date(2023, 3, 15)
     assert group([date(2023, 3, 15), date(2023, 1, 31)]) == date(2023, 3, 15)
+
+
+def test_as_date_keeps_null_and_rejects_an_unparseable_value():
+    assert _as_date(None) is None
+    assert _as_date(float("nan")) is None
+    assert _as_date(pd.NaT) is None
+    assert _as_date(pd.NA) is None
+    assert _as_date(date(2024, 3, 14)) == date(2024, 3, 14)
+    assert _as_date("2024-03-14") == date(2024, 3, 14)
+    assert _as_date(pd.Timestamp("2024-03-14")) == date(2024, 3, 14)
+    with pytest.raises(ValueError, match="not-a-date"):
+        _as_date("not-a-date")
+    with pytest.raises(ValueError, match="''"):
+        _as_date("")
+
+
+def test_an_unparseable_member_to_is_not_an_open_membership():
+    aliases = pd.DataFrame(
+        {
+            "isin": [AAPL_ISIN],
+            "symbol": ["AAPL"],
+            "from_date": [date(2022, 12, 31)],
+            "to_date": [None],
+            "member_to": ["not-a-date"],
+        }
+    )
+    with pytest.raises(ValueError, match="not-a-date"):
+        group_symbols_by_instrument(["AAPL"], aliases)
 
 
 def test_sql_ingester_one_sid_for_ticker_change_and_autoclose_on_drop():
