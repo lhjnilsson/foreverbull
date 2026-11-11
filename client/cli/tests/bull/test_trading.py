@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 from foreverbull.foreverbull import TradingSession
 from foreverbull.models.finance import WORKER_MARKET_DATA_DENIED
 from foreverbull.models.finance import market_data_denied_line
+from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 from foreverbull.pb.foreverbull.finance.service.v1 import trading_pb as trading_service_pb
 from foreverbull.pb.foreverbull.finance.v1 import marketdata_pb
@@ -212,6 +213,80 @@ def test_trading_run_dry_overrides_yes(runner):
         assert "Dry Run" in result.stdout
         create_session.assert_not_called()
         get_portfolio.assert_not_called()
+
+
+def test_trading_run_missing_portfolio_fails(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with _mock_live_trading() as mocks:
+        mocks["get_portfolio"].return_value = trading_service_pb.GetPortfolioResponse()
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert "✖ The portfolio is missing." in result.stdout
+    assert "Traceback" not in result.stdout
+    mocks["create_session"].assert_not_called()
+    mocks["place_orders"].assert_not_called()
+
+
+def test_trading_run_empty_book_is_not_a_missing_portfolio(runner):
+    with _mock_live_trading() as mocks:
+        mocks["get_portfolio"].return_value = trading_service_pb.GetPortfolioResponse(
+            portfolio=marketdata_pb.Portfolio()
+        )
+        result = runner(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 0
+    mocks["place_orders"].assert_called_once()
+    mocks["create_session"].assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "frames",
+    [
+        [],
+        [trading_service_pb.CreateSessionResponse(session=trading_pb.Session(id="sess-1"))],
+        [
+            trading_service_pb.CreateSessionResponse(
+                CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+                STARTING=common_pb.Step(state=common_pb.State.COMPLETED),
+            )
+        ],
+    ],
+    ids=["empty", "session-without-port", "steps-without-port"],
+)
+def test_trading_run_fails_when_no_port_arrives(monkeypatch, frames):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with _mock_live_trading() as mocks:
+        mocks["create_session"].return_value = iter(frames)
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert "✖ The trading session ended before trading started." in result.stdout
+    assert "Traceback" not in result.stdout
+    mocks["session"].run_trading.assert_not_called()
+    mocks["place_orders"].assert_not_called()
+
+
+def test_trading_run_uses_the_session_failure_when_no_port_arrives(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with _mock_live_trading() as mocks:
+        mocks["create_session"].return_value = iter(
+            [
+                trading_service_pb.CreateSessionResponse(
+                    CREATING=common_pb.Step(state=common_pb.State.RUNNING),
+                ),
+                trading_service_pb.CreateSessionResponse(
+                    CREATING=common_pb.Step(state=common_pb.State.COMPLETED),
+                    STARTING=common_pb.Step(state=common_pb.State.FAILED, message="the worker did not start"),
+                ),
+            ]
+        )
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert "✖ the worker did not start" in result.stdout
+    assert "ended before trading started" not in result.stdout
+    mocks["session"].run_trading.assert_not_called()
 
 
 def test_trading_run_requires_confirmation(runner):

@@ -12,6 +12,7 @@ import grpc
 import typer
 import yaml
 
+from protobuf import DescFieldValueMessage
 from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
@@ -101,6 +102,32 @@ def _fail(message: str) -> NoReturn:
     raise typer.Exit(code=1)
 
 
+def _last_reported_step(message) -> str | None:
+    """The furthest step on this frame, in protobuf field order.
+
+    UNSPECIFIED is the zero value and is not a step the broker reported.
+    """
+    step_type = common_pb.Step.desc().type_name
+    last: str | None = None
+    for field in message.desc().fields:
+        value = field.value
+        if not isinstance(value, DescFieldValueMessage) or value.message.type_name != step_type:
+            continue
+        if field not in message:
+            continue
+        step = message[field]
+        if step.state == common_pb.State.UNSPECIFIED:
+            continue
+        last = " ".join(part.capitalize() for part in field.name.split("_"))
+    return last
+
+
+def _stream_ended(kind: str, last_step: str | None) -> str:
+    if last_step is None:
+        return f"Creating the {kind} ended before a step started."
+    return f"Creating the {kind} ended at {last_step}."
+
+
 def _rpc_details(exc: grpc.RpcError) -> str:
     details = getattr(exc, "details", None)
     text = str(details()) if callable(details) else str(exc)
@@ -160,21 +187,19 @@ def _shown_provider(entity: backtest_pb.Backtest) -> str:
     return provider or _DEFAULT_PROVIDER
 
 
-def _read_line(prompt: Prompt, default: str | None = None) -> str | None:
+def _read_line(prompt: Prompt, default: str | None = None) -> str:
     shown = default if default is not None else ...
     try:
         line = Prompt.get_input(console, prompt.make_prompt(shown), password=False)
     except EOFError:
-        return None
+        _fail("Cancelled: no input.")
     return line.strip()
 
 
-def _ask_name() -> str | None:
+def _ask_name() -> str:
     prompt = Prompt("What name do you want to give the backtest?", console=console)
     while True:
         name = _read_line(prompt)
-        if name is None:
-            return None
         if name:
             return name
         console.print("Enter a name for the backtest.")
@@ -189,12 +214,10 @@ def _parse_iso_date(raw: str) -> date | None:
         return None
 
 
-def _ask_date(prompt_text: str) -> date | None:
+def _ask_date(prompt_text: str) -> date:
     prompt = Prompt(prompt_text, console=console)
     while True:
         raw = _read_line(prompt)
-        if raw is None:
-            return None
         parsed = _parse_iso_date(raw)
         if parsed is not None:
             return parsed
@@ -214,8 +237,6 @@ def _ask_etf() -> str | None:
     )
     while True:
         raw = _read_line(prompt, default)
-        if raw is None:
-            return None
         if raw == "":
             raw = default
         if raw not in names:
@@ -233,8 +254,6 @@ def _ask_backtest_dates(etf: str) -> tuple[date, date] | None:
     today = date.today()
     while True:
         start = _ask_date("What is the start date of the backtest? (YYYY-MM-DD)")
-        if start is None:
-            return None
         if start < inception:
             console.print(f"{etf} started on {inception.isoformat()}. Choose a start date on or after that day.")
             continue
@@ -243,8 +262,6 @@ def _ask_backtest_dates(etf: str) -> tuple[date, date] | None:
             continue
         while True:
             end = _ask_date("What is the end date of the backtest? (YYYY-MM-DD)")
-            if end is None:
-                return None
             if end < start:
                 console.print(f"End date {end.isoformat()} is before start date {start.isoformat()}.")
                 continue
@@ -534,12 +551,12 @@ def create(
         )
     else:
         name = _ask_name()
-        if name is None:
-            return
         base_etf = _ask_etf()
+        # None is an empty ETF catalog. EOF at a prompt already exited.
         if base_etf is None:
             return
         dates = _ask_backtest_dates(base_etf)
+        # None is an unknown fund. EOF at a prompt already exited.
         if dates is None:
             return
         start, end = dates
@@ -556,6 +573,7 @@ def create(
 
     console.print(f"Using provider: {chosen} ({source})", markup=False)
 
+    last_step: str | None = None
     created: backtest_pb.Backtest | None = None
     stored = False
     ingested = False
@@ -564,6 +582,9 @@ def create(
         try:
             for backtest_rsp in broker.backtest.create(entity=entity):
                 progress.update_from_message(backtest_rsp)
+                reported = _last_reported_step(backtest_rsp)
+                if reported is not None:
+                    last_step = reported
                 creating = backtest_rsp.CREATING
                 if creating is not None and creating.state == common_pb.State.COMPLETED:
                     stored = True
@@ -580,13 +601,15 @@ def create(
             if stored and not ingested and created is None and name != "":
                 failure = _discard_partial_backtest(name, failure)
         failure = failure or progress.failure
-        if failure is not None:
-            # The failed step's message is the whole error, so the progress
-            # rows are cleared rather than left beside it.
+        if failure is not None or created is None:
+            # The ✖ line is the whole error, so the progress rows are cleared
+            # rather than left beside it.
             progress.transient = True
 
     if failure is not None:
         _fail(failure)
+    if created is None:
+        _fail(_stream_ended("backtest", last_step))
 
     notices = progress.notices
     if (notices or created is not None) and not console.is_terminal:
@@ -595,9 +618,6 @@ def create(
         console.line()
     for line in notices:
         console.print(f"⚠ {line}", markup=False, highlight=False, soft_wrap=True)
-
-    if created is None:
-        return
 
     # A plain line, not a ⚠ notice: the backtest is complete, and the line
     # says which symbols it reads under a later ticker.
@@ -673,7 +693,7 @@ def _parse_run_dates(
     entity: backtest_pb.Backtest,
     start: str | None,
     end: str | None,
-) -> tuple[common_pb.Date, common_pb.Date] | None:
+) -> tuple[common_pb.Date, common_pb.Date]:
     if not entity.periods:
         # Same wording as the broker's refusal, so both paths read the same.
         _fail(
@@ -684,21 +704,18 @@ def _parse_run_dates(
     start_date = entity.periods[0].start_date
     end_date = entity.periods[-1].end_date
     if start_date is None or end_date is None:
-        console.print(f"[red]Backtest {entity.name} is missing a period date")
-        return None
+        _fail(f"Backtest '{entity.name}' is missing a period date.")
     if start:
         try:
             start_date = from_pydate_to_proto_date(date.fromisoformat(start))
         except ValueError:
-            console.print(f"[red]Invalid start date: [yellow]{start}")
-            return None
+            _fail(f"Invalid start date: {start}.")
 
     if end:
         try:
             end_date = from_pydate_to_proto_date(date.fromisoformat(end))
         except ValueError:
-            console.print(f"[red]Invalid end date: [yellow]{end}")
-            return None
+            _fail(f"Invalid end date: {end}.")
 
     _check_run_dates_in_range(entity, start_date, end_date, start=bool(start), end=bool(end))
     return start_date, end_date
@@ -777,10 +794,7 @@ def run(
     dry: Annotated[bool, typer.Option("--dry", help="print the execution plan without running")] = False,
 ):
     entity = get_backtest_or_fail(name)
-    dates = _parse_run_dates(entity, start, end)
-    if dates is None:
-        return
-    start_date, end_date = dates
+    start_date, end_date = _parse_run_dates(entity, start, end)
     start_iso = format_proto_date(start_date)
     end_iso = format_proto_date(end_date)
 

@@ -290,8 +290,10 @@ def print_run_summary(
     verbose: bool = False,
 ) -> None:
     if not periods:
-        console.print("[green]✔[/green] Backtest finished, but no results were stored for this execution.")
-        console.print()
+        # Imported here: backtest imports this module while it is still loading.
+        from foreverbull_cli.bull.backtest import _fail
+
+        _fail("Backtest finished, but no results were stored for this execution.")
     else:
         console.print(
             f"[green]✔[/green] Backtest finished: {escape(backtest_name)} · {start_iso} → {end_iso} · provider: {provider}"

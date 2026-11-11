@@ -200,9 +200,10 @@ def test_strategy_version_add_parameters(runner):
     )
 
 
-def test_strategy_version_add_invalid_parameters(runner):
+def test_strategy_version_add_invalid_parameters(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.strategy.create_version") as mock_create:
-        result = runner(
+        result = CliRunner().invoke(
             strategy,
             [
                 "version",
@@ -215,8 +216,22 @@ def test_strategy_version_add_invalid_parameters(runner):
             ],
         )
 
-    assert result.exit_code == 0
-    assert "Invalid parameters JSON" in result.stdout
+    assert result.exit_code == 1
+    assert result.output == "✖ Invalid parameters JSON: not-json.\n"
+    mock_create.assert_not_called()
+
+
+def test_strategy_version_add_parameters_must_be_an_object(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    with patch("foreverbull.broker.strategy.create_version") as mock_create:
+        result = CliRunner().invoke(
+            strategy,
+            ["version", "add", "mean-rev", "--image", "lhjnilsson/my-algo:local", "--parameters", "[]"],
+        )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.output == "✖ Parameters must be a JSON object.\n"
     mock_create.assert_not_called()
 
 
@@ -236,6 +251,38 @@ def test_strategy_experiment_backtest(runner):
     assert "exp-1" in result.stdout
     assert "COMPLETED" in result.stdout
     assert f"Link: {execution_link('exec-1')}" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("frames", "line"),
+    [
+        ([], "✖ Creating the experiment ended before a step started."),
+        (
+            [
+                strategy_service_pb.CreateExperimentResponse(
+                    QUEUED=common_pb.Step(state=common_pb.State.COMPLETED),
+                    RUNNING=common_pb.Step(state=common_pb.State.RUNNING),
+                )
+            ],
+            "✖ Creating the experiment ended at Running.",
+        ),
+    ],
+)
+def test_strategy_experiment_fails_when_the_stream_ends_early(monkeypatch, frames, line):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+
+    def stream(**_kwargs):
+        yield from frames
+
+    with patch("foreverbull.broker.strategy.create_experiment", side_effect=stream):
+        result = CliRunner().invoke(strategy, ["experiment", "mean-rev", "--backtest", "spy", "--rev", "1"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stdout.count("✖") == 1
+    assert line in result.stdout
+    assert "Experiment" not in result.stdout
+    assert "Traceback" not in result.stdout
 
 
 _NO_DATA = (
@@ -495,30 +542,34 @@ def test_strategy_deploy_dry_run(runner):
     assert "XNYS" in result.stdout
 
 
-def test_strategy_deploy_refuses_live(runner):
+def test_strategy_deploy_refuses_live(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
-        result = runner(strategy, ["deploy", "mean-rev", "--mode", "live", "--dry-run"])
+        result = CliRunner().invoke(strategy, ["deploy", "mean-rev", "--mode", "live", "--dry-run"])
 
-    assert result.exit_code == 0
-    assert "live mode is not enabled" in result.stdout
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.output == "✖ Live mode is not enabled; deploy with --mode paper.\n"
     mock_deploy.assert_not_called()
 
 
-def test_strategy_deploy_refuses_live_with_yes(runner):
+def test_strategy_deploy_refuses_live_with_yes(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
-        result = runner(strategy, ["deploy", "mean-rev", "--mode", "live", "--no-dry-run", "--yes"])
+        result = CliRunner().invoke(strategy, ["deploy", "mean-rev", "--mode", "live", "--no-dry-run", "--yes"])
 
-    assert result.exit_code == 0
-    assert "live mode is not enabled" in result.stdout
+    assert result.exit_code == 1
+    assert result.output == "✖ Live mode is not enabled; deploy with --mode paper.\n"
     mock_deploy.assert_not_called()
 
 
-def test_strategy_deploy_refuses_non_dry_run_without_yes(runner):
+def test_strategy_deploy_refuses_non_dry_run_without_yes(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
-        result = runner(strategy, ["deploy", "mean-rev", "--no-dry-run"])
+        result = CliRunner().invoke(strategy, ["deploy", "mean-rev", "--no-dry-run"])
 
-    assert result.exit_code == 0
-    assert "requires --yes" in result.stdout
+    assert result.exit_code == 1
+    assert result.output == "✖ Paper PlaceOrder requires --yes or --confirm.\n"
     mock_deploy.assert_not_called()
 
 
@@ -564,21 +615,23 @@ def test_strategy_deploy_paper_place_order_confirm(runner):
     )
 
 
-def test_strategy_deploy_no_dry_run_requires_backend(runner):
+def test_strategy_deploy_no_dry_run_requires_backend(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
-        result = runner(strategy, ["deploy", "mean-rev", "--no-dry-run", "--yes"])
+        result = CliRunner().invoke(strategy, ["deploy", "mean-rev", "--no-dry-run", "--yes"])
 
-    assert result.exit_code == 0
-    assert "--backend" in result.stdout
+    assert result.exit_code == 1
+    assert result.output == "✖ Paper PlaceOrder requires --backend <profile>.\n"
     mock_deploy.assert_not_called()
 
 
-def test_strategy_deploy_no_dry_run_rejects_blank_backend(runner):
+def test_strategy_deploy_no_dry_run_rejects_blank_backend(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
-        result = runner(strategy, ["deploy", "mean-rev", "--no-dry-run", "--backend", "  ", "--yes"])
+        result = CliRunner().invoke(strategy, ["deploy", "mean-rev", "--no-dry-run", "--backend", "  ", "--yes"])
 
-    assert result.exit_code == 0
-    assert "--backend" in result.stdout
+    assert result.exit_code == 1
+    assert result.output == "✖ Paper PlaceOrder requires --backend <profile>.\n"
     mock_deploy.assert_not_called()
 
 

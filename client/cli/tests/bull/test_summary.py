@@ -1,6 +1,7 @@
 from io import StringIO
 
 import pytest
+import typer
 
 from foreverbull_cli.bull.summary import active_day_count
 from foreverbull_cli.bull.summary import dividend_lines
@@ -152,6 +153,28 @@ def test_tradeless_periods_keep_zero_return_and_leave_ratios_unset():
     sharpe_line = next(line for line in rendered.splitlines() if "Sharpe" in line)
     assert "-" in sharpe_line
     assert "0.00" not in sharpe_line
+
+
+def test_run_summary_without_periods_exits(monkeypatch):
+    buf = StringIO()
+    monkeypatch.setattr(
+        "foreverbull_cli.bull.backtest.console",
+        Console(file=buf, width=200, force_terminal=False, color_system=None),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        print_run_summary(
+            backtest_name="flat",
+            benchmark="",
+            provider="yahoo",
+            start_iso="2024-01-02",
+            end_iso="2024-01-03",
+            execution_id="01234567-89ab-cdef-0123-456789abcdef",
+            execution=execution_pb.Execution(),
+            periods=[],
+        )
+    assert exc.value.exit_code == 1
+    assert buf.getvalue() == "✖ Backtest finished, but no results were stored for this execution.\n"
+    assert "Details:" not in buf.getvalue()
 
 
 def test_no_trades_line_is_singular_for_one_day_and_plural_otherwise():

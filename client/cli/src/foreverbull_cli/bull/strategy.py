@@ -12,6 +12,9 @@ from rich.table import Table
 from foreverbull import broker
 from foreverbull.models.finance import present_market_data_failure
 from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
+from foreverbull_cli.bull.backtest import _fail
+from foreverbull_cli.bull.backtest import _last_reported_step
+from foreverbull_cli.bull.backtest import _stream_ended
 from foreverbull_cli.output import LiveProgress
 from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
@@ -64,11 +67,9 @@ def _parse_parameters(raw: str | None) -> dict | None:
     try:
         loaded = json.loads(raw)
     except json.JSONDecodeError:
-        console.print(f"[red]Invalid parameters JSON: [yellow]{raw}")
-        return None
+        _fail(f"Invalid parameters JSON: {raw}.")
     if not isinstance(loaded, dict):
-        console.print("[red]parameters must be a JSON object")
-        return None
+        _fail("Parameters must be a JSON object.")
     return loaded
 
 
@@ -227,8 +228,6 @@ def add_version(
     parameters: Annotated[str | None, typer.Option(help="JSON object of function parameter overrides")] = None,
 ):
     parsed = _parse_parameters(parameters)
-    if parameters and parsed is None:
-        return
     entity = broker.strategy.create_version(name, image, parameters=parsed)
     _print_version(entity)
 
@@ -243,6 +242,7 @@ def experiment(
     rev: Annotated[int | None, typer.Option("--rev", help="strategy version revision")] = None,
     version: Annotated[str | None, typer.Option("--version", help="strategy version id")] = None,
 ):
+    last_step: str | None = None
     created: strategy_pb.Experiment | None = None
     failed: str | None = None
     with LiveProgress() as progress:
@@ -254,6 +254,9 @@ def experiment(
                 version_rev=rev,
             ):
                 progress.update_from_message(rsp)
+                reported = _last_reported_step(rsp)
+                if reported is not None:
+                    last_step = reported
                 if rsp.has_field("experiment"):
                     created = rsp.experiment
         except grpc.RpcError as exc:
@@ -261,6 +264,8 @@ def experiment(
             # details wrap it in a "run experiment:" prefix.
             details = getattr(exc, "details", None)
             failed = progress.failure or (str(details()) if callable(details) else str(exc))
+            progress.transient = True
+        if failed is None and created is None:
             progress.transient = True
 
     if failed is not None:
@@ -272,7 +277,7 @@ def experiment(
         )
         raise typer.Exit(code=1)
     if created is None:
-        return
+        _fail(_stream_ended("experiment", last_step))
     _print_experiments([created], title="Experiment")
 
 
@@ -331,15 +336,12 @@ def deploy(
     Live mode is not supported.
     """
     if mode == DeployMode.LIVE:
-        console.print("[red]live mode is not enabled; deploy with --mode paper")
-        return
+        _fail("Live mode is not enabled; deploy with --mode paper.")
     if not dry_run and not yes:
-        console.print("[red]paper PlaceOrder requires --yes or --confirm")
-        return
+        _fail("Paper PlaceOrder requires --yes or --confirm.")
     profile = backend.strip() if backend else ""
     if not dry_run and not profile:
-        console.print("[red]paper PlaceOrder requires --backend <profile>")
-        return
+        _fail("Paper PlaceOrder requires --backend <profile>.")
 
     entity = broker.strategy.deploy(
         strategy_name=name,
