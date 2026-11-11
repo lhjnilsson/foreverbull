@@ -1325,9 +1325,23 @@ _CLOSE_HELP = (
     "Close held positions at that session's close when a symbol leaves the universe. "
     "Default: on. Stored with the backtest and can't be changed on a later run."
 )
+_BAD_CLOSE_VALUE = (
+    "auto_close_on_universe_drop must be true or false. "
+    "Set it to one of those in the backtest file, or leave it out to keep the default (true)."
+)
 
 
-def test_backtest_create_help_states_the_close_on_drop_flags():
+def _plain_output(text: str) -> str:
+    """The sentence after Rich color and a narrow terminal have been undone."""
+    plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+    return " ".join(plain.replace("│", " ").split())
+
+
+def test_backtest_create_help_states_the_close_on_drop_flags(monkeypatch):
+    # A 40-column help table ellipsizes the sentence. Pin a wide console, and
+    # still strip color, so the exact sentence is what gets compared.
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("LINES", "40")
     group = typer.main.get_command(backtest)
     assert isinstance(group, click.Group)
     create = group.commands["create"]
@@ -1338,11 +1352,7 @@ def test_backtest_create_help_states_the_close_on_drop_flags():
     assert option.help == _CLOSE_HELP
     result = CliRunner().invoke(backtest, ["create", "--help"])
     assert result.exit_code == 0
-    # Colored help (forced on GitHub Actions) puts ANSI codes between wrapped
-    # lines, so a join of the raw output never contains the sentence.
-    plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", result.stdout)
-    shown = " ".join(plain.replace("│", " ").split())
-    assert _CLOSE_HELP in shown
+    assert _CLOSE_HELP in _plain_output(result.stdout)
 
 
 def test_backtest_create_from_file_sends_close_on_drop(runner):
@@ -1385,6 +1395,20 @@ def test_backtest_create_from_file_sends_close_on_drop(runner):
     Path(cfg_file.name).unlink(missing_ok=True)
     assert result.exit_code == 0, result.stdout
     assert mock_create.call_args.kwargs["entity"].backtest.auto_close_on_universe_drop is True
+
+
+def test_backtest_create_rejects_a_close_on_drop_value_that_is_not_a_boolean():
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(auto_close_on_universe_drop="sometimes"), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 1
+    mock_create.assert_not_called()
+    assert _plain_output(result.stdout) == f"✖ {_BAD_CLOSE_VALUE}"
 
 
 def test_backtest_get_shows_close_on_drop_for_a_universe(monkeypatch):
