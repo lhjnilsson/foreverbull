@@ -219,7 +219,7 @@ uv run fbull backtest get demo
 
 Creating the same name twice fails. `uv run fbull backtest delete demo` removes the backtest record. Stored bars stay in Postgres under the provider they were downloaded with.
 
-Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, and dates. `fbull backtest etfs` prints the funds that prompt can use (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before any download. That path builds point-in-time membership from iShares month-end holdings. A month-end with no holdings file keeps the latest published listing on or before that date, or the earliest published listing after it when nothing earlier exists. You do not have to pick a range that includes a published date; the create fails only when the whole range has no holdings file. See [pkg/backtest/universe.md](pkg/backtest/universe.md).
+Without `--file`, `fbull backtest create` prompts for a name, an iShares ETF, and dates. `fbull backtest etfs` prints the funds that prompt can use (name, benchmark, inception). The known fund is `iShares S&P 100` (benchmark `OEF`, inception 2000-10-23). An unknown name stops before any download. That path builds point-in-time membership from iShares month-end holdings. Create fails when the ETF has no holdings list on or before the start, when a month in the range has no holdings list, or when the whole range has no holdings list. The error names the missing dates, and the first published list when the start is too early. Nothing is taken from an earlier or later list. See [pkg/backtest/universe.md](pkg/backtest/universe.md).
 
 The next step generates a strategy file to run against this backtest.
 

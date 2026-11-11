@@ -487,8 +487,8 @@ func (e *ISharesETFLoopup) storeCached(etf string, asOf time.Time, body []byte) 
 
 // GetSnapshot returns Equity holdings (with ISIN) for etf as of asOf.
 // Empty aaData is unpublished and is not cached; the previous 6 calendar days are tried.
-// An HTML product page means that day has no holdings file. It is not cached and is not an error:
-// the caller fills that month from another published listing.
+// An HTML product page means that day has no holdings file. It is not cached and is not an error.
+// A sampled month that stays empty fails create; it is not filled from another list.
 func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, error) {
 	baseurl, err := e.productURL(etf)
 	if err != nil {
@@ -548,24 +548,19 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 	return []Asset{}, nil
 }
 
-// Listing is the equity holdings used for one as-of in a create window.
-// A gap month keeps a copy of another listing. FilledFrom is that as-of.
-// Leading is set when the copy comes from a later listing because nothing earlier was published.
+// Listing is the equity holdings published for one as-of in a create window.
+// An empty Assets slice means that as-of had no holdings file.
 type Listing struct {
-	AsOf       time.Time
-	Assets     []Asset
-	FilledFrom time.Time
-	Leading    bool
+	AsOf   time.Time
+	Assets []Asset
 }
 
 // LoadSnapshotWindow loads each sampled as-of in [start, end], plus the seed:
 // the latest listing published on or before start (§6.2 of universe.md). The
-// seed keeps its own as-of, which can be before start, and a gap in the window
-// is filled from it before any later listing, so no day reads ahead.
-// A month with no holdings file is filled from the latest published listing on
-// or before that date, or from the earliest listing after it when nothing
-// earlier was published. The error names the ETF and the window only when
-// nothing parsed.
+// seed keeps its own as-of, which can be before start. A month in the window
+// with no holdings file fails, and so does a start with nothing published on
+// or before it. Nothing is copied from another list. The error names the ETF
+// and the window only when nothing parsed.
 func LoadSnapshotWindow(scraper ETFScraper, etf string, start, end time.Time) ([]Listing, error) {
 	start = dateOnly(start)
 	end = dateOnly(end)
@@ -593,7 +588,7 @@ func LoadSnapshotWindow(scraper ETFScraper, etf string, start, end time.Time) ([
 		listings = append(listings, Listing{AsOf: asOf, Assets: assets})
 	}
 	sort.Slice(listings, func(i, j int) bool { return listings[i].AsOf.Before(listings[j].AsOf) })
-	if err := fillListings(etf, start, end, listings); err != nil {
+	if err := RejectUnpublishedListings(etf, start, end, listings); err != nil {
 		return nil, err
 	}
 	return listings, nil
@@ -632,66 +627,63 @@ func loadSeedListing(scraper ETFScraper, etf string, start time.Time) (Listing, 
 	return Listing{}, false, nil
 }
 
-func fillListings(etf string, start, end time.Time, listings []Listing) error {
-	published := make([]int, 0, len(listings))
+// RejectUnpublishedListings fails create when no holdings list was published
+// on or before start, or when a sampled as-of in the window has no file.
+// It does not copy holdings onto those dates. Nothing published in the whole
+// window uses ETFNoHoldingsInWindow. A gap before the first list after the
+// start is not named again: that list is already the new start.
+func RejectUnpublishedListings(etf string, start, end time.Time, listings []Listing) error {
+	start = dateOnly(start)
+	end = dateOnly(end)
+	published := 0
+	hasOnOrBefore := false
+	var firstAfter time.Time
+	missing := make([]time.Time, 0)
 	for i := range listings {
-		listings[i].AsOf = dateOnly(listings[i].AsOf)
+		asOf := dateOnly(listings[i].AsOf)
+		listings[i].AsOf = asOf
 		if len(listings[i].Assets) > 0 {
-			published = append(published, i)
-		}
-	}
-	if len(published) == 0 {
-		return fmt.Errorf("iShares has no holdings file for %s between %s and %s",
-			etf, dateOnly(start).Format("2006-01-02"), dateOnly(end).Format("2006-01-02"))
-	}
-	sort.Slice(published, func(i, j int) bool {
-		return listings[published[i]].AsOf.Before(listings[published[j]].AsOf)
-	})
-	for i := range listings {
-		if len(listings[i].Assets) > 0 {
+			published++
+			if !asOf.After(start) {
+				hasOnOrBefore = true
+				continue
+			}
+			if firstAfter.IsZero() || asOf.Before(firstAfter) {
+				firstAfter = asOf
+			}
 			continue
 		}
-		gap := listings[i].AsOf
-		src := latestPublishedOnOrBefore(listings, published, gap)
-		leading := false
-		if src < 0 {
-			src = earliestPublishedAfter(listings, published, gap)
-			leading = src >= 0
-		}
-		if src < 0 {
-			continue
-		}
-		listings[i].Assets = cloneAssets(listings[src].Assets)
-		listings[i].FilledFrom = listings[src].AsOf
-		listings[i].Leading = leading
-	}
-	return nil
-}
-
-func latestPublishedOnOrBefore(listings []Listing, published []int, gap time.Time) int {
-	src := -1
-	for _, j := range published {
-		if listings[j].AsOf.After(gap) {
-			break
-		}
-		src = j
-	}
-	return src
-}
-
-func earliestPublishedAfter(listings []Listing, published []int, gap time.Time) int {
-	for _, j := range published {
-		if listings[j].AsOf.After(gap) {
-			return j
+		if !asOf.Before(start) && !asOf.After(end) {
+			missing = append(missing, asOf)
 		}
 	}
-	return -1
+	if published == 0 || (!hasOnOrBefore && firstAfter.IsZero()) {
+		return errors.New(usercopy.ETFNoHoldingsInWindow(etf, start, end))
+	}
+	sentences := make([]string, 0, 2)
+	if !hasOnOrBefore {
+		sentences = append(sentences, usercopy.ETFNoHoldingsAtStart(etf, start, firstAfter))
+		missing = gapsOnOrAfter(missing, firstAfter)
+	}
+	if len(missing) > 0 {
+		sentences = append(sentences, usercopy.ETFHoldingsGap(etf, missing))
+	}
+	if len(sentences) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(sentences, " "))
 }
 
-func cloneAssets(in []Asset) []Asset {
-	out := make([]Asset, len(in))
-	copy(out, in)
-	return out
+// gapsOnOrAfter drops months a later start already leaves out. first is the
+// first published list after the backtest start.
+func gapsOnOrAfter(missing []time.Time, first time.Time) []time.Time {
+	kept := make([]time.Time, 0, len(missing))
+	for _, day := range missing {
+		if !day.Before(first) {
+			kept = append(kept, day)
+		}
+	}
+	return kept
 }
 
 // ListSnapshotDates returns last-calendar-day-of-month dates in [start, end],
