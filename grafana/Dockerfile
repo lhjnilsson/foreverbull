@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Plugin go.mod requires Go 1.27.3. The replace directive points at the repo
+# Plugin go.mod requires Go 1.27.4. The replace directive points at the repo
 # module two directories above the plugin, passed as the foreverbull build
 # context.
 #
@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.npm,id=fb-grafana-npm \
 COPY lhjnilsson-foreverbull-datasource/ ./
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine AS go-builder
 
 RUN apk add --no-cache git
 
