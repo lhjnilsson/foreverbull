@@ -3,6 +3,7 @@ package stream
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,4 +23,31 @@ func TestUnreachableStateRoundTrip(t *testing.T) {
 	other := errors.New("error getting session: no rows")
 	require.Equal(t, other, stateError(other))
 	require.EqualError(t, commandError(other.Error()), "error getting session: no rows")
+}
+
+// A failed request is logged and stored. Scheme, host and path stay. The
+// query and fragment do not, including a parameter that is not a crumb.
+func TestCommandReportDropsRequestQuery(t *testing.T) {
+	const raw = "https://www.ishares.com/us/products/239723/x.ajax?asOfDate=20200102&token=s3cr3tToken#frag"
+	cause := fmt.Errorf("error doing request: %w", &url.Error{
+		Op: "Get", URL: raw, Err: errors.New("dial tcp: connection refused"),
+	})
+
+	logged, stored := commandReport(cause)
+
+	require.Equal(t, logged, stored)
+	for _, err := range []error{logged, stored} {
+		require.Contains(t, err.Error(), "https://www.ishares.com/us/products/239723/x.ajax")
+		require.NotContains(t, err.Error(), "asOfDate")
+		require.NotContains(t, err.Error(), "token=")
+		require.NotContains(t, err.Error(), "s3cr3tToken")
+		require.NotContains(t, err.Error(), "frag")
+		require.NotContains(t, err.Error(), "?")
+	}
+
+	logged, stored = commandReport(Unreachable(cause))
+	require.NotContains(t, logged.Error(), "s3cr3tToken")
+	require.NotContains(t, logged.Error(), "asOfDate")
+	require.ErrorIs(t, stored, ErrServicesUnreachable)
+	require.NotContains(t, stored.Error(), "https://")
 }

@@ -102,6 +102,8 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETFFailsWhenMemberLookupF
 
 	test.Contains(buf.String(), "query2.finance.yahoo.com/v10/finance/quoteSummary/BBB")
 	test.Contains(buf.String(), "503 Service Unavailable")
+	test.NotContains(buf.String(), "modules=")
+	test.NotContains(buf.String(), "quoteType")
 	test.NotContains(buf.String(), "s3cr3tCrumb")
 }
 

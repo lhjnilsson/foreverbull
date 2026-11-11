@@ -630,7 +630,12 @@ def test_logout_does_not_follow_a_redirect(broker, home, monkeypatch, caplog):
     try:
         monkeypatch.setenv("FOREVERBULL_BROKER_URL", broker.url)
         _signed_in(home, broker.url)
-        broker.revoke_raw = (307, "text/plain", b"", {"Location": f"{other.url}/api/auth/cli/revoke"})
+        broker.revoke_raw = (
+            307,
+            "text/plain",
+            b"",
+            {"Location": f"{other.url}/api/auth/cli/revoke?token=s3cr3tToken#frag"},
+        )
         result = CliRunner().invoke(cli, ["logout"])
     finally:
         other.server.shutdown()
@@ -645,4 +650,7 @@ def test_logout_does_not_follow_a_redirect(broker, home, monkeypatch, caplog):
             "Set FOREVERBULL_BROKER_URL or remote.broker_url to the address foreverbull answers on."
         )
     ]
-    assert other.url in caplog.text
+    assert f"{other.url}/api/auth/cli/revoke" in caplog.text
+    assert "token=" not in caplog.text
+    assert "s3cr3tToken" not in caplog.text
+    assert "frag" not in caplog.text

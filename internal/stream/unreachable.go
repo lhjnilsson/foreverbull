@@ -3,6 +3,7 @@ package stream
 import (
 	"errors"
 
+	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/nats-io/nats.go"
 )
@@ -80,6 +81,19 @@ func stateError(err error) error {
 		return ErrStateNotRecorded
 	}
 	return err
+}
+
+// commandReport is what a failed command writes. logged is the server log.
+// stored is the task state, which the orchestration logs again. A request
+// URL in either keeps scheme, host and path: the query can carry a token.
+// A sentinel cause is stored as its plain sentence.
+func commandReport(err error) (logged, stored error) {
+	logged = redact.URLError(err)
+	stored = stateError(err)
+	if stored == err {
+		stored = logged
+	}
+	return logged, stored
 }
 
 // commandError is the error a publisher returns for an ERROR state's text.

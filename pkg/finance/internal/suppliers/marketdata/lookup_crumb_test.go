@@ -31,6 +31,7 @@ func TestLookupTransportDoesNotLogYahooCrumb(t *testing.T) {
 	require.NotContains(t, got.Error(), "s3cr3tCrumb")
 	require.Contains(t, buf.String(), "listing lookup request failed")
 	require.Contains(t, buf.String(), "query2.finance.yahoo.com/v1/finance/search")
+	require.NotContains(t, buf.String(), "q=")
 	require.NotContains(t, buf.String(), "crumb=")
 	require.NotContains(t, buf.String(), "s3cr3tCrumb")
 }

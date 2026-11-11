@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
 )
@@ -311,7 +312,9 @@ func (t *limitedTransport) endedRetry(req *http.Request, last *http.Response, er
 	if atTaskLimitDeadline(ctx, deadline) {
 		return nil, err
 	}
-	log.Warn().Err(err).Str("provider", t.provider).Int("status", last.StatusCode).
+	// A *url.Error names the request URL with its query, which can carry a
+	// page token. The log keeps scheme, host and path.
+	log.Warn().Err(redact.URLError(err)).Str("provider", t.provider).Int("status", last.StatusCode).
 		Msg("price provider's retry ran into the deadline, failing with its last status")
 	resp := *last
 	resp.Body = http.NoBody
