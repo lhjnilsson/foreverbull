@@ -281,7 +281,7 @@ def test_drop_readd_and_a_strategy_rebuy(tmp_path, monkeypatch, xyz_intervals):
         (pd.Timestamp(FIRST_DROP), -XYZ_SHARES, pytest.approx(24.75)),
         (pd.Timestamp("2023-03-01"), XYZ_SHARES, pytest.approx(29.75)),
     ]
-    assert _cash_change(result, sessions, pd.Timestamp(FIRST_DROP)) == pytest.approx(2475)
+    assert _cash_change(result, sessions, cast(pd.Timestamp, pd.Timestamp(FIRST_DROP))) == pytest.approx(2475)
     assert _held(result.loc[pd.Timestamp("2023-01-30")]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
     assert _held(result.loc[pd.Timestamp(FIRST_DROP)]) == {"AAPL": AAPL_SHARES}
     for day in sessions[(sessions > pd.Timestamp(FIRST_DROP)) & (sessions < pd.Timestamp("2023-03-01"))]:
@@ -308,7 +308,7 @@ def test_drop_readd_and_drop_again(tmp_path, monkeypatch, xyz_intervals):
         (pd.Timestamp("2023-03-01"), XYZ_SHARES, pytest.approx(29.75)),
         (pd.Timestamp(FINAL_DROP), -XYZ_SHARES, pytest.approx(32.25)),
     ]
-    assert _cash_change(result, sessions, pd.Timestamp(FINAL_DROP)) == pytest.approx(3225)
+    assert _cash_change(result, sessions, cast(pd.Timestamp, pd.Timestamp(FINAL_DROP))) == pytest.approx(3225)
     assert _held(result.loc[pd.Timestamp("2023-03-14")]) == {"AAPL": AAPL_SHARES, "XYZ": XYZ_SHARES}
     assert _held(result.loc[pd.Timestamp(FINAL_DROP)]) == {"AAPL": AAPL_SHARES}
     assert _held(result.iloc[-1]) == {"AAPL": AAPL_SHARES}
@@ -353,9 +353,9 @@ def test_costs_apply_to_the_drop_close_and_the_rebuy(tmp_path, monkeypatch, xyz_
     # FixedSlippage sells at close - spread/2 and buys at close + spread/2.
     # PerShare(0.01) costs 1.00 on 100 shares.
     assert _xyz_fills(result)[1] == (pd.Timestamp(FIRST_DROP), -XYZ_SHARES, pytest.approx(24.70))
-    assert _cash_change(result, sessions, pd.Timestamp(FIRST_DROP)) == pytest.approx(2469)
+    assert _cash_change(result, sessions, cast(pd.Timestamp, pd.Timestamp(FIRST_DROP))) == pytest.approx(2469)
     assert _xyz_fills(result)[2] == (pd.Timestamp("2023-03-01"), XYZ_SHARES, pytest.approx(29.80))
-    assert _cash_change(result, sessions, pd.Timestamp("2023-03-01")) == pytest.approx(-2981)
+    assert _cash_change(result, sessions, cast(pd.Timestamp, pd.Timestamp("2023-03-01"))) == pytest.approx(-2981)
 
 
 @pytest.mark.parametrize(
@@ -374,7 +374,7 @@ def test_a_strategy_flatten_on_the_drop_is_not_a_second_sell(tmp_path, monkeypat
 
 def test_option_off_can_flatten_a_held_non_member_and_cannot_add(tmp_path, monkeypatch):
     monkeypatch.setenv("ZIPLINE_ROOT", str(tmp_path))
-    intervals = [(date(2022, 12, 31), FIRST_DROP)]
+    intervals: list[tuple[date, date | None]] = [(date(2022, 12, 31), FIRST_DROP)]
     _, held = _ingest_and_run(intervals, auto_close=False, also_flatten=True)
     assert _held(held.loc[pd.Timestamp("2023-02-01")]) == {"AAPL": AAPL_SHARES}
     _, increased = _ingest_and_run(intervals, auto_close=False, also_increase=True)
