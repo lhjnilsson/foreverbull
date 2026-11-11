@@ -2,7 +2,7 @@
 
 One interface in front of Alpaca, Saxo, Interactive Brokers, and IG. A strategy emits a share delta for an instrument. The process that calls `supplier.Trading` resolves identity and talks to the broker. The strategy never imports a broker SDK and never branches on the provider name.
 
-This file is the contract. Implementation that contradicts it is wrong.
+📝 This file is the contract. Implementation that contradicts it is wrong.
 
 ## Who calls what
 
@@ -47,7 +47,7 @@ type Trading interface {
 
 Regenerate `pkg/finance/supplier/mock_Trading.go` with mockery (`task mock:generate`). Do not hand-edit that file. Update every other implementer and caller in the same change so `go test` compiles. Known callers include `pkg/strategy/internal/runner`, `pkg/strategy/internal/api`, and `pkg/finance/internal/api/session.go`.
 
-`session.PlaceOrders` returns the order from `PlaceOrder`, including status and broker id, not the unmodified request.
+`session.PlaceOrders` attempts every order in the request. Each success is the order `PlaceOrder` returned, including status and broker id, not the unmodified request. A failure is that request order with status `REJECTED` and `reject_reason` set to the cause. When any order fails, the call fails, and orders that already placed stay in the result. The gRPC status message names each placed order and each failed order with its cause. The status detail is that same `PlaceOrderResponse`, because a unary RPC does not deliver the reply when the call fails. A caller that only reads the status still sees both.
 
 A canceled context returns `ctx.Err()` and performs no HTTP.
 
@@ -102,9 +102,9 @@ Sentinel errors in `pkg/finance/supplier`, wrapped with `%w` so `errors.Is` work
 | `ErrCurrency` | Account currency is not `TRADING_CURRENCY`. | GetPortfolio fails. |
 | `ErrUnavailable` | Network failure, HTTP 401, or HTTP 5xx. | No retry. |
 
-`PlaceOrder` returns `(nil, err)` for the sentinel cases. A broker refusal still returns `ErrRejected`. Do not return a rejected order with a nil error.
+`PlaceOrder` returns `(nil, err)` for the sentinel cases. A broker refusal still returns `ErrRejected`. Do not return a rejected order with a nil error. `session.PlaceOrders` records each of those failures on its order and keeps the orders that placed on the same status.
 
-The strategy runner already stops the session on the first `PlaceOrder` error and does not retry. Keep that. `ErrNotTradable` and `ErrRejected` use that same path.
+The strategy runner already stops the session on the first `PlaceOrder` error and does not retry. Keep that. `ErrNotTradable` and `ErrRejected` use that same path. The runner returns the orders it already placed plus the order that failed, and the error is that `PlaceOrder` cause. It does not attempt the next order.
 
 ## Portfolio
 
@@ -112,7 +112,9 @@ The strategy runner already stops the session on the first `PlaceOrder` error an
 
 `TRADING_CURRENCY` defaults to `USD`. The adapter reads the account currency and returns `ErrCurrency` when it differs. It does not convert FX.
 
-`GetOrders` returns the broker's open orders mapped into the same `Order` shape, including `broker_order_id` and status. An empty slice is allowed only when the broker has no open orders. The current Alpaca client returns an empty slice without reading the response. That is a bug. Fix it.
+`GetOrders` returns the broker's open orders mapped into the same `Order` shape, including `broker_order_id` and status. An empty slice is allowed only when the broker has no open orders.
+
+Alpaca reads `GET /v2/orders` with `status=open`, `limit=500` (the documented maximum), and `direction=desc`. A full page is followed with `before_order_id` set to that page's last order id. The id is exclusive and is not combined with `after` or `until`. A short page or an empty page ends the read. Twenty full pages, a page longer than 500, a cursor that does not advance, or a repeated order id fails the call and returns no orders, so a stuck cursor cannot truncate the book. https://docs.alpaca.markets/us/reference/getallorders-1
 
 ## Adapter rules
 
@@ -122,7 +124,7 @@ Constructors take config, the listing book, and the HTTP client. They do not rea
 
 Signed `amount` becomes a side plus a positive quantity:
 
-- Alpaca: `side` `buy` or `sell`, `qty` absolute, `type` `market` or `limit`, `time_in_force` `day`, `limit_price` only for limit. Headers `APCA-API-KEY-ID` and `APCA-API-SECRET-KEY`. Do not send `position_intent`.
+- Alpaca: `side` `buy` or `sell`, `qty` absolute, `type` `market` or `limit`, `time_in_force` `day`, `limit_price` only for limit. Headers `APCA-API-KEY-ID` and `APCA-API-SECRET-KEY`. Do not send `position_intent`. `GetOrders` pages open orders as described under Portfolio.
 - Saxo: `BuySell` from the sign, `Amount` absolute, `Uic` and `AssetType` from the listing, `OrderType` `Market` or `Limit`. `Authorization: Bearer`. Simulation prefix is the default base URL.
 - IBKR Client Portal: `side` `BUY` or `SELL`, `quantity` absolute, `conid` from the listing, `orderType` `MKT` or `LMT`, `tif` `DAY`. If the gateway answers with a confirmation prompt, POST that reply once. A second prompt returns `ErrRejected`. Do not loop.
 - IG: deal size is `abs(amount) / ig_share_size`. It must be a positive integer. Otherwise `ErrUnsized` and no POST. Session login is one POST at construction. HTTP 401 later is `ErrUnavailable`, not another login loop.
@@ -168,7 +170,7 @@ Shared cases, one test function per case, run for every adapter:
 9. `GetPortfolio` maps cash, equity, and one position back to the sample ISIN and symbol.
 10. A position whose broker id is not in the listing returns `ErrUnmappedPosition`.
 11. Account currency other than `TRADING_CURRENCY` returns `ErrCurrency`.
-12. `GetOrders` maps one open order, including broker id. It does not return an empty slice when the fixture has an order.
+12. `GetOrders` maps one open order, including broker id. It does not return an empty slice when the fixture has an order. Alpaca also returns orders that span more than one page, and a failed later page returns no orders.
 
 IG also: a share delta that is not a whole number of `ig_share_size` returns `ErrUnsized` and does not POST.
 
