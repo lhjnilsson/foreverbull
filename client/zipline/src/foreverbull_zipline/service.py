@@ -30,6 +30,7 @@ from foreverbull.pb.foreverbull.finance.v1 import calendar_pb
 from foreverbull_zipline.data_bundles.bundle_alignment import stamp_bundle_version
 from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
+from foreverbull_zipline.data_bundles.foreverbull import missing_sessions_status
 from foreverbull_zipline.engine import ConfigError
 from foreverbull_zipline.engine import Engine
 from foreverbull_zipline.errors import PlainSentence
@@ -50,11 +51,18 @@ def ingest_failure(exc: Exception) -> tuple[grpc.StatusCode, str]:
     that the ingest was refused with a PlainSentence for the user. Anything
     else is INTERNAL. The text is redacted again here because a bundle writer or
     driver can quote a URL that did not pass through get_engine.
+
+    A MissingSessionsError's details line is the type name only. The reason
+    is already the capped list, and the log has every session, so the status
+    does not carry that list twice. The reason is sized so the whole status
+    text stays within the byte bound.
     """
     if isinstance(exc, PlainSentence):
         # The user's whole sentence, sent without details; the broker shows
         # it unchanged. Its cause, if any, was logged where it was raised.
         return grpc.StatusCode.ABORTED, redact_text(str(exc))
+    if isinstance(exc, MissingSessionsError):
+        return grpc.StatusCode.DATA_LOSS, redact_text(missing_sessions_status(str(exc)))
     cause = getattr(exc, "cause", None) or describe_exception(exc)
     match exc:
         case exceptions.DatabaseDriverError():
@@ -63,11 +71,6 @@ def ingest_failure(exc: Exception) -> tuple[grpc.StatusCode, str]:
         case exceptions.ConnectionError():
             reason = f"the data service {_lower_first(str(exc))}"
             code = grpc.StatusCode.UNAVAILABLE
-        case MissingSessionsError():
-            # DATA_LOSS only for this: the broker reads the reason and names
-            # the gaps in the create's missing-session sentence.
-            reason = str(exc)
-            code = grpc.StatusCode.DATA_LOSS
         case _:
             reason = "the data service failed while ingesting prices"
             code = grpc.StatusCode.INTERNAL
@@ -149,6 +152,8 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
         except Exception as exc:
             code, details = ingest_failure(exc)
             self.logger.error("Ingesting %s failed: %s", backtest.name, details)
+            if isinstance(exc, MissingSessionsError) and exc.full_text != str(exc):
+                self.logger.error("Ingesting %s missing sessions: %s", backtest.name, redact_text(exc.full_text))
             if context is None:
                 # Called in-process (tests, local tools) with no gRPC context: keep the real error.
                 raise

@@ -1,11 +1,16 @@
 package command
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -190,6 +195,71 @@ func TestMixedCoverageMessageJoinsTheSteps(t *testing.T) {
 		"Run `fbull backtest delete oef-2024q1` first. Wait a few minutes, then run `fbull backtest create` "+
 		"again, or try another provider with --provider. Or change the backtest dates, then run "+
 		"`fbull backtest create` again.")
+}
+
+// Twenty detail lines, then the leftover count. The lead counts the lookup
+// and the download too. The step still names every edge symbol. The log
+// keeps the lines the sentence left out.
+func TestMixedCoverageMessageCapsSymbolsAndLogsTheRest(t *testing.T) {
+	day := time.Date(2024, 2, 14, 0, 0, 0, 0, time.UTC)
+	start := time.Date(2024, 6, 3, 0, 0, 0, 0, time.UTC)
+	gaps := make([]symbolGaps, 22)
+	gaps[0] = symbolGaps{symbol: "ZZZ", noneBefore: start}
+	for i := 1; i < len(gaps); i++ {
+		gaps[i] = symbolGaps{symbol: fmt.Sprintf("S%02d", i), noneBefore: start}
+	}
+	misses := []lookupMiss{miss("LOOK", false, lookupErr(finance.LookupHTTP, "yahoo", http.StatusServiceUnavailable))}
+	downloads := []downloadMiss{barsFailed("DOWN", http.StatusForbidden)}
+
+	var buf bytes.Buffer
+	previous := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = previous })
+
+	message := mixedCoverageMessage("oef-2024q1", "yahoo", []time.Time{day, start}, gaps, misses, downloads, true)
+	require.Contains(t, message, "24 symbols are missing prices or couldn't be checked.")
+	require.Contains(t, message, "  ZZZ: no prices before 2024-06-03.\n")
+	require.Contains(t, message, "  S19: no prices before 2024-06-03.\n")
+	require.NotContains(t, message, "  S20:")
+	require.NotContains(t, message, "  LOOK:")
+	require.NotContains(t, message, "  DOWN:")
+	require.Contains(t, message, "  … and 4 more symbols\n")
+	require.Contains(t, message, "or remove ZZZ, S01, S02")
+	require.Contains(t, message, "and S21, then run `fbull backtest create` again.")
+	require.Contains(t, buf.String(), "LOOK")
+	require.Contains(t, buf.String(), "DOWN")
+	require.Contains(t, buf.String(), "S21")
+	require.Contains(t, buf.String(), "missing sessions omitted from the error")
+}
+
+// A mixed failure logs every range. The shown line still stops at 10.
+func TestMixedCoverageMessageLogsEveryRange(t *testing.T) {
+	base := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	days := make([]time.Time, 21)
+	for i := range days {
+		days[i] = base.AddDate(0, 0, i)
+	}
+	sessions := make([]int, 11)
+	for i := range sessions {
+		sessions[i] = i * 2
+	}
+	gaps := []symbolGaps{{symbol: "AAA", sessions: sessions}}
+	misses := []lookupMiss{miss("LOOK", false, lookupErr(finance.LookupHTTP, "yahoo", http.StatusServiceUnavailable))}
+
+	var buf bytes.Buffer
+	previous := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = previous })
+
+	message := mixedCoverageMessage("oef-2024q1", "yahoo", days, gaps, misses, nil, true)
+	kept := days[18].Format(time.DateOnly)
+	omitted := days[20].Format(time.DateOnly)
+	require.Contains(t, message, kept)
+	require.NotContains(t, message, omitted)
+	require.Contains(t, message, "… and 1 more range")
+	require.Contains(t, buf.String(), omitted)
+	require.Contains(t, buf.String(), kept)
+	require.NotContains(t, buf.String(), "more range")
 }
 
 func TestJoinStepsOffersAnotherProviderOnce(t *testing.T) {

@@ -200,26 +200,58 @@ const missingSessionsNextStep = "Try another provider with --provider, or change
 
 // missingSessionsMessage is the failed DOWNLOADING step's message. One symbol
 // with one cause fits one sentence. More get one line each under the lead,
-// in the order given, with every day shown. The CLI prints the message as
-// is. When a named day is not a session (a provider reported a holiday),
-// the days aren't called trading days. Part of the period with no prices at
-// all has its own copy (coverageMessage). When the backtest couldn't be
-// removed, it was partly saved, and the step says to delete it first.
+// in the order given. At most maxGapSymbols symbols are named, and at most
+// maxGapRanges date ranges on each; the sentence says how many were left
+// out. The CLI prints the message as is. When a named day is not a session
+// (a provider reported a holiday), the days aren't called trading days.
+// Part of the period with no prices at all has its own copy
+// (coverageMessage). When the backtest couldn't be removed, it was partly
+// saved, and the step says to delete it first.
 func missingSessionsMessage(name, provider string, days []time.Time, gaps []symbolGaps, removed bool) string {
-	for _, gap := range gaps {
-		if gap.uncovered() {
-			return coverageMessage(name, provider, days, gaps, removed)
+	return renderGapMessage(name, provider, days, gaps, removed, userGapStyle, nil, 0)
+}
+
+// presentMissingSessions is the sentence create returns. The user sees the
+// capped list. When this process still has every session, the uncapped
+// sentence is logged, with the same URL-password redaction as an ingest
+// cause. A reason Zipline already capped names its own leftovers; the full
+// list was logged there, and is not logged again from the short copy.
+func presentMissingSessions(name, provider string, days []time.Time, gaps []symbolGaps, removed bool,
+	parsed map[string]int, parsedSymbols int,
+) string {
+	user := renderGapMessage(name, provider, days, gaps, removed, userGapStyle, parsed, parsedSymbols)
+	if parsedSymbols == 0 && !parsedRangesAny(parsed) {
+		full := renderGapMessage(name, provider, days, gaps, removed, gapStyle{}, nil, 0)
+		if full != user {
+			log.Warn().Str("backtest", name).Str("missing", redactURLPasswords(full)).
+				Msg("missing sessions omitted from the error")
 		}
 	}
+	return user
+}
+
+func renderGapMessage(name, provider string, days []time.Time, gaps []symbolGaps, removed bool,
+	style gapStyle, parsed map[string]int, parsedSymbols int,
+) string {
+	for _, gap := range gaps {
+		if gap.uncovered() {
+			return coverageMessage(name, provider, days, gaps, removed, style, parsed, parsedSymbols)
+		}
+	}
+	shown, omittedRanges, omittedSymbols := clipGaps(gaps, style.symbols, style.ranges)
+	omittedRanges, omittedSymbols = applyParsed(shown, omittedRanges, omittedSymbols, parsed, parsedSymbols)
 	saved, next := savedAndNext(name, missingSessionsNextStep, removed)
 	trading := true
 	for _, gap := range gaps {
 		trading = trading && !gap.closed
 	}
-	if len(gaps) == 1 {
-		gap := gaps[0]
+	symbolCount := len(shown) + omittedSymbols
+	if len(shown) == 1 && omittedSymbols == 0 {
+		gap := shown[0]
 		named := sessionRanges(days, gap.sessions)
 		switch {
+		case omittedRanges[0] > 0:
+			named = fmt.Sprintf("more than %s: %s", dayCount(len(gap.sessions), trading), named)
 		case len(gap.sessions) > 1 && trading:
 			named = fmt.Sprintf("%d trading days: %s", len(gap.sessions), named)
 		case len(gap.sessions) > 1:
@@ -227,12 +259,17 @@ func missingSessionsMessage(name, provider string, days []time.Time, gaps []symb
 		case trading:
 			named += ", a trading day"
 		}
+		named = withMoreRanges(named, omittedRanges[0])
 		return fmt.Sprintf("Couldn't load data for backtest '%s': %s is missing prices for %s on %s. %s %s",
 			name, provider, gap.symbol, named, saved, next)
 	}
-	lines := []string{missingSessionsLead(name, provider, len(gaps), trading, saved)}
-	for _, gap := range gaps {
-		lines = append(lines, fmt.Sprintf("  %s: %s", gap.symbol, sessionRanges(days, gap.sessions)))
+	lines := []string{missingSessionsLead(name, provider, symbolCount, trading, saved)}
+	for i, gap := range shown {
+		lines = append(lines, withMoreRanges(
+			fmt.Sprintf("  %s: %s", gap.symbol, sessionRanges(days, gap.sessions)), omittedRanges[i]))
+	}
+	if omittedSymbols > 0 {
+		lines = append(lines, moreSymbolsLine(omittedSymbols))
 	}
 	return strings.Join(append(lines, next), "\n")
 }
@@ -293,10 +330,14 @@ func edgeStep(gaps []symbolGaps, first, last time.Time) string {
 		}
 		symbols = append(symbols, gap.symbol)
 	}
+	// Names only, and every one of them. The lines above are capped; this
+	// step is not. A download stops at finance.MaxDownloadSymbols, and that
+	// many 32-character tickers still fit the NATS payload and the gRPC body.
+	names := joinSymbols(symbols)
 	fits := (start.IsZero() || end.IsZero() || !start.After(end)) &&
 		(last.IsZero() || !start.After(last)) && (first.IsZero() || end.IsZero() || !end.Before(first))
 	if !fits {
-		return fmt.Sprintf("Remove %s, then run `fbull backtest create` again.", joinSymbols(symbols))
+		return fmt.Sprintf("Remove %s, then run `fbull backtest create` again.", names)
 	}
 	dates := make([]string, 0, 2)
 	if !start.IsZero() {
@@ -306,7 +347,7 @@ func edgeStep(gaps []symbolGaps, first, last time.Time) string {
 		dates = append(dates, "an end on or before "+end.Format(time.DateOnly))
 	}
 	return fmt.Sprintf("Choose %s, or remove %s, then run `fbull backtest create` again.",
-		strings.Join(dates, " and "), joinSymbols(symbols))
+		strings.Join(dates, " and "), names)
 }
 
 // joinSymbols writes A, A and B, or A, B and C.
@@ -338,20 +379,41 @@ func noBarsCause(gap symbolGaps) string {
 // coverageLine is one symbol's line under the lead: its edges or its empty
 // period as a sentence, with any missing day inside after it, or the
 // list of missing days alone.
-func coverageLine(days []time.Time, gap symbolGaps) string {
+func coverageLine(days []time.Time, gap symbolGaps, extraRanges int) string {
 	switch {
 	case gap.noBars:
 		return fmt.Sprintf("  %s: %s.", gap.symbol, noBarsCause(gap))
 	case gap.atEdge() && len(gap.sessions) > 0:
-		return fmt.Sprintf("  %s: %s, and none on %s.", gap.symbol, edgeCause(gap), sessionRanges(days, gap.sessions))
+		body := fmt.Sprintf("  %s: %s, and none on %s", gap.symbol, edgeCause(gap), sessionRanges(days, gap.sessions))
+		return withMoreRanges(body, extraRanges) + "."
 	case gap.atEdge():
 		return fmt.Sprintf("  %s: %s.", gap.symbol, edgeCause(gap))
 	default:
-		return fmt.Sprintf("  %s: %s", gap.symbol, sessionRanges(days, gap.sessions))
+		return withMoreRanges(fmt.Sprintf("  %s: %s", gap.symbol, sessionRanges(days, gap.sessions)), extraRanges)
 	}
 }
 
+// userCoverageLine caps the ranges on one line. Mixed failures share it, so
+// a symbol with a long gap list cannot grow the shown sentence on that path
+// either. The log uses coverageLine with no leftover, so it keeps every range.
+func userCoverageLine(days []time.Time, gap symbolGaps) string {
+	kept, extra := clipRangeIndexes(gap.sessions, maxGapRanges)
+	gap.sessions = kept
+	return coverageLine(days, gap, extra)
+}
+
+// coverageLineFor is the shown line when clip is set, and every range when
+// it is not. The mixed log is the second of those.
+func coverageLineFor(days []time.Time, gap symbolGaps, clip bool) string {
+	if clip {
+		return userCoverageLine(days, gap)
+	}
+	return coverageLine(days, gap, 0)
+}
+
 // coverageStep is the next step for gaps that are not lookup failures.
+// The dates and the names come from every gap. The detail lines are what
+// the symbol cap shortens.
 func coverageStep(days []time.Time, gaps []symbolGaps) string {
 	inside, noBars := false, false
 	edges := make([]symbolGaps, 0, len(gaps))
@@ -384,16 +446,22 @@ func coverageStep(days []time.Time, gaps []symbolGaps) string {
 // with the reason and the step last. A missing day inside a span makes the
 // step the provider or dates one, and a symbol with no bars the symbol,
 // dates or provider one.
-func coverageMessage(name, provider string, days []time.Time, gaps []symbolGaps, removed bool) string {
+func coverageMessage(name, provider string, days []time.Time, gaps []symbolGaps, removed bool,
+	style gapStyle, parsed map[string]int, parsedSymbols int,
+) string {
 	before, after, trading := false, false, true
 	for _, gap := range gaps {
 		before = before || !gap.noneBefore.IsZero()
 		after = after || !gap.noneAfter.IsZero()
 		trading = trading && !gap.closed
 	}
+	shown, omittedRanges, omittedSymbols := clipGaps(gaps, style.symbols, style.ranges)
+	omittedRanges, omittedSymbols = applyParsed(shown, omittedRanges, omittedSymbols, parsed, parsedSymbols)
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	saved, next := savedAndNext(name, coverageStep(days, gaps), removed)
-	if gap := gaps[0]; len(gaps) == 1 && len(gap.sessions) == 0 {
+	symbolCount := len(shown) + omittedSymbols
+	if len(shown) == 1 && omittedSymbols == 0 && len(shown[0].sessions) == 0 && omittedRanges[0] == 0 {
+		gap := shown[0]
 		if gap.noBars {
 			return fmt.Sprintf("Couldn't load data for backtest '%s': %s has no prices for %s between %s and %s. %s %s",
 				name, provider, gap.symbol, gap.from.Format(time.DateOnly), gap.to.Format(time.DateOnly), saved, next)
@@ -401,9 +469,12 @@ func coverageMessage(name, provider string, days []time.Time, gaps []symbolGaps,
 		return fmt.Sprintf("Couldn't load data for backtest '%s': %s has %s, and %s %s %s",
 			name, gap.symbol, edgeCause(gap), unconfirmedClause(provider, before, after), saved, next)
 	}
-	lines := []string{missingSessionsLead(name, provider, len(gaps), trading, saved)}
-	for _, gap := range gaps {
-		lines = append(lines, coverageLine(days, gap))
+	lines := []string{missingSessionsLead(name, provider, symbolCount, trading, saved)}
+	for i, gap := range shown {
+		lines = append(lines, coverageLine(days, gap, omittedRanges[i]))
+	}
+	if omittedSymbols > 0 {
+		lines = append(lines, moreSymbolsLine(omittedSymbols))
 	}
 	reason := ""
 	if before || after {
@@ -766,7 +837,6 @@ func checkMissingSessions(ctx context.Context, msg stream.Message, db *pgxpool.P
 	name, id, provider, profile string, symbols []string, reported map[string][]time.Time, period closedPeriod,
 	downloads []downloadMiss,
 ) error {
-	start, end := period.start, period.end
 	// The benchmark is the first listed symbol, taken before the failed
 	// downloads are dropped. When its own download failed it has no bars
 	// here, so no edge is confirmed against it and no stock stands in.
@@ -791,6 +861,7 @@ func checkMissingSessions(ctx context.Context, msg stream.Message, db *pgxpool.P
 		read = append(read, unit.tickers...)
 		names = append(names, unit.name)
 	}
+	start, end := period.start, period.end
 	bars, err := barDays.List(ctx, provider, read, start, end)
 	if err != nil {
 		return discardFailedIngest(ctx, backtests, name, id, fmt.Errorf("error reading bar days: %v", err))
@@ -842,7 +913,7 @@ func checkMissingSessions(ctx context.Context, msg stream.Message, db *pgxpool.P
 	if len(misses) > 0 {
 		return plainSentence(lookupFailureMessage(name, provider, misses, removed))
 	}
-	return plainSentence(missingSessionsMessage(name, provider, days, gaps, removed))
+	return plainSentence(presentMissingSessions(name, provider, days, gaps, removed, nil, 0))
 }
 
 // mixedFailures reports more than one kind of failure, which share one
@@ -857,13 +928,6 @@ func mixedFailures(counts ...int) bool {
 	return kinds > 1
 }
 
-// ziplineMissingSessions matches the reason of Zipline's MissingSessionsError,
-// sent with DATA_LOSS: "missing prices on trading days: AAA 2024-02-14;
-// BBB 2024-02-20,2024-03-05".
-var ziplineMissingSessions = regexp.MustCompile(
-	`^missing prices on trading days: ([A-Za-z0-9.^=_-]{1,32} \d{4}-\d{2}-\d{2}(?:,\d{4}-\d{2}-\d{2})*` +
-		`(?:; [A-Za-z0-9.^=_-]{1,32} \d{4}-\d{2}-\d{2}(?:,\d{4}-\d{2}-\d{2})*)*)$`)
-
 // dataLossReason is the reason of a DATA_LOSS ingest error, cut before its
 // details. It is false for any other error.
 func dataLossReason(cause error) (string, bool) {
@@ -877,29 +941,12 @@ func dataLossReason(cause error) (string, bool) {
 	if st.Code() != codes.DataLoss {
 		return "", false
 	}
-	reason, _, _ := strings.Cut(st.Message(), ingestDetailsMarker)
+	message := st.Message()
+	if len(message) > gapReasonByteBound {
+		return "", false
+	}
+	reason, _, _ := strings.Cut(message, ingestDetailsMarker)
 	return strings.TrimSpace(reason), true
-}
-
-// ingestMissingDays reads the gaps from the reason of Zipline's
-// MissingSessionsError, keyed by the ticker Zipline names.
-func ingestMissingDays(reason string) (map[string][]time.Time, bool) {
-	match := ziplineMissingSessions.FindStringSubmatch(reason)
-	if match == nil {
-		return nil, false
-	}
-	gaps := make(map[string][]time.Time)
-	for _, entry := range strings.Split(match[1], "; ") {
-		symbol, list, _ := strings.Cut(entry, " ")
-		for _, field := range strings.Split(list, ",") {
-			day, err := time.Parse(time.DateOnly, field)
-			if err != nil {
-				return nil, false
-			}
-			gaps[symbol] = append(gaps[symbol], day)
-		}
-	}
-	return gaps, true
 }
 
 // ingestMissingSessions turns Zipline's refusal of a sid with missing
@@ -927,7 +974,7 @@ func ingestMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.P
 func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.Pool, backtests repository.Backtest,
 	b *backtest.Backtest, id, reason string,
 ) (string, error) {
-	reported, ok := ingestMissingDays(reason)
+	spans, extraRanges, extraSymbols, ok := ingestGapReason(reason)
 	if !ok {
 		return "not a missing-session refusal", nil
 	}
@@ -945,18 +992,13 @@ func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.P
 	for _, symbol := range symbols {
 		known[symbol] = true
 	}
-	isSession := make(map[time.Time]bool, len(sessions))
-	for _, session := range sessions {
-		isSession[session] = true
+	reported, ok := expandDaySpans(sessions, spans)
+	if !ok {
+		return "named a day that isn't a session", nil
 	}
-	for symbol, days := range reported {
+	for symbol := range reported {
 		if !known[symbol] {
 			return "named a ticker that isn't in the backtest", nil
-		}
-		for _, day := range days {
-			if !isSession[day] {
-				return "named a day that isn't a session", nil
-			}
 		}
 	}
 	days, gaps := missingSessions(sessions, listedOrder(symbols), nil, reported, false)
@@ -972,5 +1014,5 @@ func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.P
 	if provider == "" {
 		provider = supplier.DefaultProvider
 	}
-	return "missing sessions", plainSentence(missingSessionsMessage(b.Name, provider, days, gaps, removed))
+	return "missing sessions", plainSentence(presentMissingSessions(b.Name, provider, days, gaps, removed, extraRanges, extraSymbols))
 }
