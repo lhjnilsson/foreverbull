@@ -94,28 +94,6 @@ ROLLOUT_POLL_SECONDS = 2
 # `fbenv status` gives its one kubectl call this long, so an unreachable cluster can't hang it.
 STATUS_TIMEOUT_SECONDS = 15
 
-ROLLOUT_UNVERIFIED_LINE = (
-    "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
-)
-
-
-@dataclass(frozen=True)
-class RolloutNotice:
-    """A one-line ⚠ notice from a remote `fbenv update`, not a failure.
-
-    detail is kubectl's own error, shown only with --verbose.
-    """
-
-    line: str
-    detail: str = ""
-
-
-def rollout_still_pulling_line(service: str, timeout_seconds: int) -> str:
-    return (
-        f"⚠ {service} is still downloading its image after {_timeout_text(timeout_seconds)}, "
-        "so this update hasn't finished yet. Run `fbenv status` to check on it."
-    )
-
 
 def _timeout_text(timeout_seconds: int) -> str:
     if timeout_seconds == 1:
@@ -231,6 +209,50 @@ class WorkloadStatusError(RuntimeError):
     def command(self) -> str:
         """The full kubectl command line that failed, for debug output only."""
         return " ".join(self.cmd)
+
+
+class RolloutError(RuntimeError):
+    """A remote `fbenv update` could not verify the rollout.
+
+    A kubectl failure carries kubectl's own text. A deadline says which
+    deployment is still rolling and that it may still be in progress.
+    """
+
+
+class RolloutWatchCancelled(Exception):
+    """Ctrl-C during the remote rollout watch, after Helm has already run."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The update watch was canceled. The rollout may still be in progress. "
+            "Run `fbenv status` to see whether it finished."
+        )
+
+
+def rollout_timeout_message(deployments: Sequence[str], namespace: str, timeout_seconds: int) -> str:
+    """Name the namespace and each deployment. The rollout is unverified, not failed or rolled back."""
+    named = list(deployments) if deployments else list(DEPLOYMENTS)
+    waited = _timeout_text(timeout_seconds)
+    if len(named) == 1:
+        who = f"deployment {named[0]}"
+    else:
+        who = "deployments " + ", ".join(named[:-1]) + " and " + named[-1]
+    return (
+        f"Timed out after {waited} waiting for {who} in namespace {namespace}. "
+        "The rollout may still be in progress. Run `fbenv status` to see whether it finished."
+    )
+
+
+def rollout_kubectl_message(exc: CommandError | KubectlOutputError) -> str:
+    """Return kubectl's own error text. Does not read a kubeconfig or add its contents."""
+    if isinstance(exc, CommandError):
+        # stderr, or stdout when kubectl wrote the error there. Not the argv:
+        # that can only add a path or a context name, and the error text is what kubectl said.
+        output = (exc.completed.stderr or exc.completed.stdout or "").strip()
+        if output:
+            return output
+        return f"kubectl exited {exc.completed.returncode} with no output."
+    return f"kubectl's answer couldn't be read ({exc.reason})."
 
 
 class ReplicaSetRevisionError(RuntimeError):
@@ -1097,7 +1119,7 @@ class ClusterManager:
             self.environment.purge()
         self._status_cache = None
 
-    def update(self) -> RolloutNotice | None:
+    def update(self) -> None:
         self.config._helm_web_url()
         self.require_tools(*self._tools_for_create())
         if self.config.is_local:
@@ -1108,20 +1130,28 @@ class ClusterManager:
         if not self.config.is_local:
             # This host never pulls for a remote cluster, so a node that
             # cannot get an image only shows up on the pods after Helm ran.
-            return self._watch_rollout()
-        return None
+            self._watch_rollout()
 
-    def _watch_rollout(self) -> RolloutNotice | None:
-        """Wait for the chart's Deployments to roll out. Raise ClusterImagePullError when a pod can't pull.
+    def _watch_rollout(self) -> None:
+        """Wait until the chart's Deployments have rolled out.
 
-        Returns a one-line notice when the rollout has not finished at the
-        deadline or when kubectl could not verify it, and None when it has
-        rolled out. kubectl's error rides in the notice's detail. Neither notice is a failure: the status table that
-        follows shows the workloads as they are.
+        One clock: ready_timeout_seconds from the start of this call. A kubectl
+        request is allowed only the time still left on that clock. This does
+        not call `kubectl rollout status --timeout`, which would be a second
+        clock. A kubectl error stops the watch on that call. KeyboardInterrupt
+        during this wait becomes RolloutWatchCancelled. Returning means every
+        deployment in the snapshot has rolled out.
         """
+        try:
+            self._poll_rollout()
+        except KeyboardInterrupt as exc:
+            raise RolloutWatchCancelled() from exc
+
+    def _poll_rollout(self) -> None:
         polls = max(1, math.ceil(self.ready_timeout_seconds / ROLLOUT_POLL_SECONDS))
         started = self.clock()
         items: list[dict[str, Any]] = []
+        saw_items = False
         for poll in range(polls):
             remaining = self.ready_timeout_seconds - (self.clock() - started)
             if remaining <= 0:
@@ -1131,17 +1161,29 @@ class ClusterManager:
                     ["get", "deploy,rs,pods", "-l", PART_OF_LABEL],
                     timeout_seconds=remaining,
                 )
-            except (CommandError, subprocess.TimeoutExpired, KubectlOutputError) as exc:
-                return RolloutNotice(ROLLOUT_UNVERIFIED_LINE, detail=str(exc))
+            except subprocess.TimeoutExpired:
+                # The request used the time left on this same clock.
+                break
+            except (CommandError, KubectlOutputError) as exc:
+                # kubectl's own --request-timeout can fail the call as the clock hits zero.
+                # That is this deadline, not a separate kubectl error.
+                if isinstance(exc, CommandError) and self.ready_timeout_seconds - (self.clock() - started) <= 0:
+                    break
+                raise RolloutError(rollout_kubectl_message(exc)) from exc
             items = data.get("items") or []
+            saw_items = True
             failure = cluster_pull_failure(items)
             if failure is not None:
                 raise failure
-            if rolled_out(items):
-                return None
+            if not _unfinished_deployments(items):
+                return
             if poll + 1 < polls:
                 self.sleep(ROLLOUT_POLL_SECONDS)
-        return RolloutNotice(rollout_still_pulling_line(_still_pulling_service(items), self.ready_timeout_seconds))
+        if saw_items:
+            deployments = _unfinished_deployments(items)
+        else:
+            deployments = list(DEPLOYMENTS)
+        raise RolloutError(rollout_timeout_message(deployments, self.config.namespace, self.ready_timeout_seconds))
 
     def status_rows(self) -> list[WorkloadRow]:
         self._status_cache = None
@@ -1509,16 +1551,26 @@ def _deploy_rolled_out(deploy: dict[str, Any]) -> bool:
     return updated >= desired and total == updated and available >= desired
 
 
-def _still_pulling_service(items: Sequence[dict[str, Any]]) -> str:
-    """Name the first chart workload, in status order, that has not rolled out yet."""
+def _unfinished_deployments(items: Sequence[dict[str, Any]]) -> list[str]:
+    """Chart deployment names that are missing or have not rolled out, in status order.
+
+    A chart deployment absent from the snapshot is unfinished. When every chart
+    deployment that is present has rolled out but rolled_out() is still false,
+    name every chart deployment rather than none.
+    """
     deploys = {
         str((item.get("metadata") or {}).get("name") or ""): item for item in items if item.get("kind") == "Deployment"
     }
-    for service, name in WORKLOADS:
+    unfinished: list[str] = []
+    for _service, name in WORKLOADS:
         deploy = deploys.get(name)
-        if deploy is not None and not _deploy_rolled_out(deploy):
-            return service
-    return WORKLOADS[0][0]
+        if deploy is None or not _deploy_rolled_out(deploy):
+            unfinished.append(name)
+    if unfinished:
+        return unfinished
+    if not rolled_out(items):
+        return list(DEPLOYMENTS)
+    return unfinished
 
 
 def _template_matches(deploy_template: dict[str, Any], rs_template: dict[str, Any]) -> bool:
