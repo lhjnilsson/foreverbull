@@ -17,7 +17,8 @@ from foreverbull_cli.env.environment import CommandError
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import ReplicaSetRevisionError
-from foreverbull_cli.env.environment import RolloutNotice
+from foreverbull_cli.env.environment import RolloutError
+from foreverbull_cli.env.environment import RolloutWatchCancelled
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadRow
 from foreverbull_cli.env.environment import WorkloadStatusError
@@ -458,52 +459,72 @@ def test_update_verbose_shows_the_cluster_error(runner, mocked_container_manager
     )
 
 
-def test_update_still_pulling_warns_before_the_status_table(runner, mocked_container_manager: MagicMock):
+ROLLOUT_TIMEOUT = (
+    "Timed out after 2 minutes waiting for deployment grafana in namespace foreverbull. "
+    "The rollout may still be in progress. Run `fbenv status` to see whether it finished."
+)
+KUBECTL_FAILURE = "connection refused"
+
+
+def test_update_rollout_timeout_fails(runner, mocked_container_manager: MagicMock):
     mocked_container_manager.config.is_local = False
-    mocked_container_manager.update.return_value = RolloutNotice(
-        "⚠ Grafana is still downloading its image after 2 minutes, "
-        "so this update hasn't finished yet. Run `fbenv status` to check on it."
-    )
+    mocked_container_manager.update.side_effect = RolloutError(ROLLOUT_TIMEOUT)
     result = runner(cli.cli, "update")
-    assert result.exit_code == 0
-    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [
-        (
-            "⚠ Grafana is still downloading its image after 2 minutes, "
-            "so this update hasn't finished yet. Run `fbenv status` to check on it."
-        )
-    ]
+    assert result.exit_code == 1
+    assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [f"✖ {ROLLOUT_TIMEOUT}"]
+    assert "Environment Status" not in result.stdout
     assert "Nothing was changed." not in result.stdout
-    assert "✖" not in result.stdout
-    assert result.stdout.index("⚠ Grafana is still downloading") < result.stdout.index("Environment Status")
-    mocked_container_manager.status_rows.assert_called()
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.status_rows.assert_not_called()
 
 
-UNVERIFIED_LINE = "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
-KUBECTL_DETAIL = "kubectl get deploy,rs,pods failed (exit 1): connection refused"
-
-
-def test_update_unverified_rollout_warns_before_the_status_table(runner, mocked_container_manager: MagicMock):
+def test_update_rollout_kubectl_error_fails(runner, mocked_container_manager: MagicMock):
     mocked_container_manager.config.is_local = False
-    mocked_container_manager.update.return_value = RolloutNotice(UNVERIFIED_LINE, detail=KUBECTL_DETAIL)
+    mocked_container_manager.update.side_effect = RolloutError(KUBECTL_FAILURE)
     result = runner(cli.cli, "update")
-    assert result.exit_code == 0
-    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [UNVERIFIED_LINE]
-    assert "connection refused" not in result.stdout
-    assert "kubectl said" not in result.stdout
-    assert "Run `fbenv update --verbose` to see the details." in result.stdout
-    assert result.stdout.index("⚠ Couldn't confirm the update finished") < result.stdout.index("Environment Status")
-    mocked_container_manager.status_rows.assert_called()
+    assert result.exit_code == 1
+    assert [line for line in result.stdout.splitlines() if line.startswith("✖")] == [f"✖ {KUBECTL_FAILURE}"]
+    assert "Environment Status" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.status_rows.assert_not_called()
 
 
-def test_update_unverified_rollout_shows_kubectl_error_only_with_verbose(runner, mocked_container_manager: MagicMock):
+def test_update_rollout_kubectl_error_fails_with_verbose(runner, mocked_container_manager: MagicMock):
     mocked_container_manager.config.is_local = False
-    mocked_container_manager.update.return_value = RolloutNotice(UNVERIFIED_LINE, detail=KUBECTL_DETAIL)
+    mocked_container_manager.update.side_effect = RolloutError(KUBECTL_FAILURE)
     result = runner(cli.cli, ["update", "--verbose"])
-    assert result.exit_code == 0
-    assert [line for line in result.stdout.splitlines() if line.startswith("⚠")] == [UNVERIFIED_LINE]
-    assert f"kubectl said: {KUBECTL_DETAIL}" in result.stdout
-    assert "--verbose` to see" not in result.stdout
-    assert result.stdout.index("kubectl said") < result.stdout.index("Environment Status")
+    assert result.exit_code == 1
+    assert f"✖ {KUBECTL_FAILURE}" in result.stdout
+    assert "Environment Status" not in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_update_cancelled_watch_fails(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.update.side_effect = RolloutWatchCancelled()
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert (
+        "✖ The update watch was canceled. The rollout may still be in progress. "
+        "Run `fbenv status` to see whether it finished."
+    ) in result.stdout.splitlines()
+    assert "Updating environment FAILED" in result.stdout
+    assert "Updating environment FAILED:" not in result.stdout
+    assert "✖ The update was canceled." not in result.stdout
+    assert "Environment Status" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.status_rows.assert_not_called()
+
+
+def test_update_cancelled_before_the_watch_fails(runner, mocked_container_manager: MagicMock):
+    mocked_container_manager.update.side_effect = KeyboardInterrupt()
+    result = runner(cli.cli, "update")
+    assert result.exit_code == 1
+    assert "✖ The update was canceled. Run `fbenv update` again to finish it." in result.stdout.splitlines()
+    assert "The update watch was canceled" not in result.stdout
+    assert "may still be in progress" not in result.stdout
+    assert "Environment Status" not in result.stdout
+    assert "Traceback" not in result.stdout
+    mocked_container_manager.status_rows.assert_not_called()
 
 
 def _reject_version(manager: MagicMock) -> None:
@@ -629,7 +650,12 @@ def test_stop_scale_failure_is_an_error(runner, mocked_container_manager: MagicM
 def test_update(runner, mocked_container_manager: MagicMock):
     result = runner(cli.cli, "update")
     assert result.exit_code == 0
+    assert "Environment Status" in result.stdout
+    assert "may still be in progress" not in result.stdout
+    assert "The update watch was canceled" not in result.stdout
+    assert "The update was canceled" not in result.stdout
     mocked_container_manager.update.assert_called_once()
+    mocked_container_manager.status_rows.assert_called()
 
 
 def test_create_cluster_flag(runner, mocked_container_manager: MagicMock):

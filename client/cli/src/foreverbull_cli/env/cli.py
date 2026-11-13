@@ -2,6 +2,7 @@ import logging
 import shlex
 
 from typing import Annotated
+from typing import NoReturn
 from typing import Self
 
 import typer
@@ -20,7 +21,8 @@ from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import ReplicaSetRevisionError
-from foreverbull_cli.env.environment import RolloutNotice
+from foreverbull_cli.env.environment import RolloutError
+from foreverbull_cli.env.environment import RolloutWatchCancelled
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadStatusError
 from foreverbull_cli.env.environment import ready_timeout_seconds
@@ -51,7 +53,16 @@ class FBProgress(Progress):
 
         for task in self.tasks:
             if task.total == 2 and task.completed == 1:
-                if isinstance(exc_val, (ImagePullError, ClusterImagePullError, ReplicaSetRevisionError)):
+                if isinstance(
+                    exc_val,
+                    (
+                        ImagePullError,
+                        ClusterImagePullError,
+                        ReplicaSetRevisionError,
+                        RolloutError,
+                        RolloutWatchCancelled,
+                    ),
+                ):
                     # The line printed after the progress says what failed.
                     self.update(task.id, description=f"{task.description} FAILED")
                 else:
@@ -241,14 +252,10 @@ def fail_cluster_pull(exc: ClusterImagePullError, command: str, *, verbose: bool
     raise typer.Exit(1) from exc
 
 
-def warn_rollout(notice: RolloutNotice, command: str, *, verbose: bool):
-    """Print the ⚠ rollout line. kubectl's error only with --verbose."""
-    lines = [notice.line]
-    if verbose and notice.detail:
-        lines.append(f"kubectl said: {notice.detail}")
-    elif notice.detail:
-        lines.append(f"Run `{command} --verbose` to see the details.")
-    console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
+def fail_rollout(exc: RolloutError) -> NoReturn:
+    """Stop with one ✖ line. The line names the workload or kubectl's own error."""
+    console.print(f"✖ {exc}", markup=False, highlight=False, soft_wrap=True)
+    raise typer.Exit(1) from exc
 
 
 def print_cluster(config: Config, *, path_note: str | None = None):
@@ -442,13 +449,11 @@ def update(
     check_version(cm)
     check_web_address(cm)
 
-    rollout_notice: RolloutNotice | None = None
     try:
         with FBProgress() as progress:
             update_task = progress.add_task("Updating environment", total=2)
             progress.update(update_task, completed=1)
-            notice = cm.update()
-            rollout_notice = notice if isinstance(notice, RolloutNotice) else None
+            cm.update()
             progress.update(update_task, completed=2)
     except ImagePullError as exc:
         # Local update pulls every missing image before kind load and helm
@@ -483,9 +488,21 @@ def update(
             ]
         console.print("\n".join(lines), markup=False, highlight=False, soft_wrap=True)
         raise typer.Exit(1) from exc
+    except RolloutError as exc:
+        fail_rollout(exc)
+    except RolloutWatchCancelled as exc:
+        # Only the remote rollout watch. Helm has already run; the rollout may still be moving.
+        console.print(f"✖ {exc}", markup=False, highlight=False, soft_wrap=True)
+        raise typer.Exit(1) from None
+    except KeyboardInterrupt:
+        console.print(
+            "✖ The update was canceled. Run `fbenv update` again to finish it.",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
+        raise typer.Exit(1) from None
 
-    if rollout_notice:
-        warn_rollout(rollout_notice, "fbenv update", verbose=verbose)
     print_status(cm)
 
 

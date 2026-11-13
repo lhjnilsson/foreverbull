@@ -14,7 +14,6 @@ from foreverbull_cli.env.environment import IMAGE_REPOSITORY
 from foreverbull_cli.env.environment import NO_WORKLOAD
 from foreverbull_cli.env.environment import PUBLISHED_VERSION
 from foreverbull_cli.env.environment import READY_TIMEOUT_ENV
-from foreverbull_cli.env.environment import ROLLOUT_UNVERIFIED_LINE
 from foreverbull_cli.env.environment import WORKLOADS
 from foreverbull_cli.env.environment import ClusterImagePullError
 from foreverbull_cli.env.environment import ClusterManager
@@ -25,7 +24,8 @@ from foreverbull_cli.env.environment import Environment
 from foreverbull_cli.env.environment import ImagePullError
 from foreverbull_cli.env.environment import MissingToolError
 from foreverbull_cli.env.environment import ReplicaSetRevisionError
-from foreverbull_cli.env.environment import RolloutNotice
+from foreverbull_cli.env.environment import RolloutError
+from foreverbull_cli.env.environment import RolloutWatchCancelled
 from foreverbull_cli.env.environment import VersionError
 from foreverbull_cli.env.environment import WorkloadStatus
 from foreverbull_cli.env.environment import WorkloadStatusError
@@ -33,7 +33,6 @@ from foreverbull_cli.env.environment import classify_pull_error
 from foreverbull_cli.env.environment import load_cluster_config
 from foreverbull_cli.env.environment import match_broker_error
 from foreverbull_cli.env.environment import ready_timeout_seconds
-from foreverbull_cli.env.environment import rollout_still_pulling_line
 from foreverbull_cli.env.preflight import CheckState
 from foreverbull_cli.env.preflight import PreflightError
 
@@ -1552,6 +1551,15 @@ def _rolled_deploy(name: str, image: str, *, replicas: int = 1, updated: int = 1
     return deploy
 
 
+def _with_other_chart_deployments(items: list[dict]) -> list[dict]:
+    """Add any chart deployment the snapshot does not already contain, rolled out."""
+    present = {
+        str((item.get("metadata") or {}).get("name") or "") for item in items if item.get("kind") == "Deployment"
+    }
+    extra = [_rolled_deploy(name, f"{name}:1") for _, name in WORKLOADS if name not in present]
+    return [*items, *extra]
+
+
 def _pull_backoff_pod(app: str, image: str, reason: str = "ImagePullBackOff", *, terminating: bool = False) -> dict:
     pod = _pod(f"{app}-abc", app, image, phase="Pending", ready=False, terminating=terminating)
     pod["status"]["containerStatuses"] = [
@@ -1655,7 +1663,7 @@ class TestRemoteUpdatePullFailure:
         runner = RolloutRunner([[_rolled_deploy(name, f"{name}:1") for _, name in WORKLOADS]])
         sleeps: list[float] = []
         uut = _remote_manager(tmp_path, runner, sleeps)
-        uut.update()
+        assert uut.update() is None
         assert runner.polls == 1
         assert sleeps == []
 
@@ -1669,47 +1677,58 @@ class TestRemoteUpdatePullFailure:
     def test_unobserved_generation_is_not_rolled_out(self, tmp_path: Path):
         stale = _rolled_deploy("grafana", GRAFANA_IMAGE)
         stale["status"]["observedGeneration"] = 1
-        runner = RolloutRunner([[stale], [_rolled_deploy("grafana", GRAFANA_IMAGE)]])
+        runner = RolloutRunner(
+            [
+                _with_other_chart_deployments([stale]),
+                _with_other_chart_deployments([_rolled_deploy("grafana", GRAFANA_IMAGE)]),
+            ]
+        )
         sleeps: list[float] = []
         uut = _remote_manager(tmp_path, runner, sleeps)
         uut.update()
         assert runner.polls == 2
         assert len(sleeps) == 1
 
-    def test_slow_rollout_stops_polling_at_the_timeout_without_failing(self, tmp_path: Path):
-        pending = [_rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0)]
+    def test_slow_rollout_fails_when_still_unfinished(self, tmp_path: Path):
+        pending = _with_other_chart_deployments([_rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0)])
         runner = RolloutRunner([pending])
         sleeps: list[float] = []
         uut = _remote_manager(tmp_path, runner, sleeps)
-        notice = uut.update()
+        with pytest.raises(RolloutError) as raised:
+            uut.update()
         # ready_timeout_seconds=5 in tests, polled every 2 s: 3 polls, 2 sleeps.
         assert runner.polls == 3
         assert sleeps == [2, 2]
-        assert notice == RolloutNotice(
-            "⚠ Grafana is still downloading its image after 5 seconds, "
-            "so this update hasn't finished yet. Run `fbenv status` to check on it."
+        assert str(raised.value) == (
+            "Timed out after 5 seconds waiting for deployment grafana in namespace fb. "
+            "The rollout may still be in progress. Run `fbenv status` to see whether it finished."
         )
-        assert notice is not None
-        assert notice.line == rollout_still_pulling_line("Grafana", 5)
+        assert "the deployments" not in str(raised.value)
+        assert "rollback" not in str(raised.value).lower()
+        assert "failed" not in str(raised.value).lower()
 
     def test_rollout_kubectl_calls_are_bounded_by_the_remaining_time(self, tmp_path: Path):
         pending = [_rolled_deploy("grafana", GRAFANA_IMAGE, updated=1, available=0)]
         runner = RolloutRunner([pending])
         uut = _remote_manager(tmp_path, runner, [])
-        uut.update()
+        with pytest.raises(RolloutError):
+            uut.update()
         assert runner.polls == 3
         assert all(timeout is not None and 0 < timeout <= 5 for timeout in runner.timeouts)
         poll_calls = [c for c in runner.calls if "deploy,rs,pods" in c]
         assert poll_calls
         assert all(any(a.startswith("--request-timeout=") for a in c) for c in poll_calls)
+        assert all("rollout" not in call for call in runner.calls)
 
     def test_previous_rollout_pod_in_backoff_is_ignored(self, tmp_path: Path):
-        snapshot = [
-            _rolled_deploy("grafana", GRAFANA_IMAGE),
-            _replica_set("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash", 1),
-            _replica_set("grafana", GRAFANA_IMAGE, "newhash", 2),
-            _pull_pod_with_hash("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash"),
-        ]
+        snapshot = _with_other_chart_deployments(
+            [
+                _rolled_deploy("grafana", GRAFANA_IMAGE),
+                _replica_set("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash", 1),
+                _replica_set("grafana", GRAFANA_IMAGE, "newhash", 2),
+                _pull_pod_with_hash("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", "oldhash"),
+            ]
+        )
         runner = RolloutRunner([snapshot])
         uut = _remote_manager(tmp_path, runner, [])
         assert uut.update() is None
@@ -1756,37 +1775,53 @@ class TestRemoteUpdatePullFailure:
         assert raised.value.name == "grafana-newhash"
 
     def test_terminating_pod_in_backoff_is_ignored(self, tmp_path: Path):
-        snapshot = [
-            _rolled_deploy("grafana", GRAFANA_IMAGE),
-            _pull_backoff_pod("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", terminating=True),
-        ]
+        snapshot = _with_other_chart_deployments(
+            [
+                _rolled_deploy("grafana", GRAFANA_IMAGE),
+                _pull_backoff_pod("grafana", "ghcr.io/lhjnilsson/fb-grafana:old", terminating=True),
+            ]
+        )
         runner = RolloutRunner([snapshot])
         uut = _remote_manager(tmp_path, runner, [])
         uut.update()
         assert runner.polls == 1
 
     def test_pod_outside_the_chart_workloads_is_ignored(self, tmp_path: Path):
-        snapshot = [_rolled_deploy("grafana", GRAFANA_IMAGE), _pull_backoff_pod("worker-1", "my/strategy:1")]
+        snapshot = _with_other_chart_deployments(
+            [_rolled_deploy("grafana", GRAFANA_IMAGE), _pull_backoff_pod("worker-1", "my/strategy:1")]
+        )
         runner = RolloutRunner([snapshot])
         uut = _remote_manager(tmp_path, runner, [])
         uut.update()
 
-    def test_kubectl_error_while_watching_returns(self, tmp_path: Path):
+    def test_kubectl_error_while_watching_fails(self, tmp_path: Path):
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text("token: super-secret-token\nclient-certificate-data: also-secret\n")
         runner = FakeRunner()
         runner.on(["kubectl"], _completed(stderr="connection refused", returncode=1))
-        uut = _remote_manager(tmp_path, runner, [])
-        notice = uut.update()
-        assert notice is not None
-        assert notice.line == ROLLOUT_UNVERIFIED_LINE
-        assert notice.line == (
-            "⚠ Couldn't confirm the update finished. Run `fbenv status` to check that every service is running."
-        )
-        # kubectl's error stays out of the ⚠ line; the CLI shows it with --verbose.
-        assert "kubectl" not in notice.line
-        assert "connection refused" in notice.detail
+        sleeps: list[float] = []
+        uut = _remote_manager(tmp_path, runner, sleeps)
+        uut.config._data["remote"]["kubeconfig"] = str(kubeconfig)
+        with pytest.raises(RolloutError) as raised:
+            uut.update()
+        assert str(raised.value) == "connection refused"
+        assert "super-secret-token" not in str(raised.value)
+        assert "also-secret" not in str(raised.value)
+        assert "client-certificate-data" not in str(raised.value)
+        assert sleeps == []
+        assert len([call for call in runner.calls if "deploy,rs,pods" in call]) == 1
         assert runner.calls_starting_with("helm", "upgrade", "--install")
 
-    def test_kubectl_timeout_while_watching_is_unverified_not_silent(self, tmp_path: Path):
+    def test_kubectl_error_is_passed_through_unchanged(self, tmp_path: Path):
+        stderr = "error: connection refused\nThe connection to the server was refused."
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stderr=stderr, returncode=1))
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(RolloutError) as raised:
+            uut.update()
+        assert str(raised.value) == stderr
+
+    def test_kubectl_timeout_while_watching_fails(self, tmp_path: Path):
         runner = RolloutRunner([[_rolled_deploy("grafana", GRAFANA_IMAGE)]])
 
         def hang(args, **kwargs):
@@ -1794,10 +1829,82 @@ class TestRemoteUpdatePullFailure:
 
         runner.run = hang  # type: ignore[method-assign]
         uut = _remote_manager(tmp_path, runner, [])
-        notice = uut._watch_rollout()
-        assert notice is not None
-        assert notice.line == ROLLOUT_UNVERIFIED_LINE
-        assert "timed out" in notice.detail
+        uut.clock = lambda: 0.0
+        with pytest.raises(RolloutError) as raised:
+            uut._watch_rollout()
+        assert str(raised.value) == (
+            "Timed out after 5 seconds waiting for deployments postgres, nats, minio, zipline, "
+            "foreverbull and grafana in namespace fb. The rollout may still be in progress. "
+            "Run `fbenv status` to see whether it finished."
+        )
+
+    def test_missing_chart_deployment_is_named_when_the_rollout_times_out(self, tmp_path: Path):
+        present = [_rolled_deploy(name, f"{name}:1") for _, name in WORKLOADS if name != "grafana"]
+        runner = RolloutRunner([present])
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(RolloutError) as raised:
+            uut.update()
+        assert str(raised.value) == (
+            "Timed out after 5 seconds waiting for deployment grafana in namespace fb. "
+            "The rollout may still be in progress. Run `fbenv status` to see whether it finished."
+        )
+
+    def test_rollout_timeout_names_every_deployment_when_chart_deployments_are_done(self, tmp_path: Path):
+        # Every chart deployment has rolled out. Another deployment has not, so rolled_out() is false.
+        snapshot = [_rolled_deploy(name, f"{name}:1") for _, name in WORKLOADS]
+        snapshot.append(_rolled_deploy("custom", "custom:1", updated=0, available=0))
+        runner = RolloutRunner([snapshot])
+        uut = _remote_manager(tmp_path, runner, [])
+        with pytest.raises(RolloutError) as raised:
+            uut.update()
+        assert str(raised.value) == (
+            "Timed out after 5 seconds waiting for deployments postgres, nats, minio, zipline, "
+            "foreverbull and grafana in namespace fb. The rollout may still be in progress. "
+            "Run `fbenv status` to see whether it finished."
+        )
+        assert "the deployments" not in str(raised.value)
+
+    def test_kubectl_error_after_the_deadline_is_a_timeout(self, tmp_path: Path):
+        runner = FakeRunner()
+        runner.on(["kubectl"], _completed(stderr="error: context deadline exceeded", returncode=1))
+        uut = _remote_manager(tmp_path, runner, [])
+        ticks = {"n": 0}
+
+        def clock() -> float:
+            ticks["n"] += 1
+            if ticks["n"] >= 3:
+                return 5.0
+            return 0.0
+
+        uut.clock = clock
+        with pytest.raises(RolloutError) as raised:
+            uut.update()
+        assert str(raised.value) == (
+            "Timed out after 5 seconds waiting for deployments postgres, nats, minio, zipline, "
+            "foreverbull and grafana in namespace fb. The rollout may still be in progress. "
+            "Run `fbenv status` to see whether it finished."
+        )
+        assert "context deadline exceeded" not in str(raised.value)
+
+    def test_cancelled_watch_is_not_a_verified_update(self, tmp_path: Path):
+        runner = FakeRunner()
+        sleeps: list[float] = []
+        uut = _remote_manager(tmp_path, runner, sleeps)
+
+        def cancel(args, **kwargs):
+            if [str(part) for part in args][:1] == ["kubectl"]:
+                raise KeyboardInterrupt
+            return FakeRunner.run(runner, args, **kwargs)
+
+        runner.run = cancel  # type: ignore[method-assign]
+        with pytest.raises(RolloutWatchCancelled) as raised:
+            uut.update()
+        assert str(raised.value) == (
+            "The update watch was canceled. The rollout may still be in progress. "
+            "Run `fbenv status` to see whether it finished."
+        )
+        assert sleeps == []
+        assert runner.calls_starting_with("helm", "upgrade", "--install")
 
     def test_local_update_does_not_watch_the_rollout(self, tmp_path: Path):
         runner = RolloutRunner([[_pull_backoff_pod("grafana", GRAFANA_IMAGE)]])
