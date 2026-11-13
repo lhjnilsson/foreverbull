@@ -558,6 +558,14 @@ def create(
             raise FileNotFoundError(f"File {file} not found")
         with open(file, "r") as f:
             data = yaml.safe_load(f)
+        # false in the file is off, whichever flag was also passed. The
+        # --no-close-on-universe-drop check above already won when both are set.
+        if data.get("auto_close_on_universe_drop") is False:
+            _fail(
+                "Close on universe drop only applies to backtests that use an ETF universe. "
+                "Remove auto_close_on_universe_drop from the backtest file, or run `fbull backtest create` "
+                "without --file to create an ETF backtest."
+            )
         chosen, source = _choose_provider(flag_provider, data.get("provider"), file.name)
         if chosen is None:
             raise typer.Exit(code=1)

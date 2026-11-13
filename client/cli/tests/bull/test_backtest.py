@@ -1334,6 +1334,11 @@ _SYMBOL_LIST_CLOSE_OFF = (
     "Remove --no-close-on-universe-drop, or run `fbull backtest create` without --file "
     "to create an ETF backtest."
 )
+_SYMBOL_LIST_FILE_CLOSE_OFF = (
+    "Close on universe drop only applies to backtests that use an ETF universe. "
+    "Remove auto_close_on_universe_drop from the backtest file, or run `fbull backtest create` "
+    "without --file to create an ETF backtest."
+)
 
 
 def _plain_output(text: str) -> str:
@@ -1360,12 +1365,22 @@ def test_backtest_create_help_states_the_close_on_drop_flags(monkeypatch):
     assert _CLOSE_HELP in _plain_output(result.stdout)
 
 
-def test_backtest_create_from_file_sends_close_on_drop(runner):
+@pytest.mark.parametrize(
+    ("file_value", "cli_args"),
+    [
+        (True, []),
+        (None, []),
+        (None, ["--close-on-universe-drop"]),
+    ],
+    ids=["file-true", "omitted", "flag-on"],
+)
+def test_backtest_create_from_file_keeps_close_on_drop_on(runner, file_value, cli_args):
+    extra = {} if file_value is None else {"auto_close_on_universe_drop": file_value}
     with (
         patch("foreverbull.broker.backtest.create") as mock_create,
         tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
     ):
-        yaml.safe_dump(_file_payload(auto_close_on_universe_drop=False), cfg_file)
+        yaml.safe_dump(_file_payload(**extra), cfg_file)
         cfg_file.flush()
         mock_create.return_value = iter(
             [
@@ -1375,31 +1390,12 @@ def test_backtest_create_from_file_sends_close_on_drop(runner):
                 )
             ]
         )
-        result = runner(backtest, ["create", "--file", cfg_file.name])
+        result = runner(backtest, ["create", "--file", cfg_file.name, *cli_args])
     Path(cfg_file.name).unlink(missing_ok=True)
     assert result.exit_code == 0, result.stdout
     request = mock_create.call_args.kwargs["entity"]
-    assert request.backtest.auto_close_on_universe_drop is False
+    assert request.backtest.auto_close_on_universe_drop is True
     assert "Close on universe drop" not in result.stdout
-
-    with (
-        patch("foreverbull.broker.backtest.create") as mock_create,
-        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
-    ):
-        yaml.safe_dump(_file_payload(auto_close_on_universe_drop=False), cfg_file)
-        cfg_file.flush()
-        mock_create.return_value = iter(
-            [
-                backtest_service_pb.CreateBacktestResponse(
-                    STORING=common_pb.Step(state=common_pb.State.COMPLETED),
-                    backtest=_sample_backtest(name="from_file", benchmark="QQQ"),
-                )
-            ]
-        )
-        result = runner(backtest, ["create", "--file", cfg_file.name, "--close-on-universe-drop"])
-    Path(cfg_file.name).unlink(missing_ok=True)
-    assert result.exit_code == 0, result.stdout
-    assert mock_create.call_args.kwargs["entity"].backtest.auto_close_on_universe_drop is True
 
 
 def test_backtest_create_rejects_a_close_on_drop_value_that_is_not_a_boolean():
@@ -1421,13 +1417,28 @@ def test_backtest_create_refuses_close_on_drop_off_for_a_symbol_list():
         patch("foreverbull.broker.backtest.create") as mock_create,
         tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
     ):
-        yaml.safe_dump(_file_payload(), cfg_file)
+        yaml.safe_dump(_file_payload(auto_close_on_universe_drop=False), cfg_file)
         cfg_file.flush()
         result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, "--no-close-on-universe-drop"])
     Path(cfg_file.name).unlink(missing_ok=True)
     assert result.exit_code == 1
     mock_create.assert_not_called()
     assert _plain_output(result.stdout) == f"✖ {_SYMBOL_LIST_CLOSE_OFF}"
+
+
+@pytest.mark.parametrize("cli_args", [[], ["--close-on-universe-drop"]], ids=["no-flag", "flag-on"])
+def test_backtest_create_refuses_close_on_drop_false_in_a_symbol_list_file(cli_args):
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(auto_close_on_universe_drop=False), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name, *cli_args])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 1
+    mock_create.assert_not_called()
+    assert _plain_output(result.stdout) == f"✖ {_SYMBOL_LIST_FILE_CLOSE_OFF}"
 
 
 def test_backtest_create_etf_can_turn_close_on_drop_off(runner):
