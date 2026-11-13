@@ -4,6 +4,7 @@ import time
 from concurrent import futures
 from datetime import date
 from datetime import timedelta
+from typing import cast
 
 import grpc
 import pandas as pd
@@ -11,6 +12,7 @@ import pytest
 
 from foreverbull_zipline import service
 from foreverbull_zipline.data_bundles.dividends import no_dividends
+from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from sqlalchemy import create_engine
 from zipline.data import bundles
@@ -216,9 +218,10 @@ class TestIngestFailure:
         )
         code, details = service.ingest_failure(exc)
         assert code == grpc.StatusCode.DATA_LOSS
-        assert details.split("\nDetails: ")[0] == (
-            "missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-02-21,2024-03-05"
-        )
+        reason, _, cause = details.partition("\nDetails: ")
+        assert reason == ("missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-02-21,2024-03-05")
+        assert cause == "MissingSessionsError"
+        assert details.count("missing prices on trading days:") == 1
 
     def test_other_error_is_redacted(self):
         code, details = service.ingest_failure(ValueError("bad bundle at postgresql://u:hunter22@h/db"))
@@ -229,6 +232,34 @@ class TestIngestFailure:
 
 
 class TestIngestWithoutContext:
+    def test_capped_missing_sessions_are_logged_in_full(self, monkeypatch, caplog):
+        sessions = pd.DatetimeIndex(pd.bdate_range("2024-01-02", periods=5))
+        first = cast(pd.Timestamp, sessions[0])
+        gaps = {f"S{number:02d}": [first] for number in range(21)}
+
+        def failing_ingest(*args, **kwargs):
+            raise MissingSessionsError(gaps, sessions=sessions)
+
+        class _Engine:
+            def __init__(self):
+                self.provider = ""
+
+        monkeypatch.setattr("foreverbull_zipline.data_bundles.foreverbull.DatabaseEngine", _Engine)
+        monkeypatch.setattr(service.bundles, "ingest", failing_ingest)
+        caplog.set_level("ERROR")
+        backtest = backtest_pb.Backtest(name="capped-gaps")
+
+        with pytest.raises(MissingSessionsError):
+            service.BacktestService().ingest(engine_service_pb.IngestRequest(backtest=backtest), None)
+
+        failed = next(
+            record.message for record in caplog.records if record.message.startswith("Ingesting capped-gaps failed")
+        )
+        full = next(record.message for record in caplog.records if "missing sessions:" in record.message)
+        assert "S20" not in failed
+        assert "and 1 more symbol" in failed
+        assert "S20" in full
+
     def test_failed_ingest_raises_the_original_error(self, monkeypatch):
         """In-process callers pass no gRPC context; they must see the ingest error, not None.abort."""
 

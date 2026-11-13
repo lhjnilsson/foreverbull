@@ -8,6 +8,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
+	"github.com/rs/zerolog/log"
 )
 
 // lookupMiss is one symbol whose listing or delisting lookup failed.
@@ -215,7 +216,34 @@ func mixedCoverageMessage(name, provider string, days []time.Time, gaps []symbol
 	if !removed {
 		next = deleteFirst(name, next)
 	}
-	order, edges, rest := mixedLines(provider, days, gaps, misses, downloads)
+	user := renderMixed(name, provider, days, gaps, misses, downloads, saved, next, true)
+	full := renderMixed(name, provider, days, gaps, misses, downloads, saved, next, false)
+	if full != user {
+		log.Warn().Str("backtest", name).Str("missing", redactURLPasswords(full)).
+			Msg("missing sessions omitted from the error")
+	}
+	return user
+}
+
+// renderMixed writes the mixed block. clip keeps the detail lines of the
+// first maxGapSymbols symbols. The lead still counts every symbol, and the
+// step still names every one. Order is the order mixedLines already uses:
+// gaps as given (the check passes the benchmark first, then A to Z), then
+// a lookup or download that is not already a gap, in the order found.
+func renderMixed(name, provider string, days []time.Time, gaps []symbolGaps, misses []lookupMiss,
+	downloads []downloadMiss, saved, next string, clip bool,
+) string {
+	order, edges, rest := mixedLines(provider, days, gaps, misses, downloads, clip)
+	omitted := 0
+	if clip && len(order) > maxGapSymbols {
+		keep := make(map[string]bool, maxGapSymbols)
+		for _, symbol := range order[:maxGapSymbols] {
+			keep[symbol] = true
+		}
+		edges = keepSymbolLines(edges, keep)
+		rest = keepSymbolLines(rest, keep)
+		omitted = len(order) - maxGapSymbols
+	}
 	n := len(order)
 	verb := "are"
 	if n == 1 {
@@ -233,14 +261,32 @@ func mixedCoverageMessage(name, provider string, days []time.Time, gaps []symbol
 		lines = append(lines, unconfirmedReason(provider, before, after))
 	}
 	lines = append(lines, rest...)
+	if omitted > 0 {
+		lines = append(lines, moreSymbolsLine(omitted))
+	}
 	return strings.Join(append(lines, next), "\n")
+}
+
+func keepSymbolLines(lines []string, keep map[string]bool) []string {
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if keep[symbolOfLine(line)] {
+			kept = append(kept, line)
+		}
+	}
+	return kept
+}
+
+func symbolOfLine(line string) string {
+	symbol, _, _ := strings.Cut(strings.TrimPrefix(line, "  "), ":")
+	return symbol
 }
 
 // mixedLines lists the symbols in the order they are counted, and their
 // lines: first the unconfirmed edges, whose reason line follows them, then
 // the other gaps, the failed lookups, and the failed downloads.
 func mixedLines(provider string, days []time.Time, gaps []symbolGaps, misses []lookupMiss,
-	downloads []downloadMiss,
+	downloads []downloadMiss, clip bool,
 ) ([]string, []string, []string) {
 	var order []string
 	seen := make(map[string]bool)
@@ -255,7 +301,7 @@ func mixedLines(provider string, days []time.Time, gaps []symbolGaps, misses []l
 	for _, gap := range gaps {
 		add(gap.symbol)
 		if gap.atEdge() {
-			edges = append(edges, coverageLine(days, gap))
+			edges = append(edges, coverageLineFor(days, gap, clip))
 		}
 	}
 	missBy := make(map[string][]lookupMiss)
@@ -277,7 +323,7 @@ func mixedLines(provider string, days []time.Time, gaps []symbolGaps, misses []l
 	rest := make([]string, 0, len(order))
 	for _, symbol := range order {
 		if gap, ok := gapBy[symbol]; ok {
-			rest = append(rest, coverageLine(days, gap))
+			rest = append(rest, coverageLineFor(days, gap, clip))
 		}
 		for _, miss := range missBy[symbol] {
 			cause, _ := lookupCause(provider, miss.cause)

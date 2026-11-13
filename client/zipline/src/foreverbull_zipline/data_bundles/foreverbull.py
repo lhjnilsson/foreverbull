@@ -398,21 +398,155 @@ def missing_sessions(bars: pd.DataFrame, sessions: pd.DatetimeIndex) -> list[pd.
     return list(in_range.difference(bars.index))
 
 
+# The broker's user sentence and this reason share one cap: 20 symbols,
+# 10 date ranges each. A run is ``YYYY-MM-DD..YYYY-MM-DD``, not every day
+# inside it, so a long outage does not grow the status text. The gRPC
+# status is the reason plus _STATUS_TRAILER (the type name only; the
+# reason is not repeated). That whole text is at most _REASON_BYTE_BOUND
+# bytes. If the capped list would pass it, whole trailing symbol entries
+# are folded into the symbol count until it fits. A symbol entry is never
+# cut in the middle. full_text is the log and still lists every day.
+_MAX_GAP_SYMBOLS = 20
+_MAX_GAP_RANGES = 10
+_REASON_BYTE_BOUND = 8192
+_REASON_LEAD = "missing prices on trading days: "
+_STATUS_TRAILER = "\nDetails: MissingSessionsError"
+
+
+def _format_span(group: list[pd.Timestamp]) -> str:
+    """One day, or the first and last of a run, joined by ``..``."""
+    first = _as_timestamp(group[0]).date().isoformat()
+    if len(group) == 1:
+        return first
+    last = _as_timestamp(group[-1]).date().isoformat()
+    return f"{first}..{last}"
+
+
+def _more(count: int, one: str, many: str) -> str:
+    noun = one if count == 1 else many
+    return f"and {count} more {noun}"
+
+
+def _ordered_gap_symbols(symbols: list[str], benchmark: str) -> list[str]:
+    """Benchmark first, then A to Z, the order the broker's sentence uses."""
+    rest = sorted(symbol for symbol in symbols if symbol != benchmark)
+    if benchmark and benchmark in symbols:
+        return [benchmark, *rest]
+    return sorted(symbols)
+
+
+def _as_timestamp(day: pd.Timestamp) -> pd.Timestamp:
+    """A real timestamp. NaT is not a session this list is built from."""
+    return cast(pd.Timestamp, pd.Timestamp(day))
+
+
+def _session_ranges(days: list[pd.Timestamp], sessions: pd.DatetimeIndex | None) -> list[list[pd.Timestamp]]:
+    """Runs of missing sessions with no kept session between them.
+
+    Without the calendar each day is its own range, which only the cap
+    uses. The listed days themselves stay in order either way.
+    """
+    if not days:
+        return []
+    if sessions is None:
+        return [[day] for day in days]
+    position = {_as_timestamp(cast(pd.Timestamp, session)).normalize(): index for index, session in enumerate(sessions)}
+    groups: list[list[pd.Timestamp]] = [[days[0]]]
+    for day in days[1:]:
+        previous = position.get(_as_timestamp(groups[-1][-1]).normalize())
+        current = position.get(_as_timestamp(day).normalize())
+        if previous is not None and current is not None and current == previous + 1:
+            groups[-1].append(day)
+        else:
+            groups.append([day])
+    return groups
+
+
+def _gap_reason(
+    gaps: dict[str, list[pd.Timestamp]],
+    *,
+    sessions: pd.DatetimeIndex | None,
+    benchmark: str,
+    cap: bool,
+) -> str:
+    symbols = _ordered_gap_symbols(list(gaps), benchmark)
+    extra_symbols = 0
+    if cap and len(symbols) > _MAX_GAP_SYMBOLS:
+        extra_symbols = len(symbols) - _MAX_GAP_SYMBOLS
+        symbols = symbols[:_MAX_GAP_SYMBOLS]
+    parts: list[str] = []
+    for symbol in symbols:
+        # The uncapped text lists every day, in the order the gaps were stored.
+        # The cap counts ranges on the calendar, then keeps those days.
+        listed = list(gaps[symbol])
+        extra_ranges = 0
+        if cap:
+            groups = _session_ranges(listed, sessions)
+            if len(groups) > _MAX_GAP_RANGES:
+                extra_ranges = len(groups) - _MAX_GAP_RANGES
+                groups = groups[:_MAX_GAP_RANGES]
+            text = f"{symbol} {','.join(_format_span(group) for group in groups)}"
+        else:
+            text = f"{symbol} {','.join(_as_timestamp(day).date().isoformat() for day in listed)}"
+        if extra_ranges:
+            text = f"{text} {_more(extra_ranges, 'range', 'ranges')}"
+        parts.append(text)
+    if cap:
+        return _fit_reason(parts, extra_symbols)
+    return _assemble_reason(parts, extra_symbols)
+
+
+def _assemble_reason(parts: list[str], extra_symbols: int) -> str:
+    body = "; ".join(parts)
+    if extra_symbols:
+        body = f"{body}; {_more(extra_symbols, 'symbol', 'symbols')}"
+    return f"{_REASON_LEAD}{body}"
+
+
+def missing_sessions_status(reason: str) -> str:
+    """The DATA_LOSS status text: the capped reason, then the type name only."""
+    return f"{reason}{_STATUS_TRAILER}"
+
+
+def _fit_reason(parts: list[str], extra_symbols: int, bound: int = _REASON_BYTE_BOUND) -> str:
+    """Drop whole trailing symbol entries until the status text fits ``bound``.
+
+    Each dropped entry adds one to the ``and N more symbols`` count. The
+    count stays exact. An entry is never split to make the bytes fit.
+    """
+    shown = list(parts)
+    hidden = extra_symbols
+    while shown and len(missing_sessions_status(_assemble_reason(shown, hidden)).encode()) > bound:
+        shown.pop()
+        hidden += 1
+    return _assemble_reason(shown, hidden)
+
+
 class MissingSessionsError(ValueError):
     """Sids with no bar on sessions inside their span; nothing is filled.
 
     gaps maps each ticker to its missing sessions, oldest first. The text is
     the reason the broker reads to name them in the create's missing-session
     sentence (pkg/backtest/universe.md section 7.5), so keep its shape:
-    ``missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-03-05``.
+    ``missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20..2024-02-21``.
+    At most 20 symbols and 10 ranges each are in that text, then
+    ``and N more``. If that text plus ``Details: MissingSessionsError``
+    would pass 8 KiB, whole trailing symbol entries fold into the symbol
+    count until it fits. ``full_text`` still names every day, for the log.
+    ``sessions`` is the calendar the ranges are counted on. ``benchmark``
+    stays first; the other symbols go A to Z.
     """
 
-    def __init__(self, gaps: dict[str, list[pd.Timestamp]]):
+    def __init__(
+        self,
+        gaps: dict[str, list[pd.Timestamp]],
+        *,
+        sessions: pd.DatetimeIndex | None = None,
+        benchmark: str = "",
+    ):
         self.gaps = gaps
-        listed = "; ".join(
-            f"{symbol} {','.join(day.date().isoformat() for day in days)}" for symbol, days in gaps.items()
-        )
-        super().__init__(f"missing prices on trading days: {listed}")
+        self.full_text = _gap_reason(gaps, sessions=sessions, benchmark=benchmark, cap=False)
+        super().__init__(_gap_reason(gaps, sessions=sessions, benchmark=benchmark, cap=True))
 
 
 def dividends_unread_line(backtest: str) -> str:
@@ -729,7 +863,7 @@ class SQLIngester:
             first, last = (sessions[0], sessions[-1]) if len(sessions) else (from_date, to_date)
             raise PlainSentence(no_stored_prices_line(self.backtest.name, empty, first, last, gaps))
         if gaps:
-            raise MissingSessionsError(gaps)
+            raise MissingSessionsError(gaps, sessions=sessions, benchmark=self.backtest.benchmark or "")
         # Dividends are checked before any bar is yielded, so a refused one
         # writes nothing.
         self._bundle_dividends = self.bundle_dividends(resolved, from_date, to_date, calendar, sessions)

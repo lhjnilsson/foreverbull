@@ -678,7 +678,7 @@ func (test *BacktestCommandTest) TestIngestMissingSessionsUseTheCreateSentence()
 	ziplineEngine := new(engine.MockEngine)
 	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error ingesting: %w",
 		status.Error(codes.DataLoss, "missing prices on trading days: AAA 2024-02-14; BBB 2024-02-20,2024-02-21,2024-03-05"+
-			"\nDetails: MissingSessionsError: missing prices on trading days: …")))
+			"\nDetails: MissingSessionsError")))
 	ziplineEngine.On("Sessions", mock.Anything, quarterStart, quarterEnd).Return(xnysSessions(quarterEnd), nil)
 
 	err := command.Ingest(context.TODO(), test.ingestMessage(quarterBacktest, ziplineEngine))
@@ -686,6 +686,27 @@ func (test *BacktestCommandTest) TestIngestMissingSessionsUseTheCreateSentence()
 		"days for 2 symbols. The backtest wasn't saved.\n"+
 		"  AAA: 2024-02-14\n"+
 		"  BBB: 2024-02-20 to 2024-02-21, 2024-03-05\n"+
+		"Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// A capped DATA_LOSS reason is still the missing-session sentence. The
+// leftovers Zipline counted stay in the sentence, and the backtest is removed.
+func (test *BacktestCommandTest) TestIngestCappedMissingSessionsUseTheCreateSentence() {
+	test.createQuarter("AAA", "BBB")
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error ingesting: %w",
+		status.Error(codes.DataLoss, "missing prices on trading days: AAA 2024-02-14; "+
+			"BBB 2024-02-20,2024-02-21 and 4 more ranges; and 3 more symbols"+
+			"\nDetails: MissingSessionsError")))
+	ziplineEngine.On("Sessions", mock.Anything, quarterStart, quarterEnd).Return(xnysSessions(quarterEnd), nil)
+
+	err := command.Ingest(context.TODO(), test.ingestMessage(quarterBacktest, ziplineEngine))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices on trading "+
+		"days for 5 symbols. The backtest wasn't saved.\n"+
+		"  AAA: 2024-02-14\n"+
+		"  BBB: 2024-02-20 to 2024-02-21 … and 4 more ranges\n"+
+		"  … and 3 more symbols\n"+
 		"Try another provider with --provider, or change the backtest dates, then run `fbull backtest create` again.")
 	test.requireNothingSaved()
 }
