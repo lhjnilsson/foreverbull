@@ -11,6 +11,7 @@ from rich.logging import RichHandler
 from foreverbull.broker.credentials import InsecureTransportError
 from foreverbull.broker.credentials import TokenFileError
 from foreverbull.broker.credentials import set_cli_token
+from foreverbull.exceptions import ConfigurationError
 from foreverbull_cli.bull.auth import login
 from foreverbull_cli.bull.auth import logout
 from foreverbull_cli.bull.backtest import backtest
@@ -18,6 +19,7 @@ from foreverbull_cli.bull.strategy import strategy
 from foreverbull_cli.bull.token import token_app
 from foreverbull_cli.bull.trading import trading
 from foreverbull_cli.output import console
+from foreverbull_cli.output import require_grafana_url
 
 
 log = logging.getLogger(__name__)
@@ -43,6 +45,9 @@ class _Cli(typer.Typer):
     def __call__(self, *args, **kwargs):
         try:
             return super().__call__(*args, **kwargs)
+        except ConfigurationError as exc:
+            console.print(str(exc), style="red", highlight=False, soft_wrap=True)
+            raise SystemExit(1) from None
         except (InsecureTransportError, TokenFileError) as exc:
             console.print(str(exc), style="red", highlight=False)
             raise SystemExit(1) from None
@@ -87,6 +92,14 @@ def setup_logging(
         typer.Option("--token", help="Bearer for this command. Not stored."),
     ] = None,
 ):
+    # A bad GRAFANA_URL used to be swapped for localhost inside every link.
+    # Refuse it before the command runs, the same way an invalid boolean env
+    # var is refused: one line naming the variable and the value, then exit.
+    try:
+        require_grafana_url()
+    except ConfigurationError as exc:
+        console.print(str(exc), style="red", highlight=False, soft_wrap=True)
+        raise typer.Exit(1) from None
     set_cli_token(token)
     level = _logging_level(verbose)
     os.environ["LOGGING_LEVEL"] = level

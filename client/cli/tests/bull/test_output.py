@@ -2,6 +2,9 @@ import io
 
 from datetime import date
 
+import pytest
+
+from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.output import GRAFANA_DASHBOARD_UID
 from foreverbull_cli.output import GRAFANA_DASHBOARD_URL
 from foreverbull_cli.output import LiveProgress
@@ -11,7 +14,9 @@ from foreverbull_cli.output import format_optional_float
 from foreverbull_cli.output import format_proto_date
 from foreverbull_cli.output import grafana_execution_url
 from rich.console import Console
+from typer.testing import CliRunner
 
+from foreverbull.exceptions import ConfigurationError
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
 from foreverbull.pb.foreverbull.backtest.v1 import execution_pb
@@ -60,7 +65,6 @@ def test_grafana_execution_url_builder():
         grafana_execution_url("https://example.com/grafana", "e1")
         == "https://example.com/grafana/d/ee9ep4jxtwkcgf?var-execution=e1"
     )
-    assert grafana_execution_url("not a url", "exec-2") == "http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=exec-2"
 
 
 def test_execution_link_uses_grafana_url_env(monkeypatch):
@@ -68,6 +72,56 @@ def test_execution_link_uses_grafana_url_env(monkeypatch):
     assert execution_link("exec-1") == "https://grafana.example.com/d/ee9ep4jxtwkcgf?var-execution=exec-1"
     monkeypatch.setenv("GRAFANA_URL", "")
     assert execution_link("exec-1") == "http://localhost:3000/d/ee9ep4jxtwkcgf?var-execution=exec-1"
+
+
+@pytest.mark.parametrize(
+    ("raw", "shown", "secret"),
+    [
+        ("not a url", "not a url", None),
+        ("localhost:3000", "localhost:3000", None),
+        ("http://", "http://", None),
+        ("ftp://grafana.example.com", "ftp://grafana.example.com", None),
+        ("   ", "   ", None),
+        ("http://user:hunter2@[::1", "http://user:***@[::1", "hunter2"),
+        ("http://user:pw@", "http://user:***@", "pw"),
+    ],
+)
+def test_invalid_grafana_url_names_the_variable(raw, shown, secret):
+    message = (
+        f"GRAFANA_URL must be an http or https URL with a host, but it's set to '{shown}'. "
+        "Set it to a URL like https://grafana.example.com, or unset it to use the local Grafana."
+    )
+    with pytest.raises(ConfigurationError) as raised:
+        grafana_execution_url(raw, "exec-2")
+    assert str(raised.value) == message
+    if secret is not None:
+        assert secret not in str(raised.value)
+
+
+def test_invalid_grafana_url_fails_the_command_without_a_traceback(monkeypatch):
+    monkeypatch.setenv("GRAFANA_URL", "not a url")
+    result = CliRunner().invoke(cli, ["backtest", "etfs"])
+    assert result.exit_code == 1
+    assert result.stdout.strip() == (
+        "GRAFANA_URL must be an http or https URL with a host, but it's set to 'not a url'. "
+        "Set it to a URL like https://grafana.example.com, or unset it to use the local Grafana."
+    )
+    assert "Traceback" not in result.stdout
+    assert "iShares" not in result.stdout
+
+
+def test_unset_grafana_url_still_runs(monkeypatch):
+    monkeypatch.delenv("GRAFANA_URL", raising=False)
+    result = CliRunner().invoke(cli, ["backtest", "etfs"])
+    assert result.exit_code == 0
+    assert "iShares S&P 100" in result.stdout
+
+
+def test_valid_grafana_url_still_runs(monkeypatch):
+    monkeypatch.setenv("GRAFANA_URL", "https://grafana.example.com")
+    result = CliRunner().invoke(cli, ["backtest", "etfs"])
+    assert result.exit_code == 0
+    assert "iShares S&P 100" in result.stdout
 
 
 _PROGRESS_COPY = "Downloading prices: 1,240 of 10,000 symbols"
