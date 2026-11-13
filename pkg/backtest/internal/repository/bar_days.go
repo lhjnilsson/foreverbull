@@ -17,12 +17,33 @@ type BarDays struct {
 
 // SymbolBars is one symbol's span and the bar days inside a window.
 type SymbolBars struct {
-	// First and Last are the symbol's first and last bar over all stored
-	// time, as UTC dates, so a window that starts or ends inside the span
-	// still sees the sessions missing at its edges.
+	// First and Last are the symbol's first and last positive bar over all
+	// stored time, as UTC dates, so a window that starts or ends inside the
+	// span still sees the sessions missing at its edges.
 	First, Last time.Time
-	// Days are the bar days inside the window, oldest first.
+	// Days are the bar days inside the window, oldest first. List fills
+	// them. When Absent is non-nil, Days is unused.
 	Days []time.Time
+	// Absent, when non-nil, is the sessions inside [First, Last] with no
+	// positive bar, oldest first. An empty slice means every such session
+	// has a bar. Nil means Days is the bar list instead.
+	Absent []time.Time
+}
+
+// UnitWindow is one ticker window of a named unit. Several windows share a
+// unit when an instrument's tickers are read together. A zero From or To
+// leaves that side open.
+type UnitWindow struct {
+	Unit     string
+	Symbol   string
+	From, To time.Time
+}
+
+// SessionGap is one unit's span and the checked sessions inside it that
+// have no positive bar. A unit with no positive bar is absent.
+type SessionGap struct {
+	First, Last time.Time
+	Missing     []time.Time
 }
 
 // Ticker is a symbol whose bars are read only from From up to, not
@@ -163,6 +184,94 @@ func (db *BarDays) List(ctx context.Context, provider string, tickers []Ticker, 
 		return nil, fmt.Errorf("failed to query bar days: %w", err)
 	}
 	return bars, nil
+}
+
+// gapQuery is the missing-session check in SQL. Sessions are left-joined to
+// the positive bars inside each unit's ticker windows, so a large universe
+// does not load every bar day. The UTC date matches List, which reads
+// dateOnly(time.UTC()) in Go. A unit with no positive bar is not returned.
+const gapQuery = `
+WITH w AS (
+	SELECT unit, symbol,
+	       lo::timestamp AT TIME ZONE 'UTC' AS lo,
+	       hi::timestamp AT TIME ZONE 'UTC' AS hi
+	  FROM unnest($2::text[], $3::text[], $4::text[]::date[], $5::text[]::date[])
+	    AS t(unit, symbol, lo, hi)),
+positive AS (
+	SELECT DISTINCT w.unit,
+	       ((o.time AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::date AS day
+	  FROM w
+	  JOIN ohlc o ON o.symbol = w.symbol
+	 WHERE o.provider = $1
+	   AND (w.lo IS NULL OR o.time >= w.lo)
+	   AND (w.hi IS NULL OR o.time < w.hi)
+	   AND o.open > 0 AND o.high > 0 AND o.low > 0 AND o.close > 0),
+span AS (
+	SELECT unit, min(day) AS first, max(day) AS last
+	  FROM positive
+	 GROUP BY unit),
+sessions AS (
+	SELECT d::date AS day FROM unnest($6::text[]::date[]) AS d)
+SELECT unit, first, last, missing FROM (
+	SELECT unit, first, last, NULL::date AS missing FROM span
+	UNION ALL
+	SELECT s.unit, s.first, s.last, sess.day
+	  FROM span s
+	  JOIN sessions sess ON sess.day >= s.first AND sess.day <= s.last
+	  LEFT JOIN positive p ON p.unit = s.unit AND p.day = sess.day
+	 WHERE p.day IS NULL
+) gaps
+ORDER BY unit, missing NULLS FIRST`
+
+// Gaps returns each unit's span and the sessions inside that span with no
+// positive bar in any of its ticker windows. sessions are the dates the
+// check looks at, already capped at the last completed session and without
+// holidays. A unit with no positive bar has no entry.
+func (db *BarDays) Gaps(ctx context.Context, provider string, windows []UnitWindow, sessions []time.Time) (map[string]*SessionGap, error) {
+	if len(windows) == 0 {
+		return map[string]*SessionGap{}, nil
+	}
+	units := make([]string, len(windows))
+	symbols := make([]string, len(windows))
+	from := make([]*string, len(windows))
+	to := make([]*string, len(windows))
+	for i, window := range windows {
+		units[i] = window.Unit
+		symbols[i] = window.Symbol
+		from[i] = windowDate(window.From)
+		to[i] = windowDate(window.To)
+	}
+	days := make([]string, len(sessions))
+	for i, session := range sessions {
+		days[i] = dateString(session)
+	}
+	rows, err := db.Conn.Query(ctx, gapQuery, provider, units, symbols, from, to, days)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query bar gaps: %w", err)
+	}
+	defer rows.Close()
+	gaps := make(map[string]*SessionGap)
+	for rows.Next() {
+		var unit string
+		var first, last time.Time
+		var missing *time.Time
+		if err := rows.Scan(&unit, &first, &last, &missing); err != nil {
+			return nil, fmt.Errorf("failed to scan bar gap: %w", err)
+		}
+		entry := gaps[unit]
+		if entry == nil {
+			entry = &SessionGap{First: dateOnly(first.UTC()), Last: dateOnly(last.UTC()), Missing: []time.Time{}}
+			gaps[unit] = entry
+		}
+		if missing == nil {
+			continue
+		}
+		entry.Missing = append(entry.Missing, dateOnly(missing.UTC()))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to query bar gaps: %w", err)
+	}
+	return gaps, nil
 }
 
 // windowDate is a window side as the queries read it: NULL when open.

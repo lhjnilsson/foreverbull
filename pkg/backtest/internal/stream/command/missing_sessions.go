@@ -136,18 +136,13 @@ func missingSessions(sessions []time.Time, symbols []string, bars map[string]*re
 			gaps = append(gaps, gap)
 			continue
 		}
-		have := make(map[time.Time]bool)
-		if stored != nil {
-			for _, day := range stored.Days {
-				have[day] = true
-			}
-		}
+		covers := barCover(stored)
 		for i, day := range days {
 			switch {
 			case sent[day]:
 				gap.sessions = append(gap.sessions, i)
 				gap.closed = gap.closed || !isSession[day]
-			case !coverage || !isSession[day] || stored == nil || have[day]:
+			case !coverage || !isSession[day] || stored == nil || covers(day):
 			case day.Before(stored.First):
 				gap.noneBefore = stored.First
 			case day.After(stored.Last):
@@ -545,6 +540,34 @@ func checkUnits(symbols []string, tickers map[string][]repository.Ticker) ([]che
 	return units, alias
 }
 
+// unitWindows is the ticker windows Gaps reads, one row per ticker of a unit.
+func unitWindows(units []checkUnit) []repository.UnitWindow {
+	windows := make([]repository.UnitWindow, 0)
+	for _, unit := range units {
+		for _, ticker := range unit.tickers {
+			windows = append(windows, repository.UnitWindow{
+				Unit: unit.name, Symbol: ticker.Symbol, From: ticker.From, To: ticker.To,
+			})
+		}
+	}
+	return windows
+}
+
+// barsFromSessionGaps is the span and the missing sessions Gaps found,
+// in the shape missingSessions reads. A unit Gaps did not return has no
+// positive bar.
+func barsFromSessionGaps(found map[string]*repository.SessionGap) map[string]*repository.SymbolBars {
+	joined := make(map[string]*repository.SymbolBars, len(found))
+	for name, gap := range found {
+		absent := gap.Missing
+		if absent == nil {
+			absent = []time.Time{}
+		}
+		joined[name] = &repository.SymbolBars{First: gap.First, Last: gap.Last, Absent: absent}
+	}
+	return joined
+}
+
 // unitBars joins the bars of each unit's tickers: the earliest first bar,
 // the latest last bar, and every bar day once, oldest first. A unit with no
 // bar under any ticker has no entry.
@@ -855,16 +878,13 @@ func checkMissingSessions(ctx context.Context, msg stream.Message, db *pgxpool.P
 		return discardFailedIngest(ctx, backtests, name, id, fmt.Errorf("error reading tickers: %v", err))
 	}
 	units, alias := checkUnits(order, tickers)
-	read := make([]repository.Ticker, 0, len(units))
 	names := make([]string, 0, len(units))
 	for _, unit := range units {
-		read = append(read, unit.tickers...)
 		names = append(names, unit.name)
 	}
-	start, end := period.start, period.end
-	bars, err := barDays.List(ctx, provider, read, start, end)
+	found, err := barDays.Gaps(ctx, provider, unitWindows(units), period.sessions)
 	if err != nil {
-		return discardFailedIngest(ctx, backtests, name, id, fmt.Errorf("error reading bar days: %v", err))
+		return discardFailedIngest(ctx, backtests, name, id, fmt.Errorf("error reading bar gaps: %v", err))
 	}
 	byUnit := make(map[string][]time.Time, len(reported))
 	for symbol, days := range reported {
@@ -873,7 +893,7 @@ func checkMissingSessions(ctx context.Context, msg stream.Message, db *pgxpool.P
 		}
 		byUnit[symbol] = append(byUnit[symbol], days...)
 	}
-	joined := unitBars(units, bars)
+	joined := barsFromSessionGaps(found)
 	days, gaps := missingSessions(period.sessions, names, joined, byUnit, true)
 	var misses []lookupMiss
 	if len(gaps) > 0 {

@@ -168,21 +168,44 @@ func benchmarkCoversAfter(bench *repository.SymbolBars, sessions []time.Time, la
 	if bench == nil {
 		return false
 	}
-	have := make(map[time.Time]bool, len(bench.Days))
-	for _, day := range bench.Days {
-		have[day] = true
-	}
+	covers := barCover(bench)
 	saw := false
 	for _, session := range sessions {
 		if !session.After(last) {
 			continue
 		}
 		saw = true
-		if !have[session] {
+		if !covers(session) {
 			return false
 		}
 	}
 	return saw
+}
+
+// barCover reports whether a session has a positive bar. Absent, when set,
+// is the sessions inside the span that do not; Days is the bar list List
+// returns. A nil bar covers nothing.
+func barCover(bars *repository.SymbolBars) func(time.Time) bool {
+	if bars == nil {
+		return func(time.Time) bool { return false }
+	}
+	if bars.Absent != nil {
+		missing := make(map[time.Time]bool, len(bars.Absent))
+		for _, day := range bars.Absent {
+			missing[day] = true
+		}
+		return func(day time.Time) bool {
+			if day.Before(bars.First) || day.After(bars.Last) {
+				return false
+			}
+			return !missing[day]
+		}
+	}
+	have := make(map[time.Time]bool, len(bars.Days))
+	for _, day := range bars.Days {
+		have[day] = true
+	}
+	return func(day time.Time) bool { return have[day] }
 }
 
 // lookbackSessions is the listingLookback sessions immediately before the
