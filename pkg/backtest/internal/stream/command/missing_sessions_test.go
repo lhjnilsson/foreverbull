@@ -890,3 +890,46 @@ func (test *BacktestCommandTest) TestMissingSessionsCountTheLatestTickersBarsBef
 	_, err = test.downloadQuarter()
 	test.Require().NoError(err)
 }
+
+// Dates before an instrument's first asset_symbol window are not a ticker
+// window. Bars stored there, under the old ticker or the latest one, do not
+// fill them, and the sessions are named. The latest ticker's window does
+// reach back to the first from_date, which is a different date.
+func (test *BacktestCommandTest) TestMissingSessionsBeforeTheFirstTickerWindowAreNamed() {
+	test.createQuarter("FB")
+	_, err := test.db.Exec(context.TODO(), `
+		INSERT INTO instrument (id, isin, name) VALUES ('meta', 'US30303M1027', 'Meta Platforms Inc');
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+			('US30303M1027', 'FB', '2024-02-01', '2024-03-01'),
+			('US30303M1027', 'META', '2024-03-01', NULL);`)
+	test.Require().NoError(err)
+	test.storeBars("META", "2024-01-01", "2024-03-31")
+	test.storeBars("FB", "2024-01-01", "2024-01-31")
+
+	_, err = test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': META (earlier FB) has no prices "+
+		"before 2024-02-01, and "+unconfirmedBefore+" The backtest wasn't saved. Choose a start on or after "+
+		"2024-02-01, or remove META (earlier FB), then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
+
+// Dates on or after the last closed asset_symbol window are not a ticker
+// window either. Bars after that end do not fill them, and the sessions are
+// named. An open to_date is not this window.
+func (test *BacktestCommandTest) TestMissingSessionsAfterTheLastTickerWindowAreNamed() {
+	test.createQuarter("FB")
+	_, err := test.db.Exec(context.TODO(), `
+		INSERT INTO instrument (id, isin, name) VALUES ('meta', 'US30303M1027', 'Meta Platforms Inc');
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+			('US30303M1027', 'FB', '2024-01-02', '2024-03-01'),
+			('US30303M1027', 'META', '2024-03-01', '2024-03-15');`)
+	test.Require().NoError(err)
+	test.storeBars("META", "2024-01-01", "2024-03-31")
+	test.storeBars("FB", "2024-03-15", "2024-03-31")
+
+	_, err = test.downloadQuarter()
+	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': META (earlier FB) has no prices "+
+		"after 2024-03-14, and "+unconfirmedAfter+" The backtest wasn't saved. Choose an end on or before "+
+		"2024-03-14, or remove META (earlier FB), then run `fbull backtest create` again.")
+	test.requireNothingSaved()
+}
