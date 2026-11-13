@@ -738,8 +738,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				break
 			}
 			if blocked := blockedDownload(err); blocked != nil {
-				discardBlockedBacktest(ctx, backtests, command.BacktestName, backtestID)
-				return blocked
+				return discardBlockedBacktest(ctx, backtests, command.BacktestName, backtestID, blocked)
 			}
 			if limit, ok := downloadTimeLimit(err); ok {
 				return discardTimeLimitBacktest(ctx, backtests, command.BacktestName, backtestID,
@@ -1053,10 +1052,27 @@ func blockedDownload(err error) error {
 // duplicate name. A block leaves nothing that belongs to the backtest: bars
 // are stored per provider and symbol, not per backtest. Per-symbol
 // STATUS_ERROR also removes the backtest (see discardSymbolDownloadError).
-func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name, id string) {
-	if err := deleteStoredBacktest(ctx, backtests, name, id); err != nil {
+// When the delete works, blocked is the whole message, the finance service's
+// sentence. When it does not, the name is still taken, so that sentence
+// follows the step that deletes the backtest first.
+func discardBlockedBacktest(ctx context.Context, backtests repository.Backtest, name, id string, blocked error) error {
+	err := deleteStoredBacktest(ctx, backtests, name, id)
+	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
+	if !removed {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting blocked backtest")
 	}
+	return plainSentence(blockedBacktestMessage(name, blocked, removed))
+}
+
+// blockedBacktestMessage is the finance service's sentence when the backtest
+// was removed. Otherwise that sentence is the step, behind the partly-saved
+// sentence that deletes the backtest first.
+func blockedBacktestMessage(name string, blocked error, removed bool) string {
+	if removed {
+		return blocked.Error()
+	}
+	saved, next := savedAndNext(name, blocked.Error(), removed)
+	return fmt.Sprintf("%s %s", saved, next)
 }
 
 // discardFailedBacktest deletes the backtest after a stream or connection

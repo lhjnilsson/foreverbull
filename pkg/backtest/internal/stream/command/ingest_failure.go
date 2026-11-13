@@ -236,8 +236,10 @@ func ingestFailureMessage(name string, failure ingestFailure, removed bool) stri
 // kept. The returned error is the step's whole message.
 //
 // A canceled create returns ctx.Err() itself, unwrapped, so it reads as
-// every other canceled create and never as a data service failure. The
-// backtest is still removed, on a context that outlives the cancel.
+// every other canceled create and never as a data service failure, when the
+// backtest was removed. The delete runs on a context that outlives the
+// cancel. When that delete fails, the name is still taken, so the message
+// says to delete the backtest first instead of reporting only the cancel.
 func discardFailedIngest(ctx context.Context, backtests repository.Backtest, name, id string, cause error) error {
 	err := deleteAfterFailure(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
@@ -245,9 +247,28 @@ func discardFailedIngest(ctx context.Context, backtests repository.Backtest, nam
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after failed ingest")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+		if removed {
+			return ctxErr
+		}
+		return plainSentence(canceledIngestMessage(name))
 	}
 	return plainSentence(ingestFailureMessage(name, readIngestFailure(cause), removed))
+}
+
+// canceledIngestNextStep is the step after a canceled ingest whose backtest
+// could not be removed. The cancel is not a data-service failure, so the
+// step is to run create again once the leftover backtest is deleted.
+const canceledIngestNextStep = "Run `fbull backtest create` again."
+
+// canceledIngestMessage is the step when a canceled ingest could not remove
+// the backtest. The lead names the cancel, then the partly-saved sentence,
+// then the step to delete it first. There is no details line: the cancel is
+// not a data-service failure.
+func canceledIngestMessage(name string) string {
+	var text strings.Builder
+	fmt.Fprintf(&text, "Couldn't load data for backtest '%s': the create was canceled. ", name)
+	text.WriteString(notRemovedSentence + " " + deleteFirst(name, canceledIngestNextStep))
+	return text.String()
 }
 
 // cleanupTimeout bounds the delete that runs after a failed or canceled
