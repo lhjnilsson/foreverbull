@@ -1331,7 +1331,8 @@ _BAD_CLOSE_VALUE = (
 )
 _SYMBOL_LIST_CLOSE_OFF = (
     "Close on universe drop only applies to backtests that use an ETF universe. "
-    "Remove --no-close-on-universe-drop, or use an ETF universe."
+    "Remove --no-close-on-universe-drop, or run `fbull backtest create` without --file "
+    "to create an ETF backtest."
 )
 
 
