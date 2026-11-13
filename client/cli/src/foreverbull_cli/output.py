@@ -1,4 +1,5 @@
 import os
+import re
 
 from contextlib import contextmanager
 from typing import Self
@@ -18,6 +19,7 @@ from rich.progress import SpinnerColumn
 from rich.progress import Task
 from rich.progress import TextColumn
 
+from foreverbull.exceptions import ConfigurationError
 from foreverbull.pb.foreverbull import common_pb
 from foreverbull.pb.pb_utils import from_proto_date_to_pydate
 
@@ -50,11 +52,58 @@ def format_optional_float(message, field: str) -> str:
     return f"{getattr(message, field):.5f}"
 
 
+# Same shape as the Go redactor: scheme://user:password@ becomes scheme://user:***@.
+# It does not need a successful parse, so a broken URL still loses its password.
+_URL_PASSWORD = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s:/@]*:)[^\s@]*@")
+
+
+def redact_url_passwords(text: str) -> str:
+    """Replace a URL userinfo password with ***. The username and the rest stay."""
+    return _URL_PASSWORD.sub(r"\1***@", text)
+
+
+def grafana_url_error(raw: str) -> str:
+    """The line for a GRAFANA_URL that is set and not an http(s) origin."""
+    shown = redact_url_passwords(raw)
+    return (
+        f"{GRAFANA_URL_ENV} must be an http or https URL with a host, but it's set to '{shown}'. "
+        "Set it to a URL like https://grafana.example.com, or unset it to use the local Grafana."
+    )
+
+
+def _grafana_base(grafana_url: str) -> str:
+    """Return the origin to build links from.
+
+    Unset and empty keep the local default. A non-empty value that is not an
+    http or https URL with a host is refused, rather than replaced with that
+    default. Whitespace-only counts as set.
+    """
+    if grafana_url == "":
+        return GRAFANA_URL_DEFAULT
+    trimmed = grafana_url.strip()
+    if not _valid_grafana_origin(trimmed):
+        raise ConfigurationError(grafana_url_error(grafana_url))
+    return trimmed
+
+
+def _valid_grafana_origin(value: str) -> bool:
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value)
+        host = parsed.hostname
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and bool(host)
+
+
+def require_grafana_url() -> str:
+    """Read GRAFANA_URL. Unset or empty is the local default; anything else must be a usable origin."""
+    return _grafana_base(os.environ.get(GRAFANA_URL_ENV, ""))
+
+
 def grafana_execution_url(grafana_url: str, execution_id: str) -> str:
-    base = (grafana_url or "").strip() or GRAFANA_URL_DEFAULT
-    parsed = urlparse(base)
-    if not parsed.scheme or not parsed.netloc:
-        parsed = urlparse(GRAFANA_URL_DEFAULT)
+    parsed = urlparse(_grafana_base(grafana_url))
     path = parsed.path.rstrip("/") + f"/d/{GRAFANA_DASHBOARD_UID}"
     query = urlencode({"var-execution": execution_id})
     return urlunparse((parsed.scheme, parsed.netloc, path, "", query, ""))
