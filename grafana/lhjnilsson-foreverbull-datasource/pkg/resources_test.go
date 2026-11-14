@@ -506,3 +506,124 @@ func (test *ResourceTest) TestGetExecutionArgumentsRequiresID() {
 	rsp := test.callRaw(http.MethodGet, "execution", "/execution", nil)
 	test.Equal(http.StatusBadRequest, rsp.Status)
 }
+
+func (test *ResourceTest) TestGetExecutionArgumentsBacktestReply() {
+	id := "84753648-1bba-4a76-8c5f-c0631204633e"
+	lookupErr := status.Error(codes.NotFound, "missing")
+	valid := &executionArgumentsView{
+		ID:                  id,
+		Session:             "sess-1",
+		Backtest:            "spy",
+		Benchmark:           "SPY",
+		Start:               "2023-01-03",
+		End:                 "2023-12-25",
+		CloseOnUniverseDrop: "on",
+		Functions:           []executionFunctionView{},
+	}
+	cases := []struct {
+		name      string
+		reply     *backtestsvc.GetBacktestResponse
+		lookupErr error
+		status    int
+		cause     string
+		want      *executionArgumentsView
+	}{
+		{
+			name: "valid reply",
+			reply: &backtestsvc.GetBacktestResponse{
+				Name: "spy",
+				Backtest: &backtestpb.Backtest{
+					Name:               "spy",
+					Benchmark:          "SPY",
+					HasUniverseMembers: true,
+				},
+			},
+			status: http.StatusOK,
+			want:   valid,
+		},
+		{
+			name:      "lookup error",
+			lookupErr: lookupErr,
+			status:    http.StatusInternalServerError,
+			cause:     lookupErr.Error(),
+		},
+		{
+			name:   "nil reply",
+			status: http.StatusInternalServerError,
+			cause:  errBacktestEmptyReply.Error(),
+		},
+		{
+			name:   "zero-value reply",
+			reply:  &backtestsvc.GetBacktestResponse{},
+			status: http.StatusInternalServerError,
+			cause:  errBacktestEmptyReply.Error(),
+		},
+		{
+			name: "empty name",
+			reply: &backtestsvc.GetBacktestResponse{
+				Backtest: &backtestpb.Backtest{
+					Benchmark:          "SPY",
+					HasUniverseMembers: true,
+				},
+			},
+			status: http.StatusInternalServerError,
+			cause:  errBacktestNoName.Error(),
+		},
+		{
+			name: "nil backend",
+			reply: &backtestsvc.GetBacktestResponse{
+				Name: "spy",
+			},
+			status: http.StatusInternalServerError,
+			cause:  errBacktestNoBackend.Error(),
+		},
+	}
+
+	for _, tc := range cases {
+		test.Run(tc.name, func() {
+			test.backend.ExpectedCalls = nil
+			test.backend.Calls = nil
+			test.backend.On("GetExecution", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetExecutionRequest) bool {
+				return req.GetExecutionId() == id
+			})).Return(&backtestsvc.GetExecutionResponse{
+				Execution: &backtestpb.Execution{
+					Id:       id,
+					Backtest: "spy",
+					Session:  "sess-1",
+					StartDate: &fbPb.Date{
+						Year:  2023,
+						Month: 1,
+						Day:   3,
+					},
+					EndDate: &fbPb.Date{
+						Year:  2023,
+						Month: 12,
+						Day:   25,
+					},
+				},
+			}, nil).Once()
+			test.backend.On("GetBacktest", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetBacktestRequest) bool {
+				return req.GetName() == "spy"
+			})).Return(tc.reply, tc.lookupErr).Once()
+
+			rsp := test.callRaw(http.MethodGet, "execution", "/execution?id="+id, nil)
+			test.Equal(tc.status, rsp.Status)
+			body := string(rsp.Body)
+			if tc.want != nil {
+				var got executionArgumentsView
+				test.Require().NoError(json.Unmarshal(rsp.Body, &got))
+				test.Equal(*tc.want, got)
+				test.NotContains(body, "database")
+				return
+			}
+			test.Contains(body, "get backtest spy:")
+			test.Contains(body, tc.cause)
+			test.NotContains(body, `"benchmark"`)
+			test.NotContains(body, `"close_on_universe_drop"`)
+			var got executionArgumentsView
+			test.Require().Error(json.Unmarshal(rsp.Body, &got))
+			test.Empty(got.Benchmark)
+			test.Empty(got.CloseOnUniverseDrop)
+		})
+	}
+}
