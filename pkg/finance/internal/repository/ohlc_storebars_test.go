@@ -30,6 +30,24 @@ func (test *OHLCTests) TestStoreBarsRefusesOutOfRangeVolumeAndStoresNothing() {
 	test.Equal(0, test.countBars("ABC"))
 }
 
+// A bad price anywhere in the batch refuses the whole write. ValidateBars
+// runs before the transaction, so none of the bars are stored.
+func (test *OHLCTests) TestStoreBarsRefusesBadPriceAndStoresNothing() {
+	day := time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)
+	bad := volumeBar(day.AddDate(0, 0, 1), 100)
+	bad.Close = 0
+	err := test.ohlcStorage.StoreBars(context.Background(), "yahoo", "ABC", []*pb.OHLC{
+		volumeBar(day, 100),
+		bad,
+	})
+	test.Require().ErrorIs(err, repository.ErrInvalidPrice)
+	test.Require().EqualError(err, "yahoo sent an invalid price for ABC on 2020-01-03 (0, negative or not a number)")
+	var refused *repository.InvalidPriceError
+	test.Require().ErrorAs(err, &refused)
+	test.Equal("close", refused.Field)
+	test.Equal(0, test.countBars("ABC"))
+}
+
 // noBegin hides the pool's Begin, like a connection that can't open a
 // transaction.
 type noBegin struct {
