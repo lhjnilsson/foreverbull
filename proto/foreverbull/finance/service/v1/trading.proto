@@ -24,6 +24,11 @@ message GetOrdersResponse {
 
 message CreateSessionRequest {
   repeated string symbols = 1;
+  // Price provider stored on the backtest: yahoo, stooq, or alpaca.
+  // Empty is refused. Trading does not guess a provider.
+  string provider = 2;
+  // Alpaca profile name when provider is alpaca. Ignored for yahoo and stooq.
+  string profile = 3;
 }
 
 message CreateSessionResponse {

@@ -5,6 +5,41 @@ import (
 	"unicode"
 )
 
+// TradingProviderMissing is the sentence when a trading session has no price
+// provider. backtest is the backtest name when the caller has it. An empty
+// name leaves out the delete step.
+func TradingProviderMissing(backtest string) string {
+	return tradingProviderSentence(
+		"This backtest has no price provider, so trading can't load prices.",
+		backtest,
+		"Create the backtest again with --provider yahoo, stooq, or alpaca, then run `fbull trading run` again.",
+	)
+}
+
+// TradingProviderUnknown is the sentence when that provider is not one of
+// yahoo, stooq, or alpaca. provider is the value that was set. backtest is
+// the backtest name when the caller has it.
+func TradingProviderUnknown(provider, backtest string) string {
+	shown := shownSetting(provider)
+	lead := "Trading can't use price provider " + shown + ". It must be yahoo, stooq, or alpaca."
+	if shown == "that value" {
+		lead = "Trading can't use that price provider. It must be yahoo, stooq, or alpaca."
+	}
+	return tradingProviderSentence(
+		lead,
+		backtest,
+		"Create the backtest again with --provider set to one of those, then run `fbull trading run` again.",
+	)
+}
+
+func tradingProviderSentence(lead, backtest, create string) string {
+	name := strings.TrimSpace(backtest)
+	if name == "" {
+		return lead + " " + create
+	}
+	return lead + " Run `fbull backtest delete " + name + "` first. " + create
+}
+
 // StooqExchangeMissing is the sentence when Stooq is used without an exchange.
 // US is the only exchange Stooq is asked with, and it still requests the same
 // symbols, such as aapl.us.

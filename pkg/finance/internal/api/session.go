@@ -9,6 +9,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
@@ -40,7 +41,7 @@ type grpcSessionServer struct {
 type sessionOption func(*grpcSessionServer)
 
 // WithBars fills WorkerRequest.bars from source during paper runs.
-// provider is the price source. An empty provider is yahoo.
+// provider is the price source. Configure refuses an empty or unknown one.
 func WithBars(source worker.BarSource, provider string) sessionOption {
 	return func(gs *grpcSessionServer) {
 		gs.bars = source
@@ -91,7 +92,11 @@ func NewSecuredGRPCSessionServer(trading supplier.Trading, secret string, opts .
 func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.ConfigureRequest) (*servicePb.ConfigureResponse, error) {
 	var poolOpts []worker.Option
 	if gs.bars != nil {
-		poolOpts = append(poolOpts, worker.WithBars(gs.bars, gs.provider))
+		provider, err := marketdata.RequireTradingPrice(gs.provider)
+		if err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		poolOpts = append(poolOpts, worker.WithBars(gs.bars, provider))
 	}
 	var err error
 	gs.wp, err = worker.NewPool(ctx, req.GetAlgorithm(), poolOpts...)

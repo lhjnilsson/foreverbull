@@ -117,7 +117,7 @@ class GetOrdersResponse(Message[_GetOrdersResponseFields]):
 
         orders: list[Order]
 
-_CreateSessionRequestFields: TypeAlias = Literal["symbols"]
+_CreateSessionRequestFields: TypeAlias = Literal["symbols", "provider", "profile"]
 
 class CreateSessionRequest(Message[_CreateSessionRequestFields]):
     """
@@ -130,9 +130,22 @@ class CreateSessionRequest(Message[_CreateSessionRequestFields]):
             ```proto
             repeated string symbols = 1;
             ```
+        provider:
+            Price provider stored on the backtest: yahoo, stooq, or alpaca.
+            Empty is refused. Trading does not guess a provider.
+
+            ```proto
+            string provider = 2;
+            ```
+        profile:
+            Alpaca profile name when provider is alpaca. Ignored for yahoo and stooq.
+
+            ```proto
+            string profile = 3;
+            ```
     """
 
-    __slots__ = ("symbols",)
+    __slots__ = ("symbols", "provider", "profile")
 
     if TYPE_CHECKING:
 
@@ -140,10 +153,14 @@ class CreateSessionRequest(Message[_CreateSessionRequestFields]):
             self,
             *,
             symbols: list[str] | None = None,
+            provider: str = "",
+            profile: str = "",
         ) -> None:
             pass
 
         symbols: list[str]
+        provider: str
+        profile: str
 
 _CreateSessionResponseFields: TypeAlias = Literal["CREATING", "UPDATING_MARKET_DATA", "STARTING", "FINISHING", "session", "session_secret"]
 
@@ -411,7 +428,7 @@ class StopServerResponse(Message[_StopServerResponseFields]):
 
 
 _DESC = file_desc(
-    b'\n,foreverbull/finance/service/v1/trading.proto\x12\x1eforeverbull.finance.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\x18foreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a$foreverbull/finance/v1/trading.proto\x1a#foreverbull/service/v1/worker.proto"\x15\n\x13GetPortfolioRequest"W\n\x14GetPortfolioResponse\x12?\n\tportfolio\x18\x01 \x01(\x0b2!.foreverbull.finance.v1.PortfolioR\tportfolio"\x12\n\x10GetOrdersRequest"J\n\x11GetOrdersResponse\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"0\n\x14CreateSessionRequest\x12\x18\n\x07symbols\x18\x01 \x03(\tR\x07symbols"\xe9\x02\n\x15CreateSessionResponse\x124\n\x08CREATING\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x08CREATING\x12J\n\x14UPDATING_MARKET_DATA\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x12UPDATINGMARKETDATA\x124\n\x08STARTING\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\x08STARTING\x126\n\tFINISHING\x18\x04 \x01(\x0b2\x18.foreverbull.common.StepR\tFINISHING\x129\n\x07session\x18\x05 \x01(\x0b2\x1f.foreverbull.finance.v1.SessionR\x07session\x12%\n\x0esession_secret\x18\x06 \x01(\tR\rsessionSecret"{\n\x10ConfigureRequest\x12g\n\talgorithm\x18\x01 \x01(\x0b2!.foreverbull.service.v1.AlgorithmR\talgorithmB&\xbaH#\xba\x01\x1d\n\rrequired_algo\x1a\x0cthis != null\xc8\x01\x01"i\n\x11ConfigureResponse\x12T\n\rconfiguration\x18\x01 \x01(\x0b2..foreverbull.service.v1.ExecutionConfigurationR\rconfiguration"&\n\nRunRequest\x12\x18\n\x07symbols\x18\x01 \x03(\tR\x07symbols"D\n\x0bRunResponse\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"J\n\x11PlaceOrderRequest\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"K\n\x12PlaceOrderResponse\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"\x13\n\x11StopServerRequest"\x14\n\x12StopServerResponse2\x85\x03\n\x0fTradingServicer\x12{\n\x0cGetPortfolio\x123.foreverbull.finance.service.v1.GetPortfolioRequest\x1a4.foreverbull.finance.service.v1.GetPortfolioResponse"\x00\x12r\n\tGetOrders\x120.foreverbull.finance.service.v1.GetOrdersRequest\x1a1.foreverbull.finance.service.v1.GetOrdersResponse"\x00\x12\x80\x01\n\rCreateSession\x124.foreverbull.finance.service.v1.CreateSessionRequest\x1a5.foreverbull.finance.service.v1.CreateSessionResponse"\x000\x012\xd6\x03\n\x0fSessionServicer\x12r\n\tConfigure\x120.foreverbull.finance.service.v1.ConfigureRequest\x1a1.foreverbull.finance.service.v1.ConfigureResponse"\x00\x12`\n\x03Run\x12*.foreverbull.finance.service.v1.RunRequest\x1a+.foreverbull.finance.service.v1.RunResponse"\x00\x12v\n\x0bPlaceOrders\x121.foreverbull.finance.service.v1.PlaceOrderRequest\x1a2.foreverbull.finance.service.v1.PlaceOrderResponse"\x00\x12u\n\nStopServer\x121.foreverbull.finance.service.v1.StopServerRequest\x1a2.foreverbull.finance.service.v1.StopServerResponse"\x00B:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3',
+    b'\n,foreverbull/finance/service/v1/trading.proto\x12\x1eforeverbull.finance.service.v1\x1a\x1bbuf/validate/validate.proto\x1a\x18foreverbull/common.proto\x1a\'foreverbull/finance/v1/marketdata.proto\x1a$foreverbull/finance/v1/trading.proto\x1a#foreverbull/service/v1/worker.proto"\x15\n\x13GetPortfolioRequest"W\n\x14GetPortfolioResponse\x12?\n\tportfolio\x18\x01 \x01(\x0b2!.foreverbull.finance.v1.PortfolioR\tportfolio"\x12\n\x10GetOrdersRequest"J\n\x11GetOrdersResponse\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"f\n\x14CreateSessionRequest\x12\x18\n\x07symbols\x18\x01 \x03(\tR\x07symbols\x12\x1a\n\x08provider\x18\x02 \x01(\tR\x08provider\x12\x18\n\x07profile\x18\x03 \x01(\tR\x07profile"\xe9\x02\n\x15CreateSessionResponse\x124\n\x08CREATING\x18\x01 \x01(\x0b2\x18.foreverbull.common.StepR\x08CREATING\x12J\n\x14UPDATING_MARKET_DATA\x18\x02 \x01(\x0b2\x18.foreverbull.common.StepR\x12UPDATINGMARKETDATA\x124\n\x08STARTING\x18\x03 \x01(\x0b2\x18.foreverbull.common.StepR\x08STARTING\x126\n\tFINISHING\x18\x04 \x01(\x0b2\x18.foreverbull.common.StepR\tFINISHING\x129\n\x07session\x18\x05 \x01(\x0b2\x1f.foreverbull.finance.v1.SessionR\x07session\x12%\n\x0esession_secret\x18\x06 \x01(\tR\rsessionSecret"{\n\x10ConfigureRequest\x12g\n\talgorithm\x18\x01 \x01(\x0b2!.foreverbull.service.v1.AlgorithmR\talgorithmB&\xbaH#\xba\x01\x1d\n\rrequired_algo\x1a\x0cthis != null\xc8\x01\x01"i\n\x11ConfigureResponse\x12T\n\rconfiguration\x18\x01 \x01(\x0b2..foreverbull.service.v1.ExecutionConfigurationR\rconfiguration"&\n\nRunRequest\x12\x18\n\x07symbols\x18\x01 \x03(\tR\x07symbols"D\n\x0bRunResponse\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"J\n\x11PlaceOrderRequest\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"K\n\x12PlaceOrderResponse\x125\n\x06orders\x18\x01 \x03(\x0b2\x1d.foreverbull.finance.v1.OrderR\x06orders"\x13\n\x11StopServerRequest"\x14\n\x12StopServerResponse2\x85\x03\n\x0fTradingServicer\x12{\n\x0cGetPortfolio\x123.foreverbull.finance.service.v1.GetPortfolioRequest\x1a4.foreverbull.finance.service.v1.GetPortfolioResponse"\x00\x12r\n\tGetOrders\x120.foreverbull.finance.service.v1.GetOrdersRequest\x1a1.foreverbull.finance.service.v1.GetOrdersResponse"\x00\x12\x80\x01\n\rCreateSession\x124.foreverbull.finance.service.v1.CreateSessionRequest\x1a5.foreverbull.finance.service.v1.CreateSessionResponse"\x000\x012\xd6\x03\n\x0fSessionServicer\x12r\n\tConfigure\x120.foreverbull.finance.service.v1.ConfigureRequest\x1a1.foreverbull.finance.service.v1.ConfigureResponse"\x00\x12`\n\x03Run\x12*.foreverbull.finance.service.v1.RunRequest\x1a+.foreverbull.finance.service.v1.RunResponse"\x00\x12v\n\x0bPlaceOrders\x121.foreverbull.finance.service.v1.PlaceOrderRequest\x1a2.foreverbull.finance.service.v1.PlaceOrderResponse"\x00\x12u\n\nStopServer\x121.foreverbull.finance.service.v1.StopServerRequest\x1a2.foreverbull.finance.service.v1.StopServerResponse"\x00B:Z8github.com/lhjnilsson/foreverbull/pkg/pb/finance/serviceb\x06proto3',
     [
         validate_pb.desc(),
         common_pb.desc(),

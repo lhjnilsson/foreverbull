@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -12,6 +13,7 @@ import (
 	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -82,6 +84,10 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 	if err := requireTradingAccount(ctx); err != nil {
 		return err
 	}
+	provider, err := marketdata.RequireTradingPrice(req.GetProvider())
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
 	rsp := &servicePb.CreateSessionResponse{
 		CREATING: &commonPb.Step{
 			State: commonPb.State_STATE_RUNNING,
@@ -124,7 +130,7 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 	if err := serverStream.Send(rsp); err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
-	o, err := financeStream.NewRunTradeOrchestration(s.Id, req.Symbols)
+	o, err := financeStream.NewRunTradeOrchestration(s.Id, req.GetSymbols(), provider, strings.TrimSpace(req.GetProfile()))
 	if err != nil {
 		return err
 	}
