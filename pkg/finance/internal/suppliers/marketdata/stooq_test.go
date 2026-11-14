@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/stretchr/testify/require"
 )
@@ -100,6 +101,8 @@ func TestGetOHLCSPYMapsToStooqUS(t *testing.T) {
 	require.Equal(t, uint64(110210800), bars[0].Volume)
 }
 
+// An unmapped symbol with the explicit US exchange is asked for as
+// lower(symbol)+".us", the same request the implied US suffix used to build.
 func TestGetOHLCUnknownSymbolFallsBackToUS(t *testing.T) {
 	t.Parallel()
 	var got stooqReq
@@ -253,6 +256,7 @@ func TestWithStooqSymbolMapFile(t *testing.T) {
 	srv := serveStooq(t, readFixture(t, "aapl.us.csv"), http.StatusOK, &got)
 
 	client, err := marketdata.NewStooqClient(
+		marketdata.WithStooqExchange("US"),
 		marketdata.WithStooqBaseURL(srv.URL),
 		marketdata.WithStooqSymbolMapFile(filepath.Join("testdata", "extra_symbols.csv")),
 	)
@@ -272,6 +276,7 @@ func TestWithStooqSymbolMapOverridesBuiltin(t *testing.T) {
 	srv := serveStooq(t, readFixture(t, "aapl.us.csv"), http.StatusOK, &got)
 
 	client, err := marketdata.NewStooqClient(
+		marketdata.WithStooqExchange("US"),
 		marketdata.WithStooqBaseURL(srv.URL),
 		marketdata.WithStooqSymbolMap(map[string]string{"AAPL": "aapl.ny"}),
 	)
@@ -306,9 +311,33 @@ func TestGetOHLCDoesNotHitLiveHost(t *testing.T) {
 	require.NotContains(t, got.host, "stooq.com")
 }
 
+func TestGetOHLCWithoutAnExchangeFailsBeforeARequest(t *testing.T) {
+	t.Parallel()
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}))
+	t.Cleanup(srv.Close)
+	client, err := marketdata.NewStooqClient(marketdata.WithStooqBaseURL(srv.URL))
+	require.NoError(t, err)
+	_, err = client.GetOHLC(context.Background(), "AAPL", date(t, "2021-01-04"), nil)
+	require.EqualError(t, err, usercopy.StooqExchangeMissing)
+	require.False(t, called)
+
+	for _, exchange := range []string{"L", "DE", "UK", "TO"} {
+		_, err = marketdata.NewStooqClient(marketdata.WithStooqExchange(exchange))
+		require.EqualError(t, err, usercopy.StooqExchangeUnsupported(exchange), exchange)
+	}
+	_, err = marketdata.NewStooqClient(marketdata.WithStooqExchange("  "))
+	require.EqualError(t, err, usercopy.StooqExchangeMissing)
+}
+
 func newStooqClient(t *testing.T, baseURL string) *marketdata.StooqClient {
 	t.Helper()
-	client, err := marketdata.NewStooqClient(marketdata.WithStooqBaseURL(baseURL))
+	client, err := marketdata.NewStooqClient(
+		marketdata.WithStooqExchange("US"),
+		marketdata.WithStooqBaseURL(baseURL),
+	)
 	require.NoError(t, err)
 	return client
 }

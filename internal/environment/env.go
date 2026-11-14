@@ -89,6 +89,11 @@ const (
 	// does not set its own listings path.
 	TradingListingsFile = "TRADING_LISTINGS_FILE"
 
+	// StooqExchange is the market Stooq is asked for when a symbol does not
+	// already name one. Empty is not a default. Only US is accepted: a Stooq
+	// download or trading session fails until STOOQ_EXCHANGE is US.
+	StooqExchange = "STOOQ_EXCHANGE"
+
 	// AuthEnabled defaults false. Empty is false. Helm and fbenv leave it
 	// unset. Any value other than true, false, 1, or 0 stops startup.
 	AuthEnabled        = "AUTH_ENABLED"
@@ -647,6 +652,12 @@ func GetTradingProfilesFile() string {
 
 func GetTradingListingsFile() string {
 	return os.Getenv(TradingListingsFile)
+}
+
+// GetStooqExchange returns the trimmed STOOQ_EXCHANGE value. Empty means it
+// is not configured. The marketdata package decides which values are valid.
+func GetStooqExchange() string {
+	return strings.TrimSpace(os.Getenv(StooqExchange))
 }
 
 // GetAuthEnabled reports whether authentication and authorization are on.

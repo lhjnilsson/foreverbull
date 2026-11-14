@@ -67,7 +67,7 @@ func TestYahooGetOHLCStopsWhenCtxIsCancelled(t *testing.T) {
 func TestStooqGetOHLCStopsWhenCtxIsCancelled(t *testing.T) {
 	t.Parallel()
 	srv, started := hangingServer(t)
-	client, err := NewStooqClient(WithStooqBaseURL(srv.URL))
+	client, err := NewStooqClient(WithStooqExchange("US"), WithStooqBaseURL(srv.URL))
 	require.NoError(t, err)
 	start := time.Date(2021, 1, 4, 0, 0, 0, 0, time.UTC)
 	cancelAfterStart(t, started, func(ctx context.Context) ([]*pb.OHLC, error) {

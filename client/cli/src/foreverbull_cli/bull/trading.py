@@ -24,6 +24,35 @@ trading = typer.Typer()
 log = logging.getLogger().getChild(__name__)
 
 
+def _shown_setting(raw: str) -> str:
+    text = raw.strip()
+    if text == "" or len(text) > 32 or any(ord(char) < 0x20 or ord(char) >= 0x7F or char in "'`" for char in text):
+        return "that value"
+    return f"'{text}'"
+
+
+def stooq_exchange_missing() -> str:
+    return (
+        "Stooq needs an exchange, but STOOQ_EXCHANGE isn't set on the broker. "
+        "Set the Helm value broker.stooqExchange to US and upgrade the release, "
+        "then run `fbull backtest create` or `fbull trading run` again. "
+        "With US, foreverbull asks Stooq for symbols such as aapl.us."
+    )
+
+
+def stooq_exchange_unsupported(exchange: str) -> str:
+    shown = _shown_setting(exchange)
+    if shown == "that value":
+        lead = "Stooq doesn't support that exchange yet. "
+    else:
+        lead = f"Stooq doesn't support exchange {shown} yet. "
+    return (
+        f"{lead}Only US is supported. "
+        "Set the Helm value broker.stooqExchange to US and upgrade the release, "
+        "then run `fbull backtest create` or `fbull trading run` again."
+    )
+
+
 class PositionAndOrder:
     def __init__(
         self,

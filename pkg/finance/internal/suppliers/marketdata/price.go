@@ -62,6 +62,10 @@ func OHLCClient(provider, profile, profilesFile string, yahoo supplier.Marketdat
 	}
 	switch kind {
 	case "stooq":
+		exchange, err := ConfiguredStooqExchange()
+		if err != nil {
+			return nil, err
+		}
 		meta := yahoo
 		if meta == nil {
 			meta, err = NewYahooClient()
@@ -71,7 +75,7 @@ func OHLCClient(provider, profile, profilesFile string, yahoo supplier.Marketdat
 		}
 		return NewStooqYahoo(func() (supplier.Marketdata, error) {
 			return meta, nil
-		})
+		}, WithStooqExchange(exchange))
 	case "alpaca":
 		apiKey, apiSecret, err := trading.AlpacaPriceCredentials(profilesFile, profile)
 		if err != nil {

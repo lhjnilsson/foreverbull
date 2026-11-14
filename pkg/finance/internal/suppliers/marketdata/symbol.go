@@ -74,11 +74,12 @@ func alpacaSymbol(symbol string) string {
 	return strings.ToUpper(strings.TrimSpace(symbol))
 }
 
-// stooqShareClassCode is Stooq's daily code for a share class (brk-b.us).
-func stooqShareClassCode(symbol string) (string, bool) {
+// stooqShareClassCode is Stooq's daily code for a share class. exchange is
+// Stooq's suffix, so US is brk-b.us, the code Stooq was asked for before.
+func stooqShareClassCode(symbol, exchange string) (string, bool) {
 	sc, ok := parseShareClass(symbol)
-	if !ok {
+	if !ok || exchange == "" {
 		return "", false
 	}
-	return strings.ToLower(sc.company+"-"+sc.class) + ".us", true
+	return strings.ToLower(sc.company+"-"+sc.class) + "." + exchange, true
 }

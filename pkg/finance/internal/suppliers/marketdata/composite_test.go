@@ -105,6 +105,7 @@ func TestNewStooqYahooGetOHLCUsesStooqNotYahoo(t *testing.T) {
 
 	client, err := marketdata.NewStooqYahoo(
 		func() (supplier.Marketdata, error) { return yahoo, nil },
+		marketdata.WithStooqExchange("US"),
 		marketdata.WithStooqBaseURL(srv.URL),
 	)
 	require.NoError(t, err)
