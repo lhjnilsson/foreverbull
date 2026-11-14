@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -369,8 +370,15 @@ func closeOnDropValue(item *backtestPb.Backtest) string {
 	return "on"
 }
 
-// executionRunFields reads the backtest row. A GetBacktest error is returned.
-// Database URL and ports are not part of this view.
+var (
+	errBacktestEmptyReply = errors.New("backtest lookup returned an empty reply")
+	errBacktestNoName     = errors.New("backtest has no name")
+	errBacktestNoBackend  = errors.New("backtest has no backend")
+)
+
+// executionRunFields reads the backtest row. A failed lookup and an
+// incomplete reply are returned, so the handler does not answer 200
+// with empty fields. Database URL and ports are not part of this view.
 func (ds *Datasource) executionRunFields(r *http.Request, name string) (string, string, error) {
 	if ds == nil || ds.backend == nil || r == nil || name == "" {
 		return "", "", nil
@@ -379,8 +387,16 @@ func (ds *Datasource) executionRunFields(r *http.Request, name string) (string, 
 	if err != nil {
 		return "", "", fmt.Errorf("get backtest %s: %w", name, err)
 	}
-	if rsp == nil || rsp.GetBacktest() == nil {
-		return "", "", nil
+	// Nil and zero are one failure. A named reply with no backtest row,
+	// and a row with no name, are separate failures so the cause says which.
+	if rsp == nil || (rsp.GetName() == "" && rsp.GetBacktest() == nil) {
+		return "", "", fmt.Errorf("get backtest %s: %w", name, errBacktestEmptyReply)
+	}
+	if rsp.GetBacktest() == nil {
+		return "", "", fmt.Errorf("get backtest %s: %w", name, errBacktestNoBackend)
+	}
+	if rsp.GetName() == "" || rsp.GetBacktest().GetName() == "" {
+		return "", "", fmt.Errorf("get backtest %s: %w", name, errBacktestNoName)
 	}
 	item := rsp.GetBacktest()
 	return item.GetBenchmark(), closeOnDropValue(item), nil
