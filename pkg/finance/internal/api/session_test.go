@@ -29,6 +29,10 @@ type SessionTest struct {
 	server   *grpc.Server
 	client   servicePb.SessionServicerClient
 	activity <-chan bool
+	// serveErr receives grpc.Server.Serve. The serve goroutine must not
+	// call T: Serve can return after the test function does, and logging
+	// then races with the testing package.
+	serveErr chan error
 
 	mockWorkers *worker.MockPool
 	mockTrading *supplier.MockTrading
@@ -40,16 +44,17 @@ func (test *SessionTest) SetupSuite() {
 
 func (test *SessionTest) SetupTest() {
 	var err error
+	test.serveErr = nil
 	test.mockWorkers = new(worker.MockPool)
 	test.mockTrading = new(supplier.MockTrading)
 
 	test.listener = bufconn.Listen(1024 * 1024)
 	test.server, test.activity, err = api.NewGRPCSessionServer(test.mockTrading)
 	test.Require().NoError(err)
+	server, listener := test.server, test.listener
+	test.serveErr = make(chan error, 1)
 	go func() {
-		if err := test.server.Serve(test.listener); err != nil {
-			test.T().Logf("error serving server: %v", err)
-		}
+		test.serveErr <- server.Serve(listener)
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
@@ -65,11 +70,21 @@ func (test *SessionTest) SetupTest() {
 }
 
 func (test *SessionTest) TearDownTest() {
-	err := test.listener.Close()
-	if err != nil {
-		test.T().Errorf("Error closing listener: %v", err)
+	if test.server != nil {
+		test.server.Stop()
 	}
-	test.server.Stop()
+	if test.serveErr != nil {
+		err := <-test.serveErr
+		test.serveErr = nil
+		if err != nil {
+			test.T().Logf("error serving server: %v", err)
+		}
+	}
+	if test.listener != nil {
+		if err := test.listener.Close(); err != nil {
+			test.T().Errorf("Error closing listener: %v", err)
+		}
+	}
 }
 
 func TestSession(t *testing.T) {
