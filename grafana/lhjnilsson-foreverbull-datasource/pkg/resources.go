@@ -341,7 +341,12 @@ func (ds *Datasource) GetExecutionArguments(w http.ResponseWriter, r *http.Reque
 		})
 	}
 
-	benchmark, closeOnDrop := ds.executionRunFields(r, execution.GetBacktest())
+	benchmark, closeOnDrop, err := ds.executionRunFields(r, execution.GetBacktest())
+	if err != nil {
+		log.Error("fail to get backtest", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, executionArgumentsView{
 		ID:                  execution.GetId(),
 		Session:             execution.GetSession(),
@@ -364,21 +369,21 @@ func closeOnDropValue(item *backtestPb.Backtest) string {
 	return "on"
 }
 
-// executionBenchmark reads the backtest row. A lookup failure leaves it empty.
+// executionRunFields reads the backtest row. A GetBacktest error is returned.
 // Database URL and ports are not part of this view.
-func (ds *Datasource) executionRunFields(r *http.Request, name string) (string, string) {
+func (ds *Datasource) executionRunFields(r *http.Request, name string) (string, string, error) {
 	if ds == nil || ds.backend == nil || r == nil || name == "" {
-		return "", ""
+		return "", "", nil
 	}
 	rsp, err := ds.backend.GetBacktest(r.Context(), &backtestsvc.GetBacktestRequest{Name: name})
-	if err != nil || rsp == nil || rsp.GetBacktest() == nil {
-		if err != nil && ds.log != nil {
-			ds.log.With("method", "GetExecutionArguments").Error("fail to get backtest", err)
-		}
-		return "", ""
+	if err != nil {
+		return "", "", fmt.Errorf("get backtest %s: %w", name, err)
+	}
+	if rsp == nil || rsp.GetBacktest() == nil {
+		return "", "", nil
 	}
 	item := rsp.GetBacktest()
-	return item.GetBenchmark(), closeOnDropValue(item)
+	return item.GetBenchmark(), closeOnDropValue(item), nil
 }
 
 func (ds *Datasource) ListMetrics(w http.ResponseWriter, r *http.Request) {

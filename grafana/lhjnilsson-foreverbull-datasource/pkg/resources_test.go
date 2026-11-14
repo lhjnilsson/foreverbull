@@ -391,8 +391,12 @@ func (test *ResourceTest) TestGetExecutionArguments() {
 	test.backend.On("GetBacktest", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetBacktestRequest) bool {
 		return req.GetName() == "spy"
 	})).Return(&backtestsvc.GetBacktestResponse{
-		Name:     "spy",
-		Backtest: &backtestpb.Backtest{Name: "spy", Benchmark: "SPY"},
+		Name: "spy",
+		Backtest: &backtestpb.Backtest{
+			Name:               "spy",
+			Benchmark:          "SPY",
+			HasUniverseMembers: true,
+		},
 	}, nil)
 
 	rsp := test.callRaw(http.MethodGet, "execution", "/execution?id="+id, nil)
@@ -405,12 +409,13 @@ func (test *ResourceTest) TestGetExecutionArguments() {
 	var got executionArgumentsView
 	test.Require().NoError(json.Unmarshal(rsp.Body, &got))
 	test.Equal(executionArgumentsView{
-		ID:        id,
-		Session:   "sess-1",
-		Backtest:  "spy",
-		Benchmark: "SPY",
-		Start:     "2023-01-03",
-		End:       "2023-12-25",
+		ID:                  id,
+		Session:             "sess-1",
+		Backtest:            "spy",
+		Benchmark:           "SPY",
+		Start:               "2023-01-03",
+		End:                 "2023-12-25",
+		CloseOnUniverseDrop: "on",
 		Functions: []executionFunctionView{
 			{
 				Name: "rebalance",
@@ -444,8 +449,12 @@ func (test *ResourceTest) TestGetExecutionArgumentsLegacyEmpty() {
 		},
 	}, nil)
 
-	test.backend.On("GetBacktest", mock.Anything, mock.Anything).
-		Return((*backtestsvc.GetBacktestResponse)(nil), status.Error(codes.NotFound, "missing"))
+	test.backend.On("GetBacktest", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetBacktestRequest) bool {
+		return req.GetName() == "spy"
+	})).Return(&backtestsvc.GetBacktestResponse{
+		Name:     "spy",
+		Backtest: &backtestpb.Backtest{Name: "spy"},
+	}, nil)
 
 	rsp := test.callRaw(http.MethodPost, "execution", "/execution", []byte(`{"execution":"legacy-exec"}`))
 	test.Equal(http.StatusOK, rsp.Status)
@@ -455,6 +464,7 @@ func (test *ResourceTest) TestGetExecutionArgumentsLegacyEmpty() {
 	test.Equal("sess-old", got.Session)
 	test.Equal("spy", got.Backtest)
 	test.Equal("", got.Benchmark)
+	test.Empty(got.CloseOnUniverseDrop)
 	test.Equal("2020-01-01", got.Start)
 	test.Equal("2020-12-31", got.End)
 	test.NotNil(got.Functions)
@@ -462,6 +472,34 @@ func (test *ResourceTest) TestGetExecutionArgumentsLegacyEmpty() {
 	test.Contains(string(rsp.Body), `"functions":[]`)
 	test.NotContains(string(rsp.Body), "fastperiod")
 	test.NotContains(string(rsp.Body), "database")
+	test.NotContains(string(rsp.Body), "close_on_universe_drop")
+}
+
+func (test *ResourceTest) TestGetExecutionArgumentsGetBacktestError() {
+	id := "84753648-1bba-4a76-8c5f-c0631204633e"
+	test.backend.On("GetExecution", mock.Anything, mock.Anything).Return(&backtestsvc.GetExecutionResponse{
+		Execution: &backtestpb.Execution{
+			Id:       id,
+			Backtest: "spy",
+			Session:  "sess-1",
+		},
+	}, nil)
+	cause := status.Error(codes.NotFound, "missing")
+	test.backend.On("GetBacktest", mock.Anything, mock.MatchedBy(func(req *backtestsvc.GetBacktestRequest) bool {
+		return req.GetName() == "spy"
+	})).Return((*backtestsvc.GetBacktestResponse)(nil), cause)
+
+	rsp := test.callRaw(http.MethodGet, "execution", "/execution?id="+id, nil)
+	test.Equal(http.StatusInternalServerError, rsp.Status)
+	body := string(rsp.Body)
+	test.Contains(body, "get backtest spy:")
+	test.Contains(body, cause.Error())
+	test.NotContains(body, `"benchmark"`)
+	test.NotContains(body, `"close_on_universe_drop"`)
+	var got executionArgumentsView
+	test.Require().Error(json.Unmarshal(rsp.Body, &got))
+	test.Empty(got.Benchmark)
+	test.Empty(got.CloseOnUniverseDrop)
 }
 
 func (test *ResourceTest) TestGetExecutionArgumentsRequiresID() {
