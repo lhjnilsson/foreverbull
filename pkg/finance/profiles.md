@@ -98,6 +98,10 @@ Every read that decides which bars a backtest or a worker sees filters on that p
 
 The worker pod gets `OHLC_PROVIDER` from the backtest when the pod is created. Python and Zipline read that variable and default it to `yahoo` (`DEFAULT_PROVIDER` in `foreverbull.models.finance`) only when it is unset or blank, which covers tests that insert bars and leave the column at its default. Two providers may store two closes for the same symbol and day. A run reads only its own.
 
+`fbull trading run` reads that same stored provider. The session's price ingest and the bars handed to the strategy use it. An empty provider, or a name other than `yahoo`, `stooq`, or `alpaca`, fails before a session row is stored. Trading does not guess `yahoo`. The Alpaca profile on the backtest is sent with the session and is used only when the provider is `alpaca`.
+
+Stooq also needs an exchange. `STOOQ_EXCHANGE` must be `US`. Case does not matter. It is required for every Stooq download and every Stooq trading session. Unset, or any other name, the request fails and names `STOOQ_EXCHANGE`. A symbol that already carries a suffix, such as `VOD.L`, still uses that suffix. A symbol with no suffix uses `US`, so the request is `aapl.us`, the same request Stooq was given before. Helm `broker.stooqExchange` sets the variable when it is `US` and refuses any other name. Trading's price provider is the one stored on the backtest, not a chart value.
+
 Changing `provider` on an existing backtest does not relabel old rows. The next ingest writes the new provider's rows. The run reads the provider stored on the backtest.
 
 Ingest keeps one scale per provider and symbol. A bar is bad when its open, high, low, or close is 0 or below, NaN, or infinite.
