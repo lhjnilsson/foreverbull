@@ -81,6 +81,24 @@ func (_m *MockStorage) GetObject(ctx context.Context, bucket Bucket, name string
 	return r0, r1
 }
 
+// DeleteObject provides a mock function with given fields: ctx, bucket, name
+func (_m *MockStorage) DeleteObject(ctx context.Context, bucket Bucket, name string) error {
+	ret := _m.Called(ctx, bucket, name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteObject")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, Bucket, string) error); ok {
+		r0 = rf(ctx, bucket, name)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // ListObjects provides a mock function with given fields: ctx, bucket
 func (_m *MockStorage) ListObjects(ctx context.Context, bucket Bucket) (*[]Object, error) {
 	ret := _m.Called(ctx, bucket)

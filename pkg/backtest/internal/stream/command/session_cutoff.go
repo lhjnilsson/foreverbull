@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -36,7 +37,7 @@ func recordSessionCutoff(ctx context.Context, backtests repository.Backtest, nam
 // loadSessionCutoff reads the cut-off the download recorded. A missing one
 // fails ingest: the bundle is not built through a new clock reading or the
 // uncapped requested end.
-func loadSessionCutoff(ctx context.Context, backtests repository.Backtest, name, id string) (time.Time, error) {
+func loadSessionCutoff(ctx context.Context, store storage.Storage, key string, backtests repository.Backtest, name, id string) (time.Time, error) {
 	var (
 		closed time.Time
 		err    error
@@ -48,9 +49,11 @@ func loadSessionCutoff(ctx context.Context, backtests repository.Backtest, name,
 	}
 	if err != nil {
 		if errors.Is(err, repository.ErrNoSessionCutoff) {
-			return time.Time{}, discardUnrecordedCutoff(ctx, backtests, name, id)
+			return time.Time{}, cleanupStoredPrices(ctx, store, key, name, func() error {
+				return discardUnrecordedCutoff(ctx, backtests, name, id)
+			})
 		}
-		return time.Time{}, discardFailedIngest(ctx, backtests, name, id, fmt.Errorf("read session cut-off: %w", err))
+		return time.Time{}, finishFailedIngest(ctx, store, key, backtests, name, id, fmt.Errorf("read session cut-off: %w", err))
 	}
 	return closed, nil
 }
@@ -62,14 +65,20 @@ func discardUnrecordedCutoff(ctx context.Context, backtests repository.Backtest,
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest with no session cut-off")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+		return contextKept(removed, ctxErr)
 	}
 	saved, next := savedAndNext(name, "Run `fbull backtest create` again.", removed)
-	return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': foreverbull didn't record which trading "+
-		"session it stops at. %s %s", name, saved, next))
+	return markKept(removed, plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': foreverbull didn't record which trading "+
+		"session it stops at. %s %s", name, saved, next)))
 }
 
-func discardUnusableCutoff(ctx context.Context, backtests repository.Backtest, name, id string, cause error) error {
+func discardUnusableCutoff(ctx context.Context, store storage.Storage, key string, backtests repository.Backtest, name, id string, cause error) error {
+	return cleanupStoredPrices(ctx, store, key, name, func() error {
+		return discardUnusableCutoffRow(ctx, backtests, name, id, cause)
+	})
+}
+
+func discardUnusableCutoffRow(ctx context.Context, backtests repository.Backtest, name, id string, cause error) error {
 	log.Warn().Err(cause).Str("backtest", name).Msg("session cut-off cannot be used")
 	err := deleteAfterFailure(ctx, backtests, name, id)
 	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
@@ -77,10 +86,10 @@ func discardUnusableCutoff(ctx context.Context, backtests repository.Backtest, n
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest with an unusable session cut-off")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+		return contextKept(removed, ctxErr)
 	}
 	saved, next := savedAndNext(name, "Run `fbull backtest create` again.", removed)
-	return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s. %s %s", name, cause.Error(), saved, next))
+	return markKept(removed, plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s. %s %s", name, cause.Error(), saved, next)))
 }
 
 // backtestThroughCutoff is a copy of stored whose periods end on or before
@@ -118,6 +127,16 @@ func backtestThroughCutoff(stored *backtest.Backtest, closed time.Time) (*backte
 		}
 	}
 	return out, nil
+}
+
+// contextKept returns ctxErr when the row was removed. When the row stayed,
+// the same error is marked kept, so a failed price delete uses the
+// not-removed clause instead of claiming the backtest wasn't saved.
+func contextKept(removed bool, ctxErr error) error {
+	if removed {
+		return ctxErr
+	}
+	return markKept(false, ctxErr)
 }
 
 func utcDate(t time.Time) time.Time {

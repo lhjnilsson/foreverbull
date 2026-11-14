@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -21,6 +22,17 @@ func TestMinioNotInitialized(t *testing.T) {
 	require.False(t, minioNotInitialized(errors.New("connection refused")))
 	require.True(t, minioNotInitialized(errors.New("Server not initialized yet, please try again.")))
 	require.True(t, minioNotInitialized(fmt.Errorf("wrap: %w", errors.New("Server not initialized yet"))))
+}
+
+func TestMissingObject(t *testing.T) {
+	require.False(t, MissingObject(nil))
+	require.False(t, MissingObject(errors.New("connection refused")))
+	missing := minio.ErrorResponse{Code: "NoSuchKey", StatusCode: http.StatusNotFound}
+	require.True(t, MissingObject(missing))
+	require.True(t, MissingObject(fmt.Errorf("error getting object: %w", missing)))
+	require.False(t, MissingObject(minio.ErrorResponse{Code: "NoSuchBucket", StatusCode: http.StatusNotFound}))
+	require.False(t, MissingObject(minio.ErrorResponse{StatusCode: http.StatusNotFound}))
+	require.False(t, MissingObject(minio.ErrorResponse{Code: "AccessDenied", StatusCode: http.StatusForbidden}))
 }
 
 type StorageTest struct {

@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// A session run whose services couldn't reach each other is named for the
-// user; any other failure stays internal.
+// A session run whose services couldn't reach each other, or whose backtest
+// has no ingestion, is named for the user. Any other failure stays internal.
 func TestSessionRunError(t *testing.T) {
 	err := sessionRunError("spy", fmt.Errorf("wait: %w", stream.ErrServicesUnreachable))
 	st, ok := status.FromError(err)
@@ -45,6 +46,12 @@ func TestSessionRunError(t *testing.T) {
 
 	err = sessionRunError("spy", errors.New("no ingestions found"))
 	require.EqualError(t, err, "error publishing session run command: no ingestions found")
+
+	err = sessionRunError("spy", errors.New(usercopy.BacktestIngestionMissing("spy")))
+	st, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Equal(t, usercopy.BacktestIngestionMissing("spy"), st.Message())
 }
 
 // An engine error while reading the result reaches fbull only as the fixed

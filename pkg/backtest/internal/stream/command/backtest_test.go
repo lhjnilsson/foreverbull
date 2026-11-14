@@ -1247,6 +1247,7 @@ func (test *BacktestCommandTest) ingestMessageRaw(name string, ziplineEngine eng
 	store := new(storage.MockStorage)
 	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).
 		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: name}, nil)
+	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, name).Return(nil).Maybe()
 	msg := new(stream.MockMessage)
 	msg.On("MustGet", stream.DBDep).Return(test.db)
 	msg.On("MustGet", stream.StorageDep).Return(store)

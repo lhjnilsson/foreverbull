@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/rs/zerolog/log"
@@ -246,29 +247,43 @@ func discardFailedIngest(ctx context.Context, backtests repository.Backtest, nam
 	if !removed {
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after failed ingest")
 	}
+	var result error
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if removed {
 			return ctxErr
 		}
-		return plainSentence(canceledIngestMessage(name))
+		result = plainSentence(endedIngestMessage(name, ctxErr))
+	} else {
+		result = plainSentence(ingestFailureMessage(name, readIngestFailure(cause), removed))
 	}
-	return plainSentence(ingestFailureMessage(name, readIngestFailure(cause), removed))
+	return markKept(removed, result)
 }
 
-// canceledIngestNextStep is the step after a canceled ingest whose backtest
-// could not be removed. The cancel is not a data-service failure, so the
+// endedIngestNextStep is the step after a canceled or timed-out ingest whose
+// backtest could not be removed. Neither is a data-service failure, so the
 // step is to run create again once the leftover backtest is deleted.
-const canceledIngestNextStep = "Run `fbull backtest create` again."
+const endedIngestNextStep = "Run `fbull backtest create` again."
 
-// canceledIngestMessage is the step when a canceled ingest could not remove
-// the backtest. The lead names the cancel, then the partly-saved sentence,
-// then the step to delete it first. There is no details line: the cancel is
-// not a data-service failure.
-func canceledIngestMessage(name string) string {
-	var text strings.Builder
-	fmt.Fprintf(&text, "Couldn't load data for backtest '%s': the create was canceled. ", name)
-	text.WriteString(notRemovedSentence + " " + deleteFirst(name, canceledIngestNextStep))
-	return text.String()
+// endedIngestMessage is the step when a canceled or timed-out ingest could
+// not remove the backtest. The lead names which one, then the partly-saved
+// sentence, then the step to delete it first. There is no details line.
+func endedIngestMessage(name string, cause error) string {
+	return endedIngestLead(name, cause) + notRemovedSentence + " " + deleteFirst(name, endedIngestNextStep)
+}
+
+// endedIngestPricesLeft is the same lead when the backtest row was removed
+// but the stored prices were not. The create step stays the one this ending
+// already uses.
+func endedIngestPricesLeft(name string, cause error) string {
+	return endedIngestLead(name, cause) + usercopy.BacktestPricesLeft() + " " + endedIngestNextStep
+}
+
+func endedIngestLead(name string, cause error) string {
+	reason := "the create was canceled"
+	if errors.Is(cause, context.DeadlineExceeded) {
+		reason = "the create timed out"
+	}
+	return fmt.Sprintf("Couldn't load data for backtest '%s': %s. ", name, reason)
 }
 
 // cleanupTimeout bounds the delete that runs after a failed or canceled
@@ -282,4 +297,142 @@ func deleteAfterFailure(ctx context.Context, backtests repository.Backtest, name
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
 	defer cancel()
 	return deleteStoredBacktest(cleanupCtx, backtests, name, id)
+}
+
+// deleteIngestionObject removes the object CreateObject wrote for an ingest
+// that then failed. The delete uses the same deadline as the backtest
+// delete, including after the ingest context is canceled.
+func deleteIngestionObject(ctx context.Context, store storage.Storage, key string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	if err := store.DeleteObject(cleanupCtx, storage.IngestionsBucket, key); err != nil {
+		return fmt.Errorf("error deleting ingestion %s: %w", key, err)
+	}
+	return nil
+}
+
+// pricesLeftError is the user-facing failure when stored prices could not be
+// removed. Error is that sentence. Unwrap keeps the row error and the storage
+// error, so a canceled create is still errors.Is(context.Canceled) and the
+// task is stored as canceled. The storage text is logged, not printed.
+type pricesLeftError struct {
+	text   string
+	rowErr error
+	err    error
+}
+
+func (e *pricesLeftError) Error() string { return e.text }
+
+func (e *pricesLeftError) Unwrap() []error { return []error{e.rowErr, e.err} }
+
+// finishFailedIngest removes the stored prices before the backtest row.
+// A same-name create in the other order could have its new prices deleted.
+// When the prices stay, the returned sentence does not say nothing was saved.
+func finishFailedIngest(ctx context.Context, store storage.Storage, key string, backtests repository.Backtest, name, id string, cause error) error {
+	return cleanupStoredPrices(ctx, store, key, name, func() error {
+		return discardFailedIngest(ctx, backtests, name, id, cause)
+	})
+}
+
+// cleanupStoredPrices deletes the prices, then runs remove, which deletes the
+// backtest row and builds its sentence. A failed price delete is logged and
+// joined as BacktestPricesLeft, with the storage error still wrapped.
+func cleanupStoredPrices(ctx context.Context, store storage.Storage, key, name string, remove func() error) error {
+	var delErr error
+	if store != nil && key != "" {
+		delErr = deleteIngestionObject(ctx, store, key)
+		if delErr != nil {
+			log.Warn().Err(delErr).Str("backtest", name).Str("key", key).Msg("could not delete stored prices after failed ingest")
+		}
+	}
+	rowErr := remove()
+	if delErr == nil {
+		return rowErr
+	}
+	return &pricesLeftError{
+		text:   pricesLeftMessage(name, rowErr),
+		rowErr: rowErr,
+		err:    delErr,
+	}
+}
+
+// rowKept marks a failure whose backtest row is still stored. Error is the
+// sentence the row delete already built.
+type rowKept struct{ error }
+
+func (e *rowKept) Unwrap() error { return e.error }
+
+func markKept(removed bool, err error) error {
+	if removed || err == nil {
+		return err
+	}
+	return &rowKept{error: err}
+}
+
+func rowStayed(err error) bool {
+	var kept *rowKept
+	return errors.As(err, &kept)
+}
+
+// pricesLeftMessage is the user text when the price delete failed.
+// A removed row whose context ended uses the cancel lead or the timeout lead.
+// A row that stayed keeps its sentence, with the not-removed clause naming
+// the prices as well, before the steps. A nil row error has no surrounding
+// sentence, so rowErr.Error is not called.
+func pricesLeftMessage(name string, rowErr error) string {
+	if rowErr == nil {
+		return usercopy.BacktestPricesLeft() + " Run `fbull backtest create` again once it's fixed."
+	}
+	if rowStayed(rowErr) {
+		// A cutoff returns the context error itself when the row stays.
+		// Its text is the sentinel, so the sentence is built here and the
+		// context error stays unwrapped for errors.Is.
+		if errors.Is(rowErr, context.Canceled) || errors.Is(rowErr, context.DeadlineExceeded) {
+			return withPricesKept(endedIngestMessage(name, rowErr))
+		}
+		return withPricesKept(rowErr.Error())
+	}
+	if errors.Is(rowErr, context.Canceled) || errors.Is(rowErr, context.DeadlineExceeded) {
+		return endedIngestPricesLeft(name, rowErr)
+	}
+	return withoutSavedClaim(rowErr.Error(), usercopy.BacktestPricesLeft())
+}
+
+// pricesKeptClause is the not-removed sentence when the row stayed and the
+// stored prices could not be removed either. The period of the row sentence
+// becomes the join, so the clause stays where that sentence was, before the
+// delete-first step.
+func pricesKeptClause() string {
+	return strings.TrimSuffix(usercopy.BacktestNotRemoved, ".") +
+		", and some of its stored prices couldn't be removed either."
+}
+
+// withPricesKept rewrites the not-removed sentence. A details marker stays
+// where the message already put it.
+func withPricesKept(message string) string {
+	if !strings.Contains(message, usercopy.BacktestNotRemoved) {
+		panic("row-kept message has no not-removed sentence")
+	}
+	return strings.Replace(message, usercopy.BacktestNotRemoved, pricesKeptClause(), 1)
+}
+
+// withoutSavedClaim replaces only the "nothing was saved" claim.
+// BacktestPricesLeft has no step of its own, so a run step that followed
+// the claim stays, and is not written twice.
+func withoutSavedClaim(message, leftover string) string {
+	const onceFixed = "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+	const afterThat = "Nothing was saved, so run `fbull backtest create` again after that."
+	switch {
+	case strings.Contains(message, onceFixed):
+		return strings.Replace(message, onceFixed, leftover+" Run `fbull backtest create` again once it's fixed.", 1)
+	case strings.Contains(message, afterThat):
+		return strings.Replace(message, afterThat, leftover+" Run `fbull backtest create` again after that.", 1)
+	case strings.Contains(message, usercopy.BacktestNotSaved):
+		return strings.Replace(message, usercopy.BacktestNotSaved, leftover, 1)
+	}
+	head, tail, hasDetails := strings.Cut(message, ingestDetailsMarker)
+	if hasDetails {
+		return strings.TrimRight(head, " ") + " " + leftover + ingestDetailsMarker + tail
+	}
+	return strings.TrimRight(message, " ") + " " + leftover
 }

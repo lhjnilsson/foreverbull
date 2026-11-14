@@ -29,6 +29,17 @@ func TestBacktestCreateQueueFull(t *testing.T) {
 		"Restarting fbenv won't clear the queue.", BacktestCreateQueueFull("spy", false))
 }
 
+func TestBacktestIngestionMissing(t *testing.T) {
+	require.Equal(t, "Couldn't start the session for backtest 'spy': its prices aren't loaded. "+
+		"Delete it with `fbull backtest delete spy`, then create it again with `fbull backtest create`.",
+		BacktestIngestionMissing("spy"))
+}
+
+func TestBacktestPricesLeft(t *testing.T) {
+	require.Equal(t, "The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create.",
+		BacktestPricesLeft())
+}
+
 func TestBacktestSessionQueueFull(t *testing.T) {
 	require.Equal(t, "Couldn't start the session for backtest 'spy': foreverbull's task queue is full, so it couldn't record the task's progress. "+
 		"Old tasks leave the queue after 24 hours, so run `fbull backtest run spy` again once they have. "+

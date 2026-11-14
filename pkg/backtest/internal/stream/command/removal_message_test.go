@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -25,5 +26,29 @@ func TestCanceledIngestMessageWhenTheBacktestStays(t *testing.T) {
 		"Couldn't load data for backtest 'oef-2024q1': the create was canceled. "+
 			"The backtest was partly saved and couldn't be removed. Run `fbull backtest delete oef-2024q1` first. "+
 			"Run `fbull backtest create` again.",
-		canceledIngestMessage("oef-2024q1"))
+		endedIngestMessage("oef-2024q1", context.Canceled))
+}
+
+func TestTimedOutIngestMessageWhenTheBacktestStays(t *testing.T) {
+	require.Equal(t,
+		"Couldn't load data for backtest 'oef-2024q1': the create timed out. "+
+			"The backtest was partly saved and couldn't be removed. Run `fbull backtest delete oef-2024q1` first. "+
+			"Run `fbull backtest create` again.",
+		endedIngestMessage("oef-2024q1", context.DeadlineExceeded))
+}
+
+func TestCanceledIngestPricesLeft(t *testing.T) {
+	require.Equal(t,
+		"Couldn't load data for backtest 'oef-2024q1': the create was canceled. "+
+			"The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
+			"Run `fbull backtest create` again.",
+		endedIngestPricesLeft("oef-2024q1", context.Canceled))
+}
+
+func TestTimedOutIngestPricesLeft(t *testing.T) {
+	require.Equal(t,
+		"Couldn't load data for backtest 'oef-2024q1': the create timed out. "+
+			"The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
+			"Run `fbull backtest create` again.",
+		endedIngestPricesLeft("oef-2024q1", context.DeadlineExceeded))
 }

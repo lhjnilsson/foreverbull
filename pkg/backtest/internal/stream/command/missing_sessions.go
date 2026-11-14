@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -976,14 +977,14 @@ func dataLossReason(cause error) (string, bool) {
 // whole list: Zipline named a ticker that isn't in this backtest, or a day
 // that isn't a session. The caller then uses the ingest failure copy. Every
 // DATA_LOSS outcome is logged with Zipline's cause, redacted.
-func ingestMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.Pool, backtests repository.Backtest,
+func ingestMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.Pool, store storage.Storage, key string, backtests repository.Backtest,
 	b *backtest.Backtest, id string, cause error,
 ) error {
 	reason, isDataLoss := dataLossReason(cause)
 	if !isDataLoss {
 		return nil
 	}
-	outcome, refused := refuseMissingSessions(ctx, eng, db, backtests, b, id, reason)
+	outcome, refused := refuseMissingSessions(ctx, eng, db, store, key, backtests, b, id, reason)
 	log.Warn().Str("backtest", b.Name).Str("outcome", outcome).Str("cause", redactURLPasswords(cause.Error())).
 		Msg("zipline refused the ingest with data loss")
 	return refused
@@ -991,7 +992,7 @@ func ingestMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.P
 
 // refuseMissingSessions builds the sentence for ingestMissingSessions, and
 // says why it didn't when it is nil.
-func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.Pool, backtests repository.Backtest,
+func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.Pool, store storage.Storage, key string, backtests repository.Backtest,
 	b *backtest.Backtest, id, reason string,
 ) (string, error) {
 	spans, extraRanges, extraSymbols, ok := ingestGapReason(reason)
@@ -1025,14 +1026,16 @@ func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.P
 	if len(gaps) == 0 {
 		return "named no days", nil
 	}
-	err = deleteAfterFailure(ctx, backtests, b.Name, id)
-	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
-	if !removed {
-		log.Warn().Err(err).Str("backtest", b.Name).Msg("error deleting backtest after missing sessions")
-	}
 	provider := strings.ToLower(strings.TrimSpace(b.GetProvider()))
 	if provider == "" {
 		provider = supplier.DefaultProvider
 	}
-	return "missing sessions", plainSentence(presentMissingSessions(b.Name, provider, days, gaps, removed, extraRanges, extraSymbols))
+	return "missing sessions", cleanupStoredPrices(ctx, store, key, b.Name, func() error {
+		err = deleteAfterFailure(ctx, backtests, b.Name, id)
+		removed := err == nil || errors.Is(err, pgx.ErrNoRows)
+		if !removed {
+			log.Warn().Err(err).Str("backtest", b.Name).Msg("error deleting backtest after missing sessions")
+		}
+		return markKept(removed, plainSentence(presentMissingSessions(b.Name, provider, days, gaps, removed, extraRanges, extraSymbols)))
+	})
 }
