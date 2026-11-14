@@ -124,6 +124,7 @@ grep -Fq "tag: sha256:${A}" "${values}" || bad "broker pin"
 grep -Fq "url: https://nightly.foreverbull.com" "${values}" || bad "grafana url"
 grep -Fq 'webUrl: ""' "${values}" || bad "web url empty"
 grep -Fq "imageTag: pinned" "${values}" || bad "fallback tag"
+grep -Fq "stooqExchange: US" "${values}" || bad "stooq exchange"
 if grep -q 'localhost' "${values}"; then
   bad "pin values include localhost"
 fi

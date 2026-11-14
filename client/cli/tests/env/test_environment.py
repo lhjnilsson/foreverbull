@@ -410,6 +410,7 @@ class TestClusterManager:
         assert "global.imageRepository=ghcr.io/lhjnilsson" in helm[0]
         assert "expose.hostPort=true" in helm[0]
         assert "grafana.webUrl=http://localhost:8080" in helm[0]
+        assert "broker.stooqExchange=US" in helm[0]
         assert "credentials.allowDefaults=true" in helm[0]
         assert "broker.logLevel=debug" in helm[0]
         assert "--kube-context" in helm[0]
@@ -839,6 +840,7 @@ class TestClusterManager:
         assert runner.calls_starting_with("kind", "load", "docker-image")
         helm = runner.calls_starting_with("helm", "upgrade", "--install")[0]
         assert "--reuse-values" in helm
+        assert "broker.stooqExchange=US" in helm
         assert "global.imageTag=local" in helm
         assert "global.appImagePullPolicy=IfNotPresent" in helm
         assert "replicaCount=" not in " ".join(helm)

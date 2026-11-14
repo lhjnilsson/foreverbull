@@ -185,6 +185,7 @@ write_pin_values() {
     echo "  hostPort: false"
     echo "replicaCount: 1"
     echo "broker:"
+    echo "  stooqExchange: US"
     echo "  trading:"
     echo "    enabled: false"
     echo "grafana:"
