@@ -1243,11 +1243,18 @@ func (test *BacktestCommandTest) ingestMessage(name string, ziplineEngine engine
 	return test.ingestMessageRaw(name, ziplineEngine)
 }
 
+func (test *BacktestCommandTest) ingestionObjectID(name string) string {
+	test.T().Helper()
+	var id string
+	err := test.db.QueryRow(context.Background(), `SELECT id FROM backtest WHERE name = $1`, name).Scan(&id)
+	test.Require().NoError(err)
+	test.Require().NotEmpty(id)
+	return id
+}
+
 func (test *BacktestCommandTest) ingestMessageRaw(name string, ziplineEngine engine.Engine) *stream.MockMessage {
 	store := new(storage.MockStorage)
-	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).
-		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: name}, nil)
-	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, name).Return(nil).Maybe()
+	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, test.ingestionObjectID(name)).Return(nil).Maybe()
 	msg := new(stream.MockMessage)
 	msg.On("MustGet", stream.DBDep).Return(test.db)
 	msg.On("MustGet", stream.StorageDep).Return(store)
@@ -1281,6 +1288,19 @@ func (test *BacktestCommandTest) recordClosedEndIfMissing(name string) {
 // The step message is the user-facing copy and carries no password.
 // A notice does not fail the ingest. The handler completes with it so the
 // CLI shows it, and the backtest stays.
+func (test *BacktestCommandTest) TestIngestWritesUnderTheBacktestID() {
+	id := test.ingestionObjectID("test-backtest")
+	var got string
+	ziplineEngine := new(engine.MockEngine)
+	ziplineEngine.On("Ingest", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		got = args.Get(2).(*storage.Object).Name
+	}).Return(nil, nil)
+
+	err := command.Ingest(context.TODO(), test.ingestMessage("test-backtest", ziplineEngine))
+	test.Require().NoError(err)
+	test.Equal(id, got)
+}
+
 func (test *BacktestCommandTest) TestIngestNoticeKeepsBacktest() {
 	backtests := repository.Backtest{Conn: test.db}
 	line := "Example notice for AAPL on 2022-03-02."

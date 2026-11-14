@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -133,25 +134,33 @@ func publishSessionPort(ctx context.Context, sessions sessionPortStore, server *
 	return nil
 }
 
-// ingestionKey is the object key for a backtest's ingestion. Auth off stores
-// it under the backtest name. Auth on stores it under the backtest id.
-func ingestionKey(name, id string) string {
-	if environment.GetAuthEnabled() {
-		return id
+// ingestionKey is the object key for a backtest's ingestion. Both auth modes
+// use the backtest id. A name is not a key: a re-create would otherwise read
+// an object left under the previous name. An empty id is an error.
+func ingestionKey(id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", errors.New("backtest id is empty")
 	}
-	return name
+	return id, nil
 }
 
 func sessionIngestion(ctx context.Context, sessions repository.Session, store storage.Storage, sessionID, backtestName string) (*storage.Object, error) {
-	id := ""
+	var id string
+	var err error
 	if environment.GetAuthEnabled() {
-		var err error
-		id, err = sessions.BacktestID(ctx, sessionID)
-		if err != nil {
-			return nil, fmt.Errorf("error getting session backtest: %w", err)
-		}
+		id, err = (&sessions).BacktestID(ctx, sessionID)
+	} else {
+		id, err = (&repository.Backtest{Conn: sessions.Conn}).IDByName(ctx, backtestName)
 	}
-	return ingestionByKey(ctx, store, backtestName, ingestionKey(backtestName, id))
+	if err != nil {
+		return nil, fmt.Errorf("error getting session backtest: %w", err)
+	}
+	key, err := ingestionKey(id)
+	if err != nil {
+		return nil, err
+	}
+	return ingestionByKey(ctx, store, backtestName, key)
 }
 
 // ingestionByKey loads one backtest's ingestion. A missing object is that

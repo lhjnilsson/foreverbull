@@ -36,3 +36,16 @@ func (a ingestionAdapter) Readable(ctx context.Context, key string) (bool, error
 func (a ingestionAdapter) Copy(ctx context.Context, fromKey, toKey string) error {
 	return a.inner.Copy(ctx, fromKey, toKey)
 }
+
+// CopyNameKeyedIngestions ensures the schema, including the surrogate id,
+// then copies each name-keyed ingestion onto that id. Auth-off startup runs
+// it. The name key is left in place.
+func CopyNameKeyedIngestions(ctx context.Context, conn *pgxpool.Pool, copier IngestionCopier) error {
+	if err := repository.CreateTables(ctx, conn); err != nil {
+		return err
+	}
+	if copier == nil {
+		return repository.CopyIngestions(ctx, conn, nil)
+	}
+	return repository.CopyIngestions(ctx, conn, ingestionAdapter{copier})
+}

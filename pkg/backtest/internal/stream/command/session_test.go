@@ -137,17 +137,21 @@ func (test *CommandSessionTest) TestSessionRun() {
 		session := test.backtestSession(own)
 		_, err := (&repository.Backtest{Conn: test.db}).Create(context.Background(), &backtest.Backtest{Name: other})
 		test.Require().NoError(err)
+		ownID := test.backtestObjectID(own)
+		otherID := test.backtestObjectID(other)
 		store := test.minio()
-		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, own)
+		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, ownID)
 		test.Require().NoError(err)
 		time.Sleep(time.Second)
-		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, other)
+		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, own)
 		test.Require().NoError(err)
-		ownObject, err := store.GetObject(context.Background(), storage.IngestionsBucket, own)
+		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, otherID)
 		test.Require().NoError(err)
-		otherObject, err := store.GetObject(context.Background(), storage.IngestionsBucket, other)
+		ownObject, err := store.GetObject(context.Background(), storage.IngestionsBucket, ownID)
 		test.Require().NoError(err)
-		test.Require().True(otherObject.LastModified.After(ownObject.LastModified), "the other ingestion is newer")
+		nameObject, err := store.GetObject(context.Background(), storage.IngestionsBucket, own)
+		test.Require().NoError(err)
+		test.Require().True(nameObject.LastModified.After(ownObject.LastModified), "the name-keyed object is newer")
 
 		var downloaded *storage.Object
 		eng := new(engine.MockEngine)
@@ -161,7 +165,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		err = command.SessionRun(context.Background(), test.sessionRunMessage(store, session.GetId(), own, eng))
 		test.Require().NoError(err)
 		test.Require().NotNil(downloaded)
-		test.Require().Equal(own, downloaded.Name)
+		test.Require().Equal(ownID, downloaded.Name)
 
 		test.stopSession(session.GetId())
 	})
@@ -169,9 +173,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		own := "auth-" + uuid.NewString()
 		session := test.backtestSession(own)
 		backtestID := "id-" + uuid.NewString()
-		_, err := test.db.Exec(context.Background(), `ALTER TABLE backtest ADD COLUMN id text`)
-		test.Require().NoError(err)
-		_, err = test.db.Exec(context.Background(), `UPDATE backtest SET id = $1 WHERE name = $2`, backtestID, own)
+		_, err := test.db.Exec(context.Background(), `UPDATE backtest SET id = $1 WHERE name = $2`, backtestID, own)
 		test.Require().NoError(err)
 		_, err = test.db.Exec(context.Background(), `ALTER TABLE session ADD COLUMN backtest_id text`)
 		test.Require().NoError(err)
@@ -204,7 +206,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		own := "refresh-" + uuid.NewString()
 		session := test.backtestSession(own)
 		store := test.minio()
-		_, err := store.CreateObject(context.Background(), storage.IngestionsBucket, own)
+		_, err := store.CreateObject(context.Background(), storage.IngestionsBucket, test.backtestObjectID(own))
 		test.Require().NoError(err)
 
 		eng := new(engine.MockEngine)
@@ -215,6 +217,91 @@ func (test *CommandSessionTest) TestSessionRun() {
 		test.Require().NotContains(err.Error(), "prices aren't loaded")
 		eng.AssertNotCalled(test.T(), "DownloadIngestion", mock.Anything, mock.Anything)
 	})
+	test.Run("a re-created backtest ignores a leftover name and the old id", func() {
+		test.T().Setenv(environment.AuthEnabled, "false")
+		name := "again-" + uuid.NewString()
+		backtests := repository.Backtest{Conn: test.db}
+		_, err := backtests.Create(context.Background(), &backtest.Backtest{Name: name})
+		test.Require().NoError(err)
+		oldID := test.backtestObjectID(name)
+		store := test.minio()
+		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, name)
+		test.Require().NoError(err)
+		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, oldID)
+		test.Require().NoError(err)
+		test.Require().NoError(backtests.Delete(context.Background(), name))
+
+		_, err = backtests.Create(context.Background(), &backtest.Backtest{Name: name})
+		test.Require().NoError(err)
+		newID := test.backtestObjectID(name)
+		test.NotEqual(oldID, newID)
+		session, err := (&repository.Session{Conn: test.db}).Create(context.Background(), name)
+		test.Require().NoError(err)
+
+		eng := new(engine.MockEngine)
+		err = command.SessionRun(context.Background(), test.sessionRunMessage(store, session.GetId(), name, eng))
+		test.Require().EqualError(err, usercopy.BacktestIngestionMissing(name))
+		eng.AssertNotCalled(test.T(), "DownloadIngestion", mock.Anything, mock.Anything)
+
+		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, newID)
+		test.Require().NoError(err)
+		var downloaded *storage.Object
+		eng = new(engine.MockEngine)
+		eng.On("DownloadIngestion", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			downloaded = args.Get(1).(*storage.Object)
+		}).Return(errors.New("stop after lookup"))
+		err = command.SessionRun(context.Background(), test.sessionRunMessage(store, session.GetId(), name, eng))
+		test.Require().ErrorContains(err, "error downloading ingestion")
+		test.Require().NotNil(downloaded)
+		test.Equal(newID, downloaded.Name)
+	})
+	test.Run("a name-keyed ingestion is copied onto the id", func() {
+		test.T().Setenv(environment.AuthEnabled, "false")
+		name := "legacy-" + uuid.NewString()
+		session := test.backtestSession(name)
+		id := test.backtestObjectID(name)
+		raw := test.minio()
+		_, err := raw.CreateObject(context.Background(), storage.IngestionsBucket, name)
+		test.Require().NoError(err)
+		client, ok := raw.(*storage.MinioStorage)
+		test.Require().True(ok)
+		err = repository.CopyIngestions(context.Background(), test.db, minioCopier{client: client})
+		test.Require().NoError(err)
+
+		var downloaded *storage.Object
+		eng := new(engine.MockEngine)
+		eng.On("DownloadIngestion", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			downloaded = args.Get(1).(*storage.Object)
+		}).Return(errors.New("stop after lookup"))
+		err = command.SessionRun(context.Background(), test.sessionRunMessage(raw, session.GetId(), name, eng))
+		test.Require().ErrorContains(err, "error downloading ingestion")
+		test.Require().NotNil(downloaded)
+		test.Equal(id, downloaded.Name)
+		kept, err := raw.GetObject(context.Background(), storage.IngestionsBucket, name)
+		test.Require().NoError(err)
+		test.Equal(name, kept.Name)
+	})
+}
+
+type minioCopier struct {
+	client *storage.MinioStorage
+}
+
+func (m minioCopier) Readable(ctx context.Context, key string) (bool, error) {
+	return m.client.IngestionReadable(ctx, key)
+}
+
+func (m minioCopier) Copy(ctx context.Context, fromKey, toKey string) error {
+	return m.client.CopyIngestion(ctx, fromKey, toKey)
+}
+
+func (test *CommandSessionTest) backtestObjectID(name string) string {
+	test.T().Helper()
+	var id string
+	err := test.db.QueryRow(context.Background(), `SELECT id FROM backtest WHERE name = $1`, name).Scan(&id)
+	test.Require().NoError(err)
+	test.Require().NotEmpty(id)
+	return id
 }
 
 func (test *CommandSessionTest) minio() storage.Storage {

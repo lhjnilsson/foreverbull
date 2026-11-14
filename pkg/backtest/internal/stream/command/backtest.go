@@ -1118,15 +1118,14 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 		return errors.New("error casting storage")
 	}
 
-	metadata := map[string]string{}
-	// Creating the object is wrapped with %v, not %w, so only the data
-	// service's own gRPC status can select the broken-install copy.
-	objectKey := ingestionKey(b.Name, backtestID)
-	object, err := store.CreateObject(ctx, storage.IngestionsBucket, objectKey, storage.WithMetadata(metadata))
+	// Zipline's upload creates the object (fput_object). The session downloads
+	// that object after the upload, so ingest does not write an empty one
+	// first. The key is the backtest id.
+	objectKey, err := ingestionKey(backtestID)
 	if err != nil {
-		return discardFailedIngest(ctx, backtests, b.Name, backtestID, fmt.Errorf("error creating ingestion: %v", err))
+		return err
 	}
-
+	object := &storage.Object{Bucket: storage.IngestionsBucket, Name: objectKey}
 	return ingestStored(ctx, msg, db, store, backtests, b, backtestID, object)
 }
 

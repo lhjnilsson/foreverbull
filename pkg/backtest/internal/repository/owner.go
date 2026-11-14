@@ -287,6 +287,17 @@ func dropBacktestNameForeignKeys(ctx context.Context, conn postgres.Query) error
 	return nil
 }
 
+// CopyIngestions copies a name-keyed ingestion onto the backtest id when
+// that id has no object yet. The name key is left in place. Auth-off startup
+// runs it so a backtest stored before the id was the object key can still
+// be read.
+func CopyIngestions(ctx context.Context, conn postgres.Query, copier IngestionCopier) error {
+	if copier == nil {
+		return fmt.Errorf("%s: ingestion copier is nil", storage.IngestionsBucket)
+	}
+	return copyIngestions(ctx, conn, copier)
+}
+
 func copyIngestions(ctx context.Context, conn postgres.Query, copier IngestionCopier) error {
 	rows, err := conn.Query(ctx, `SELECT id, name FROM backtest ORDER BY name`)
 	if err != nil {

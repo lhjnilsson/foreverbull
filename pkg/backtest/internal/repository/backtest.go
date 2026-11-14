@@ -221,14 +221,36 @@ func insertBacktestRow(ctx context.Context, conn postgres.Query, in backtestWrit
 		return id, nil
 	}
 	profile := strings.TrimSpace(in.item.GetProfile())
-	_, err := conn.Exec(ctx,
+	var id string
+	err := conn.QueryRow(ctx,
 		`INSERT INTO backtest (name, benchmark, provider, profile, auto_close_on_universe_drop)
-		VALUES ($1, $2, $3, $4, $5)`,
-		in.item.Name, in.item.Benchmark, provider, profile, closeOnUniverseDrop(in.item))
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id`,
+		in.item.Name, in.item.Benchmark, provider, profile, closeOnUniverseDrop(in.item)).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("failed to create backtest: %w", err)
 	}
-	return "", nil
+	if strings.TrimSpace(id) == "" {
+		return "", errors.New("backtest id is empty")
+	}
+	return id, nil
+}
+
+// IDByName is the surrogate id of the backtest called name. Auth off is the
+// only caller: name is the primary key there. An empty id is an error.
+func (db *Backtest) IDByName(ctx context.Context, name string) (string, error) {
+	if authOn() {
+		return "", fmt.Errorf("read backtest id by name is refused while AUTH_ENABLED=true")
+	}
+	var id string
+	err := db.Conn.QueryRow(ctx, `SELECT id FROM backtest WHERE name = $1`, name).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(id) == "" {
+		return "", errors.New("backtest id is empty")
+	}
+	return id, nil
 }
 
 func refuseCloseOnDropChange(ctx context.Context, conn postgres.Query, in backtestWrite, next bool) error {
