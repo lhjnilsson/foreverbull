@@ -46,7 +46,7 @@ func TestProviderSymbolMapsShareClasses(t *testing.T) {
 
 func TestStooqResolvesShareClasses(t *testing.T) {
 	t.Parallel()
-	client, err := NewStooqClient()
+	client, err := NewStooqClient(WithStooqExchange("US"))
 	require.NoError(t, err)
 	for asked, want := range map[string]string{"BRKB": "brk-b.us", "BRK.B": "brk-b.us", "BK": "bk.us"} {
 		code, canonical, err := client.resolveSymbol(asked)
@@ -141,7 +141,7 @@ func TestExchangeSuffixIsNotAShareClass(t *testing.T) {
 	t.Parallel()
 	_, ok := parseShareClass("VOD.L")
 	require.False(t, ok)
-	_, ok = stooqShareClassCode("VOD.L")
+	_, ok = stooqShareClassCode("VOD.L", "us")
 	require.False(t, ok)
 
 	srv, paths := recordingServer(t, `{"chart":{"result":[],"error":null}}`)

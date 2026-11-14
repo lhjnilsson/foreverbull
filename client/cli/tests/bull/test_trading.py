@@ -175,6 +175,38 @@ def _mock_live_trading():
         }
 
 
+def test_stooq_exchange_sentences_match():
+    from foreverbull_cli.bull.trading import stooq_exchange_missing
+    from foreverbull_cli.bull.trading import stooq_exchange_unsupported
+
+    assert stooq_exchange_missing() == (
+        "Stooq needs an exchange, but STOOQ_EXCHANGE isn't set on the broker. "
+        "Set the Helm value broker.stooqExchange to US and upgrade the release, "
+        "then run `fbull backtest create` or `fbull trading run` again. "
+        "With US, foreverbull asks Stooq for symbols such as aapl.us."
+    )
+    assert stooq_exchange_unsupported("L") == (
+        "Stooq doesn't support exchange 'L' yet. Only US is supported. "
+        "Set the Helm value broker.stooqExchange to US and upgrade the release, "
+        "then run `fbull backtest create` or `fbull trading run` again."
+    )
+    assert stooq_exchange_unsupported("DE") == (
+        "Stooq doesn't support exchange 'DE' yet. Only US is supported. "
+        "Set the Helm value broker.stooqExchange to US and upgrade the release, "
+        "then run `fbull backtest create` or `fbull trading run` again."
+    )
+    assert stooq_exchange_unsupported("x\x1b[2J") == (
+        "Stooq doesn't support that exchange yet. Only US is supported. "
+        "Set the Helm value broker.stooqExchange to US and upgrade the release, "
+        "then run `fbull backtest create` or `fbull trading run` again."
+    )
+    assert stooq_exchange_unsupported("US\x7f") == (
+        "Stooq doesn't support that exchange yet. Only US is supported. "
+        "Set the Helm value broker.stooqExchange to US and upgrade the release, "
+        "then run `fbull backtest create` or `fbull trading run` again."
+    )
+
+
 def test_trading_run_yes(runner):
     with _mock_live_trading() as mocks:
         result = runner(cli, ["trading", "run", "test_name", "demo.py", "--yes"])

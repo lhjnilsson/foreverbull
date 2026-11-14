@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/environment"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -31,8 +33,8 @@ const (
 var ErrStooqMetadata = errors.New("stooq does not implement GetAsset/SearchAsset/GetIndex")
 
 // defaultStooqUS is a small Yahoo-style → Stooq daily-code table for US equities/ETFs.
-// Canonical form (AAPL) is what Postgres/ohlc.symbol stores. Unknown tickers without
-// an exchange suffix use the documented fallback lower(symbol)+".us".
+// Canonical form (AAPL) is what Postgres/ohlc.symbol stores. A symbol that is
+// not in this table and has no exchange suffix uses the configured exchange.
 var defaultStooqUS = map[string]string{
 	"AAPL":  "aapl.us",
 	"SPY":   "spy.us",
@@ -108,12 +110,48 @@ type StooqClient struct {
 	limiter     *requestLimiter
 	toStooq     map[string]string // canonical upper → stooq code
 	toCanonical map[string]string // stooq code lower → canonical upper
+	// exchange is Stooq's suffix (us, uk, de). Empty is refused.
+	exchange string
 	// now replaces the clock, so tests can fix today's session.
 	now func() time.Time
 }
 
 // StooqOption configures a StooqClient.
 type StooqOption func(*StooqClient) error
+
+// WithStooqExchange sets the market used when a symbol does not already name
+// one. Only US is accepted. An empty or other value fails the client before
+// any request.
+func WithStooqExchange(exchange string) StooqOption {
+	return func(c *StooqClient) error {
+		suffix, err := NormalizeStooqExchange(exchange)
+		if err != nil {
+			return err
+		}
+		c.exchange = suffix
+		return nil
+	}
+}
+
+// NormalizeStooqExchange returns Stooq's suffix for an exchange name.
+// Only US is accepted. An empty value and any other value are the sentences
+// a person sees.
+func NormalizeStooqExchange(exchange string) (string, error) {
+	switch strings.ToUpper(strings.TrimSpace(exchange)) {
+	case "":
+		return "", errors.New(usercopy.StooqExchangeMissing)
+	case "US":
+		return "us", nil
+	default:
+		return "", errors.New(usercopy.StooqExchangeUnsupported(exchange))
+	}
+}
+
+// ConfiguredStooqExchange reads STOOQ_EXCHANGE. Unset and unsupported values
+// fail with the sentence a person sees.
+func ConfiguredStooqExchange() (string, error) {
+	return NormalizeStooqExchange(environment.GetStooqExchange())
+}
 
 // WithStooqBaseURL overrides https://stooq.com (httptest in unit tests).
 func WithStooqBaseURL(baseURL string) StooqOption {
@@ -240,12 +278,16 @@ func splitMapLine(line string) []string {
 
 // resolveSymbol maps a caller ticker to (Stooq code, canonical Yahoo-style ticker).
 // Lookup is case-insensitive. A Stooq code (aapl.us) maps back to AAPL.
-// Unknown symbols without a '.' suffix use lower(symbol)+".us"; a symbol with
-// an exchange suffix goes through exchangeCode.
+// A symbol with an exchange suffix goes through exchangeCode. A symbol with
+// neither a mapped code nor a suffix uses the client's exchange, which is
+// required. There is no implied market.
 func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err error) {
 	symbol = strings.TrimSpace(symbol)
 	if symbol == "" {
 		return "", "", errors.New("stooq: empty symbol")
+	}
+	if c.exchange == "" {
+		return "", "", errors.New(usercopy.StooqExchangeMissing)
 	}
 	lower := strings.ToLower(symbol)
 	upper := strings.ToUpper(symbol)
@@ -255,13 +297,13 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 	if mapped, ok := c.toStooq[upper]; ok {
 		return mapped, upper, nil
 	}
-	if code, ok := stooqShareClassCode(symbol); ok {
+	if code, ok := stooqShareClassCode(symbol, c.exchange); ok {
 		return code, upper, nil
 	}
 	if i := strings.LastIndexByte(symbol, '.'); i > 0 {
 		return exchangeCode(symbol[:i], symbol[i+1:])
 	}
-	return lower + ".us", upper, nil
+	return lower + "." + c.exchange, upper, nil
 }
 
 // exchangeCode maps a ticker with an exchange suffix (VOD.L) to its Stooq

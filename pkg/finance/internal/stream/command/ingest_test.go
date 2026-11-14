@@ -607,6 +607,9 @@ func (test *IngestCommandTest) ingestSymbols(md *supplier.MockMarketdata, symbol
 }
 
 func (test *IngestCommandTest) ingestSymbolsVia(provider string, md *supplier.MockMarketdata, symbols ...string) error {
+	if strings.EqualFold(strings.TrimSpace(provider), "stooq") {
+		test.T().Setenv(environment.StooqExchange, "US")
+	}
 	message := new(stream.MockMessage)
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.MarketDataDep).Return(dividendFree{md})

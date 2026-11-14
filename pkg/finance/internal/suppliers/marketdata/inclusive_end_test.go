@@ -66,7 +66,7 @@ func stooqRangeServer(t *testing.T, now time.Time, days ...string) *StooqClient 
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
-	client, err := NewStooqClient(WithStooqBaseURL(srv.URL))
+	client, err := NewStooqClient(WithStooqExchange("US"), WithStooqBaseURL(srv.URL))
 	require.NoError(t, err)
 	client.now = func() time.Time { return now }
 	return client

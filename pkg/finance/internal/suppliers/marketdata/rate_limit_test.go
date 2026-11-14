@@ -81,7 +81,7 @@ func TestRateLimitIsSharedAcrossConcurrentDownloads(t *testing.T) {
 	}{
 		{"stooq", stooqCSV, "text/csv", func(t *testing.T, url string, limiter *requestLimiter) getOHLC {
 			t.Helper()
-			client, err := NewStooqClient(WithStooqBaseURL(url))
+			client, err := NewStooqClient(WithStooqExchange("US"), WithStooqBaseURL(url))
 			require.NoError(t, err)
 			client.limiter = limiter
 			return client.GetOHLC
@@ -165,10 +165,10 @@ func TestRateLimit429BacksOffEveryDownload(t *testing.T) {
 	limiter := newRequestLimiterEvery(10 * time.Millisecond)
 	start := time.Date(2021, 1, 4, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2021, 1, 8, 0, 0, 0, 0, time.UTC)
-	first, err := NewStooqClient(WithStooqBaseURL(srv.URL))
+	first, err := NewStooqClient(WithStooqExchange("US"), WithStooqBaseURL(srv.URL))
 	require.NoError(t, err)
 	first.limiter = limiter
-	second, err := NewStooqClient(WithStooqBaseURL(srv.URL))
+	second, err := NewStooqClient(WithStooqExchange("US"), WithStooqBaseURL(srv.URL))
 	require.NoError(t, err)
 	second.limiter = limiter
 

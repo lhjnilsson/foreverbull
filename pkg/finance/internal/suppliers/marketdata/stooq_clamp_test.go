@@ -24,7 +24,7 @@ func stooqSessionServer(t *testing.T, now time.Time) (*StooqClient, *[]string) {
 			"2026-10-30,10.3,10.6,10.1,10.4,50\n"))
 	}))
 	t.Cleanup(srv.Close)
-	client, err := NewStooqClient(WithStooqBaseURL(srv.URL))
+	client, err := NewStooqClient(WithStooqExchange("US"), WithStooqBaseURL(srv.URL))
 	require.NoError(t, err)
 	client.now = func() time.Time { return now }
 	return client, &asked
@@ -107,7 +107,7 @@ func TestStooqGetOHLCNilEndUsesTodayAfterTheClose(t *testing.T) {
 		_, _ = w.Write([]byte("Date,Open,High,Low,Close,Volume\n2026-10-30,10,10.5,9.5,10.2,100\n"))
 	}))
 	t.Cleanup(srv.Close)
-	client, err := NewStooqClient(WithStooqBaseURL(srv.URL))
+	client, err := NewStooqClient(WithStooqExchange("US"), WithStooqBaseURL(srv.URL))
 	require.NoError(t, err)
 	now := newYork(t, "2026-10-30 16:35")
 	client.now = func() time.Time { return now }
