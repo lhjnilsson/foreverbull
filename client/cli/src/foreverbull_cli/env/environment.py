@@ -1284,6 +1284,8 @@ class ClusterManager:
             f"expose.hostPort={'true' if self.config.is_local else 'false'}",
             "--set-string",
             f"grafana.webUrl={self.config._helm_web_url()}",
+            "--set-string",
+            "broker.stooqExchange=US",
         ]
         if self.config.is_local:
             # Local Kind keeps the documented default credentials, but
