@@ -90,6 +90,10 @@ broker:
   logLevel: warning
   serverAddress: foreverbull
   ziplineServiceName: zipline
+  # STOOQ_EXCHANGE. Empty leaves the variable unset, and Stooq then fails
+  # until this is US. Case does not matter: us and US are the same.
+  # US requests the same symbols as before, such as aapl.us.
+  stooqExchange: ""
   trading:
     # TRADING_ENABLED. Credentials are Secret foreverbull-trading, not chart values.
     enabled: false
