@@ -33,6 +33,21 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
+// runningServer is one Serve call. The goroutine only sends on errc; the
+// test goroutine stops the server and reads errc before the test ends.
+type runningServer struct {
+	server *grpc.Server
+	errc   chan error
+}
+
+func serveInBackground(server *grpc.Server, listener *bufconn.Listener) runningServer {
+	errc := make(chan error, 1)
+	go func() {
+		errc <- server.Serve(listener)
+	}()
+	return runningServer{server: server, errc: errc}
+}
+
 type TradingServerTest struct {
 	suite.Suite
 
@@ -43,6 +58,10 @@ type TradingServerTest struct {
 	listener *bufconn.Listener
 	server   *grpc.Server
 	client   servicePb.TradingServicerClient
+	// running keeps every Serve goroutine until TearDownSuite. A later test
+	// reuses the server the previous subtest left up, so subtests do not
+	// stop it.
+	running []runningServer
 }
 
 func TestTradingServer(t *testing.T) {
@@ -56,6 +75,12 @@ func (suite *TradingServerTest) SetupSuite() {
 }
 
 func (suite *TradingServerTest) TearDownSuite() {
+	for _, running := range suite.running {
+		running.server.Stop()
+	}
+	for _, running := range suite.running {
+		suite.NoError(<-running.errc)
+	}
 }
 
 func (suite *TradingServerTest) SetupSubTest() {
@@ -73,9 +98,7 @@ func (suite *TradingServerTest) SetupSubTest() {
 	server := api.NewTradingServer(suite.pgx, suite.stream, suite.trading)
 	servicePb.RegisterTradingServicerServer(suite.server, server)
 
-	go func() {
-		suite.NoError(suite.server.Serve(suite.listener))
-	}()
+	suite.running = append(suite.running, serveInBackground(suite.server, suite.listener))
 
 	resolver.SetDefaultScheme("passthrough")
 
@@ -278,6 +301,7 @@ type TradingServerDisabledTest struct {
 	listener *bufconn.Listener
 	server   *grpc.Server
 	client   servicePb.TradingServicerClient
+	running  *runningServer
 }
 
 func TestTradingServerDisabled(t *testing.T) {
@@ -296,9 +320,8 @@ func (test *TradingServerDisabledTest) SetupSubTest() {
 	server := api.NewTradingServer(nil, nil, nil)
 	servicePb.RegisterTradingServicerServer(test.server, server)
 
-	go func() {
-		test.NoError(test.server.Serve(test.listener))
-	}()
+	started := serveInBackground(test.server, test.listener)
+	test.running = &started
 
 	resolver.SetDefaultScheme("passthrough")
 
@@ -313,6 +336,15 @@ func (test *TradingServerDisabledTest) SetupSubTest() {
 	}
 
 	test.client = servicePb.NewTradingServicerClient(conn)
+}
+
+func (test *TradingServerDisabledTest) TearDownSubTest() {
+	if test.running == nil {
+		return
+	}
+	test.running.server.Stop()
+	test.NoError(<-test.running.errc)
+	test.running = nil
 }
 
 func (test *TradingServerDisabledTest) TestGetOrders() {
