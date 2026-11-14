@@ -1,4 +1,4 @@
-# Research-to-paper — implementation contract
+# 📝 Research-to-paper — implementation contract
 
 This document is the implementation contract for closing the loop after `strategy-poc` and `etf-universe`. It is not code. The three chapters are one pipeline: **daily prices that survive delisting**, **compare a version across backtests**, **paper `PlaceOrder`**. Live trading is out.
 
@@ -7,7 +7,7 @@ Read this before changing market-data providers, experiment RPCs, `Deploy`, or t
 **Hard facts this contract must not contradict:**
 
 - **Yahoo is kept.** It remains the metadata implementation (`GetAsset` / `SearchAsset` / `GetIndex`). An omitted backtest `provider` stores `yahoo`; pass `stooq` explicitly for Stooq bars.
-- **Stooq is GetOHLC-only.** It must not scrape search or index membership. It must not replace Yahoo.
+- **Stooq is GetOHLC-only.** It must not scrape search or index membership. It must not replace Yahoo. A Stooq download or trading session needs `STOOQ_EXCHANGE=US`. That asks for the same symbols as before, such as `aapl.us`.
 - **Live is out.** No live Alpaca URL, no `mode=live` orders, no k8s CronJob, no catch-up replay of missed sessions.
 
 ## 1. Problem

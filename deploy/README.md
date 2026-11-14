@@ -89,6 +89,7 @@ checks every setting at startup and exits with one line per bad variable.
 | `LOG_LEVEL` | `debug` local (`fbenv`); chart default `warning`. Only `debug`, `info`, `warning`, and `error` start |
 | `FINANCE_TASK_TIME_LIMIT` | unset (`2h`). Go duration, such as `90m`, that bounds one price download for `fbull backtest create` and one finance ingest. Symbols stored before the limit are kept. The broker refuses to start when it isn't a duration, isn't above zero, or is above `6h`, so a task ends well inside the 24 hours the `foreverbull` stream keeps its states |
 | `TRADING_ENABLED` | `false` |
+| `STOOQ_EXCHANGE` | Unset unless `broker.stooqExchange` is US. Only `US` is accepted, and case does not matter. Required when a download or `fbull trading run` uses Stooq. `US` requests the same symbols as before, such as `aapl.us`. Trading's price provider is the one stored on the backtest, not a chart value |
 | `AUTH_ENABLED` | unset. Chart `broker.auth.enabled` is `false`. `fbenv` does not set it |
 | `AUTH_ADMIN_USERNAME` | empty unless `broker.auth.adminUsername` is set |
 | `AUTH_ADMIN_PASSWORD_FILE` | `/etc/foreverbull-admin/password`. The value is the path. Secret `foreverbull-admin` key `password` is optional and is not an environment variable |
@@ -110,6 +111,8 @@ checks every setting at startup and exits with one line per bad variable.
 | Zipline `STORAGE_ENDPOINT` | `minio:9000` |
 | Zipline `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | From Secret `foreverbull-credentials`, the same keys as the broker's MinIO keys |
 | Zipline `STORAGE_SECURE` | `false` |
+
+An existing install that downloads from Stooq needs `broker.stooqExchange=US` before its next Stooq download or `fbull trading run`. Add `--set broker.stooqExchange=US` to your `helm upgrade`. The symbols stay the same, such as `aapl.us`. Installs made with `fbenv` get this on the next `fbenv update`. An older `fbull` sends no price provider, so upgrade `fbull` before running `fbull trading run` against this broker.
 
 Deploy mode LIVE is refused. Trading credentials are not chart values: optional Secret `foreverbull-trading` key `profiles.yaml` is mounted at `/etc/foreverbull/profiles.yaml` (`TRADING_PROFILES_FILE`). `fbenv create` and `fbenv update` apply `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and do not print it. The committed example is `deploy/trading-profiles.example.yaml`.
 

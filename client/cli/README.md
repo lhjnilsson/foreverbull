@@ -87,7 +87,7 @@ Off is `auto_close_on_universe_drop: false`. `--close-on-universe-drop` and `--n
 uv run fbull trading run demo path/to/strategy.py --dry
 ```
 
-This talks to a running broker. Paper trading stays off unless `TRADING_ENABLED=true`. That flag is a kill switch, not a provider. `fbull strategy deploy --no-dry-run` requires `--backend <profile>` plus `--yes` or `--confirm`. Dry-run may omit `--backend`. `--mode live` is refused.
+This talks to a running broker. Paper trading stays off unless `TRADING_ENABLED=true`. That flag is a kill switch, not a provider. `fbull trading run` uses the provider stored on that backtest (`yahoo`, `stooq`, or `alpaca`) for the price ingest and the bars. A missing or unknown provider stops the command before a session starts. `fbenv` sets the broker's Stooq exchange to US on `fbenv create` and `fbenv update`. A Helm install run by hand sets `broker.stooqExchange=US`; see the upgrade note in [deploy/README.md](../../deploy/README.md). `US` keeps symbols such as `aapl.us`. Any other exchange is refused. `fbull strategy deploy --no-dry-run` requires `--backend <profile>` plus `--yes` or `--confirm`. Dry-run may omit `--backend`. `--mode live` is refused.
 
 Credentials live only in the profiles file. In the cluster, `TRADING_PROFILES_FILE` is `/etc/foreverbull/profiles.yaml`, mounted from Secret `foreverbull-trading`, key `profiles.yaml`. On local Kind, `fbenv` applies `.foreverbull/trading-profiles.yaml` as that Secret when the file exists, and does not print it. The committed example is [deploy/trading-profiles.example.yaml](../../deploy/trading-profiles.example.yaml) and its credential fields are empty. Do not put keys in the Helm chart, Postgres, or `.foreverbull/config.yaml`.
 
