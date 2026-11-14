@@ -32,7 +32,11 @@ func loadStoredBacktest(ctx context.Context, pool *pgxpool.Pool, name, ownerID, 
 		if err != nil {
 			return nil, "", err
 		}
-		return item, "", nil
+		id, err := backtests.IDByName(ctx, name)
+		if err != nil {
+			return nil, "", fmt.Errorf("error getting backtest id: %w", err)
+		}
+		return item, id, nil
 	}
 	if err := requireStoredOwner(ownerID, backtestID); err != nil {
 		return nil, "", err
@@ -44,6 +48,9 @@ func loadStoredBacktest(ctx context.Context, pool *pgxpool.Pool, name, ownerID, 
 		if err != nil {
 			return nil, "", fmt.Errorf("error getting backtest: %w", err)
 		}
+	}
+	if strings.TrimSpace(id) == "" {
+		return nil, "", errors.New("backtest id is empty")
 	}
 	var storedOwner string
 	err := pool.QueryRow(ctx, `SELECT owner_id FROM backtest WHERE id = $1`, id).Scan(&storedOwner)

@@ -17,16 +17,16 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/strategy"
 )
 
-// prepareAuth runs before the process accepts requests. A false flag keeps
-// today's schema. A true flag creates the admin, migrates owners, and then
-// requires a credential.
+// prepareAuth runs before the process accepts requests. Auth off copies
+// name-keyed ingestions onto the surrogate id. Auth on creates the admin,
+// migrates owners, and then requires a credential.
 func prepareAuth(pool *pgxpool.Pool, store storage.Storage, mux *http.ServeMux) error {
 	adminID, err := auth.Startup(context.Background(), pool, log.Printf)
 	if err != nil {
 		return err
 	}
 	if !environment.GetAuthEnabled() {
-		return nil
+		return copyNameKeyedIngestions(pool, store)
 	}
 	if err := service.MigrateOwner(context.Background(), pool, adminID); err != nil {
 		return err
@@ -65,4 +65,15 @@ func (m minioIngestion) Readable(ctx context.Context, key string) (bool, error) 
 
 func (m minioIngestion) Copy(ctx context.Context, fromKey, toKey string) error {
 	return m.client.CopyIngestion(ctx, fromKey, toKey)
+}
+
+// copyNameKeyedIngestions runs before requests are accepted. CreateTables
+// assigns the surrogate id first, so a backtest stored under its name can
+// be copied onto that id.
+func copyNameKeyedIngestions(pool *pgxpool.Pool, store storage.Storage) error {
+	copier, err := ingestionCopier(store)
+	if err != nil {
+		return err
+	}
+	return backtest.CopyNameKeyedIngestions(context.Background(), pool, copier)
 }
