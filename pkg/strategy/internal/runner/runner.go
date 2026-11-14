@@ -207,9 +207,10 @@ func (r *InProcess) loop(ctx context.Context, deploymentID string) {
 
 // fail stores cause as the deployment's ERROR; the loop then ends. A loop
 // stopped through ctx is not a failure: Remove waits for the loop to end
-// before StopDeployment writes STOPPED, and at shutdown the row stays
-// running so Start resumes it. The
-// write is detached from ctx and bounded. The loop has no caller, so a
+// before StopDeployment writes STOPPED, and at shutdown the row stays running
+// so Start resumes it.
+//
+// The write is detached from ctx and bounded. The loop has no caller, so a
 // status write that fails too is logged with both causes.
 func (r *InProcess) fail(ctx context.Context, deploymentID string, cause error) {
 	if ctx.Err() != nil {
