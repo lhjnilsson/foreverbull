@@ -7,6 +7,8 @@ import pytest
 
 from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.trading import PositionAndOrder
+from foreverbull_cli.bull.trading import trading_provider_missing
+from foreverbull_cli.bull.trading import trading_provider_unknown
 from typer.testing import CliRunner
 
 from foreverbull.foreverbull import TradingSession
@@ -34,9 +36,10 @@ class _LookupError(grpc.RpcError):
         return self._code
 
 
-def _sample_backtest(name="test_name") -> backtest_pb.Backtest:
+def _sample_backtest(name="test_name", provider="yahoo") -> backtest_pb.Backtest:
     return backtest_pb.Backtest(
         name=name,
+        provider=provider,
         periods=[
             backtest_pb.Backtest.Period(
                 assets=[
@@ -175,6 +178,45 @@ def _mock_live_trading():
         }
 
 
+def test_trading_provider_sentences_match_without_and_with_a_name():
+    assert (
+        trading_provider_missing(None) == "This backtest has no price provider, so trading can't load prices. "
+        "Create the backtest again with --provider yahoo, stooq, or alpaca, then run `fbull trading run` again."
+    )
+    assert (
+        trading_provider_missing("spy") == "This backtest has no price provider, so trading can't load prices. "
+        "Run `fbull backtest delete spy` first. "
+        "Create the backtest again with --provider yahoo, stooq, or alpaca, then run `fbull trading run` again."
+    )
+    assert (
+        trading_provider_unknown("binance", None)
+        == "Trading can't use price provider 'binance'. It must be yahoo, stooq, or alpaca. "
+        "Create the backtest again with --provider set to one of those, then run `fbull trading run` again."
+    )
+    assert (
+        trading_provider_unknown("binance", "spy")
+        == "Trading can't use price provider 'binance'. It must be yahoo, stooq, or alpaca. "
+        "Run `fbull backtest delete spy` first. "
+        "Create the backtest again with --provider set to one of those, then run `fbull trading run` again."
+    )
+    assert (
+        trading_provider_unknown("yahoo\nDROP", None)
+        == "Trading can't use that price provider. It must be yahoo, stooq, or alpaca. "
+        "Create the backtest again with --provider set to one of those, then run `fbull trading run` again."
+    )
+    assert (
+        trading_provider_unknown("yahoo\nDROP", "spy")
+        == "Trading can't use that price provider. It must be yahoo, stooq, or alpaca. "
+        "Run `fbull backtest delete spy` first. "
+        "Create the backtest again with --provider set to one of those, then run `fbull trading run` again."
+    )
+    assert (
+        trading_provider_unknown("alpaca\x7f", None)
+        == "Trading can't use that price provider. It must be yahoo, stooq, or alpaca. "
+        "Create the backtest again with --provider set to one of those, then run `fbull trading run` again."
+    )
+
+
 def test_stooq_exchange_sentences_match():
     from foreverbull_cli.bull.trading import stooq_exchange_missing
     from foreverbull_cli.bull.trading import stooq_exchange_unsupported
@@ -213,7 +255,86 @@ def test_trading_run_yes(runner):
         assert result.exit_code == 0
         assert "Positions and Orders" in result.stdout
         mocks["place_orders"].assert_called_once()
-        mocks["create_session"].assert_called_once()
+        mocks["create_session"].assert_called_once_with(["A", "B", "C", "D"], "yahoo", "")
+
+
+def test_trading_run_sends_the_backtest_provider(runner):
+    with _mock_live_trading() as mocks:
+        mocks_backtest = _sample_backtest(provider=" Stooq ", name="test_name")
+        mocks_backtest.profile = "alpaca-paper"
+        with patch("foreverbull.broker.backtest.get", return_value=mocks_backtest):
+            result = runner(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+        assert result.exit_code == 0
+        mocks["create_session"].assert_called_once_with(["A", "B", "C", "D"], "stooq", "alpaca-paper")
+
+
+def test_trading_run_refuses_a_missing_provider():
+    with (
+        patch("foreverbull.broker.backtest.get") as get_backtest,
+        patch("foreverbull.broker.finance.create_session") as create_session,
+    ):
+        get_backtest.return_value = _sample_backtest(provider="  ")
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--dry"])
+    assert result.exit_code == 1
+    assert result.output == f"✖ {trading_provider_missing('test_name')}\n"
+    create_session.assert_not_called()
+
+
+def test_trading_run_refuses_an_unknown_provider():
+    with (
+        patch("foreverbull.broker.backtest.get") as get_backtest,
+        patch("foreverbull.broker.finance.create_session") as create_session,
+    ):
+        get_backtest.return_value = _sample_backtest(provider="binance")
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert result.output == f"✖ {trading_provider_unknown('binance', 'test_name')}\n"
+    create_session.assert_not_called()
+
+
+def test_trading_run_prints_a_broker_stooq_refusal_without_a_traceback(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    from foreverbull_cli.bull.trading import stooq_exchange_missing
+
+    sentence = stooq_exchange_missing()
+    with _mock_live_trading() as mocks:
+        mocks["create_session"].side_effect = _LookupError(sentence, grpc.StatusCode.FAILED_PRECONDITION)
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.output == f"✖ {sentence}\n"
+    assert "Traceback" not in result.output
+    mocks["session"].run_trading.assert_not_called()
+
+
+def test_trading_run_prints_a_create_session_stream_refusal_without_a_traceback(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    from foreverbull_cli.bull.trading import stooq_exchange_missing
+
+    sentence = stooq_exchange_missing()
+
+    def _stream(*_args, **_kwargs):
+        yield trading_service_pb.CreateSessionResponse()
+        raise _LookupError(sentence, grpc.StatusCode.FAILED_PRECONDITION)
+
+    with _mock_live_trading() as mocks:
+        mocks["create_session"].side_effect = _stream
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.output == f"✖ {sentence}\n"
+    assert "Traceback" not in result.output
+    mocks["session"].run_trading.assert_not_called()
+
+
+def test_trading_run_place_orders_failed_precondition_propagates():
+    rejection = _LookupError("place orders failed", grpc.StatusCode.FAILED_PRECONDITION)
+    with _mock_live_trading() as mocks:
+        mocks["place_orders"].side_effect = rejection
+        result = CliRunner().invoke(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
+    assert result.exit_code != 0
+    assert result.exception is rejection
+    assert "✖" not in result.output
 
 
 def test_trading_run_dry(runner):

@@ -13,6 +13,9 @@ type IngestCommand struct {
 	End      *string  `json:"end"`
 	Provider string   `json:"provider,omitempty"`
 	Profile  string   `json:"profile,omitempty"`
+	// Trading is set by a trading session. The provider is then required:
+	// an empty name is not read as yahoo.
+	Trading bool `json:"trading,omitempty"`
 }
 
 func NewIngestCommand(calendar string, symbols []string, start string, end *string) (stream.Message, error) {

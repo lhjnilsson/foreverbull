@@ -59,15 +59,31 @@ func Ingest(ctx context.Context, message stream.Message) error {
 		end = &e
 	}
 
-	provider, err := marketdata.NormalizeProvider(command.Provider)
-	if err != nil {
-		return err
-	}
 	profilesFile := environment.GetTradingProfilesFile()
+	var (
+		provider string
+		bars     supplier.Marketdata
+	)
+	if command.Trading {
+		// A trading ingest names its provider. Empty is a failure, not yahoo.
+		provider, err = marketdata.RequireTradingProvider(command.Provider)
+		if err != nil {
+			return err
+		}
+	} else {
+		provider, err = marketdata.NormalizeProvider(command.Provider)
+		if err != nil {
+			return err
+		}
+	}
 	if err := marketdata.ValidatePriceSource(provider, command.Profile, profilesFile); err != nil {
 		return err
 	}
-	bars, err := marketdata.OHLCClient(provider, command.Profile, profilesFile, yahoo)
+	if command.Trading {
+		bars, err = marketdata.FetchTradingClient(command.Provider, command.Profile, profilesFile, yahoo)
+	} else {
+		bars, err = marketdata.OHLCClient(provider, command.Profile, profilesFile, yahoo)
+	}
 	if err != nil {
 		return err
 	}

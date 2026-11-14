@@ -1,9 +1,11 @@
 package marketdata
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 )
@@ -19,6 +21,49 @@ func NormalizeProvider(provider string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown price provider %q; valid providers: yahoo, stooq, alpaca", provider)
 	}
+}
+
+// RequireTradingProvider is the price source a trading session reads.
+// Empty and unknown names fail. Yahoo is not substituted.
+func RequireTradingProvider(provider string) (string, error) {
+	if strings.TrimSpace(provider) == "" {
+		return "", errors.New(usercopy.TradingProviderMissing(""))
+	}
+	name, err := NormalizeProvider(provider)
+	if err != nil {
+		return "", errors.New(usercopy.TradingProviderUnknown(provider, ""))
+	}
+	return name, nil
+}
+
+// RequireTradingPrice is RequireTradingProvider, and for stooq also the
+// configured exchange. A missing exchange fails before a request is sent.
+func RequireTradingPrice(provider string) (string, error) {
+	name, err := RequireTradingProvider(provider)
+	if err != nil {
+		return "", err
+	}
+	if name != "stooq" {
+		return name, nil
+	}
+	if _, err := ConfiguredStooqExchange(); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// newStooqPriceClient builds the Stooq composite OHLCClient returns.
+// A test replaces it to observe that client without calling Stooq.
+var newStooqPriceClient = NewStooqYahoo
+
+// FetchTradingClient is the price client a trading ingest calls.
+// It uses OHLCClient, so yahoo and stooq are the same clients a download uses.
+func FetchTradingClient(provider, profile, profilesFile string, yahoo supplier.Marketdata) (supplier.Marketdata, error) {
+	name, err := RequireTradingProvider(provider)
+	if err != nil {
+		return nil, err
+	}
+	return OHLCClient(name, profile, profilesFile, yahoo)
 }
 
 // UnknownProviderName stands in for a provider ShownProvider can't name.
@@ -73,7 +118,7 @@ func OHLCClient(provider, profile, profilesFile string, yahoo supplier.Marketdat
 				return nil, err
 			}
 		}
-		return NewStooqYahoo(func() (supplier.Marketdata, error) {
+		return newStooqPriceClient(func() (supplier.Marketdata, error) {
 			return meta, nil
 		}, WithStooqExchange(exchange))
 	case "alpaca":

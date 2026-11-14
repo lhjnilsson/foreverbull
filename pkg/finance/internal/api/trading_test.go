@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -14,8 +15,10 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -23,8 +26,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -153,9 +158,20 @@ func (test *TradingServerTest) TestCreateSession() {
 			}
 			close(statusCh)
 		}()
-		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh)).
+			Run(func(args mock.Arguments) {
+				orchestration := args.Get(1).(*streamPb.Orchestration)
+				test.Require().Len(orchestration.GetSteps(), 2)
+				var ingest financeStream.IngestCommand
+				test.Require().NoError(json.Unmarshal(orchestration.GetSteps()[0].GetMessages()[0].GetPayload(), &ingest))
+				test.Equal("yahoo", ingest.Provider)
+				test.True(ingest.Trading)
+				var run financeStream.StartTradingSessionCommand
+				test.Require().NoError(json.Unmarshal(orchestration.GetSteps()[1].GetMessages()[0].GetPayload(), &run))
+				test.Equal("yahoo", run.Provider)
+			})
 
-		req := &servicePb.CreateSessionRequest{}
+		req := &servicePb.CreateSessionRequest{Provider: "yahoo"}
 		rsp, err := test.client.CreateSession(context.Background(), req)
 		test.Require().NoError(err)
 		test.Require().NotNil(rsp)
@@ -173,6 +189,87 @@ func (test *TradingServerTest) TestCreateSession() {
 		test.Require().NotNil(session.Port)
 		test.Equal(int64(1337), *session.Port)
 	})
+}
+
+func (test *TradingServerTest) TestCreateSessionRefusesAMissingOrUnknownProvider() {
+	for _, tc := range []struct {
+		name     string
+		provider string
+		want     string
+	}{
+		{name: "missing", provider: "", want: usercopy.TradingProviderMissing("")},
+		{name: "blank", provider: "  ", want: usercopy.TradingProviderMissing("")},
+		{name: "unknown", provider: "binance", want: usercopy.TradingProviderUnknown("binance", "")},
+	} {
+		test.Run(tc.name, func() {
+			rsp, err := test.client.CreateSession(context.Background(), &servicePb.CreateSessionRequest{Provider: tc.provider})
+			test.Require().NoError(err)
+			_, err = rsp.Recv()
+			test.Require().Error(err)
+			st, ok := status.FromError(err)
+			test.Require().True(ok)
+			test.Equal(codes.FailedPrecondition, st.Code())
+			test.Equal(tc.want, st.Message())
+		})
+	}
+}
+
+func (test *TradingServerTest) TestCreateSessionRefusesStooqWithoutAnExchange() {
+	test.T().Setenv(environment.StooqExchange, "")
+	rsp, err := test.client.CreateSession(context.Background(), &servicePb.CreateSessionRequest{Provider: "stooq"})
+	test.Require().NoError(err)
+	_, err = rsp.Recv()
+	test.Require().Error(err)
+	st, ok := status.FromError(err)
+	test.Require().True(ok)
+	test.Equal(codes.FailedPrecondition, st.Code())
+	test.Equal(usercopy.StooqExchangeMissing, st.Message())
+
+	for _, exchange := range []string{"L", "DE", "UK", "TO"} {
+		test.T().Setenv(environment.StooqExchange, exchange)
+		rsp, err = test.client.CreateSession(context.Background(), &servicePb.CreateSessionRequest{Provider: "stooq"})
+		test.Require().NoError(err)
+		_, err = rsp.Recv()
+		st, ok = status.FromError(err)
+		test.Require().True(ok)
+		test.Equal(usercopy.StooqExchangeUnsupported(exchange), st.Message())
+	}
+}
+
+func (test *TradingServerTest) TestCreateSessionForwardsEachConfiguredProvider() {
+	for _, provider := range []string{"yahoo", "stooq"} {
+		test.Run(provider, func() {
+			if provider == "stooq" {
+				test.T().Setenv(environment.StooqExchange, "US")
+			}
+			done := make(chan *streamPb.Orchestration_Step)
+			close(done)
+			test.stream.On("RunOrchestration", mock.Anything, mock.Anything).
+				Return((<-chan *streamPb.Orchestration_Step)(done)).
+				Run(func(args mock.Arguments) {
+					orchestration := args.Get(1).(*streamPb.Orchestration)
+					var ingest financeStream.IngestCommand
+					test.Require().NoError(json.Unmarshal(orchestration.GetSteps()[0].GetMessages()[0].GetPayload(), &ingest))
+					test.Equal(provider, ingest.Provider)
+					test.True(ingest.Trading)
+					var run financeStream.StartTradingSessionCommand
+					test.Require().NoError(json.Unmarshal(orchestration.GetSteps()[1].GetMessages()[0].GetPayload(), &run))
+					test.Equal(provider, run.Provider)
+				}).Once()
+			rsp, err := test.client.CreateSession(context.Background(), &servicePb.CreateSessionRequest{
+				Provider: provider,
+				Symbols:  []string{"AAPL"},
+			})
+			test.Require().NoError(err)
+			for {
+				_, err = rsp.Recv()
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				test.Require().NoError(err)
+			}
+		})
+	}
 }
 
 type TradingServerDisabledTest struct {

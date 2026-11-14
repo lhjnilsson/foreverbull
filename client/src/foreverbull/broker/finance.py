@@ -36,7 +36,12 @@ def get_orders(
 
 @trading_servicer
 def create_session(
-    stub: trading_service_pb_grpc.TradingServicerClientSync, symbols: list[str]
+    stub: trading_service_pb_grpc.TradingServicerClientSync,
+    symbols: list[str],
+    provider: str,
+    profile: str = "",
 ) -> Generator[trading_service_pb.CreateSessionResponse, None, None]:
-    rsp = stub.create_session(trading_service_pb.CreateSessionRequest(symbols=symbols))
+    rsp = stub.create_session(
+        trading_service_pb.CreateSessionRequest(symbols=symbols, provider=provider, profile=profile)
+    )
     yield from rsp

@@ -33,7 +33,8 @@ type BarSource interface {
 type Option func(*pool)
 
 // WithBars attaches stored bars to each WorkerRequest. provider is the
-// backtest price source; an empty provider is yahoo inside the source.
+// price source the caller already resolved. The pool passes that name
+// through and does not choose one.
 func WithBars(source BarSource, provider string) Option {
 	return func(p *pool) {
 		p.bars = source

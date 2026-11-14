@@ -23,12 +23,51 @@ from foreverbull_cli.output import console
 trading = typer.Typer()
 log = logging.getLogger().getChild(__name__)
 
+_PRICE_PROVIDERS = frozenset({"yahoo", "stooq", "alpaca"})
+
 
 def _shown_setting(raw: str) -> str:
     text = raw.strip()
     if text == "" or len(text) > 32 or any(ord(char) < 0x20 or ord(char) >= 0x7F or char in "'`" for char in text):
         return "that value"
     return f"'{text}'"
+
+
+def _delete_first(backtest: str | None) -> str:
+    name = "" if backtest is None else str(backtest).strip()
+    if name == "":
+        return ""
+    return f"Run `fbull backtest delete {name}` first. "
+
+
+def trading_provider_missing(backtest: str | None = None) -> str:
+    return (
+        "This backtest has no price provider, so trading can't load prices. "
+        f"{_delete_first(backtest)}"
+        "Create the backtest again with --provider yahoo, stooq, or alpaca, then run `fbull trading run` again."
+    )
+
+
+def trading_provider_unknown(provider: str, backtest: str | None = None) -> str:
+    shown = _shown_setting(provider)
+    if shown == "that value":
+        lead = "Trading can't use that price provider. It must be yahoo, stooq, or alpaca. "
+    else:
+        lead = f"Trading can't use price provider {shown}. It must be yahoo, stooq, or alpaca. "
+    return (
+        f"{lead}{_delete_first(backtest)}"
+        "Create the backtest again with --provider set to one of those, then run `fbull trading run` again."
+    )
+
+
+def trading_provider_refusal(provider: str | None, backtest: str | None = None) -> str | None:
+    """The sentence when provider cannot be used, or None when it can."""
+    raw = "" if provider is None else str(provider).strip()
+    if raw == "":
+        return trading_provider_missing(backtest)
+    if raw.lower() not in _PRICE_PROVIDERS:
+        return trading_provider_unknown(raw, backtest)
+    return None
 
 
 def stooq_exchange_missing() -> str:
@@ -38,6 +77,18 @@ def stooq_exchange_missing() -> str:
         "then run `fbull backtest create` or `fbull trading run` again. "
         "With US, foreverbull asks Stooq for symbols such as aapl.us."
     )
+
+
+def _create_session_refusal(exc: grpc.RpcError) -> str | None:
+    """The broker sentence when create_session itself refuses, else None.
+
+    A FAILED_PRECONDITION from the worker session is not this call. The
+    caller leaves that error to propagate.
+    """
+    code = getattr(exc, "code", None)
+    if callable(code) and code() == grpc.StatusCode.FAILED_PRECONDITION:
+        return _rpc_details(exc)
+    return None
 
 
 def stooq_exchange_unsupported(exchange: str) -> str:
@@ -176,6 +227,11 @@ def run(
             soft_wrap=True,
         )
         raise typer.Exit(code=1)
+    refusal = trading_provider_refusal(_backtest.provider, _backtest.name or backtest_name)
+    if refusal is not None:
+        _fail(refusal)
+    provider = _backtest.provider.strip().lower()
+    profile = (_backtest.profile or "").strip()
     symbols = [a.symbol for a in _backtest.periods[-1].assets if a.enabled]
 
     if dry:
@@ -197,9 +253,28 @@ def run(
     held = list(book.positions)
 
     denied: str | None = None
+    broker_refusal: str | None = None
     with LiveProgress() as progress:
         has_run = False
-        for msg in broker.finance.create_session(symbols):
+        messages = None
+        try:
+            messages = iter(broker.finance.create_session(symbols, provider, profile))
+        except grpc.RpcError as exc:
+            broker_refusal = _create_session_refusal(exc)
+            if broker_refusal is None:
+                raise
+            progress.transient = True
+        while messages is not None and broker_refusal is None:
+            try:
+                msg = next(messages)
+            except StopIteration:
+                break
+            except grpc.RpcError as exc:
+                broker_refusal = _create_session_refusal(exc)
+                if broker_refusal is None:
+                    raise
+                progress.transient = True
+                break
             progress.update_from_message(msg)
             trading_session = msg.session
             if trading_session is not None and trading_session.port and not has_run:
@@ -220,9 +295,11 @@ def run(
                         raise
                     denied = market_data_denied_line(backtest_name)
                     progress.transient = True
-        if denied is None and not has_run:
+        if broker_refusal is None and denied is None and not has_run:
             # The ✖ line is the whole error, so the progress rows are cleared.
             progress.transient = True
+    if broker_refusal is not None:
+        _fail(broker_refusal)
     if denied is not None:
         _fail(denied)
     if not has_run:
