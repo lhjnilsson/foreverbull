@@ -313,8 +313,10 @@ func deleteIngestionObject(ctx context.Context, store storage.Storage, key strin
 
 // pricesLeftError is the user-facing failure when stored prices could not be
 // removed. Error is that sentence. Unwrap keeps the row error and the storage
-// error, so a canceled create is still errors.Is(context.Canceled) and the
-// task is stored as canceled. The storage text is logged, not printed.
+// error. A canceled create whose row was removed is still
+// errors.Is(context.Canceled), so the task is stored as canceled. A row that
+// stayed is not, or the subscriber would drop the delete-first sentence.
+// The storage text is logged, not printed.
 type pricesLeftError struct {
 	text   string
 	rowErr error
@@ -349,8 +351,16 @@ func cleanupStoredPrices(ctx context.Context, store storage.Storage, key, name s
 	if delErr == nil {
 		return rowErr
 	}
+	text, shapeErr := pricesLeftMessage(name, rowErr)
+	if shapeErr != nil {
+		return &pricesLeftError{
+			text:   text,
+			rowErr: rowErr,
+			err:    errors.Join(shapeErr, delErr),
+		}
+	}
 	return &pricesLeftError{
-		text:   pricesLeftMessage(name, rowErr),
+		text:   text,
 		rowErr: rowErr,
 		err:    delErr,
 	}
@@ -379,23 +389,32 @@ func rowStayed(err error) bool {
 // A row that stayed keeps its sentence, with the not-removed clause naming
 // the prices as well, before the steps. A nil row error has no surrounding
 // sentence, so rowErr.Error is not called.
-func pricesLeftMessage(name string, rowErr error) string {
+func pricesLeftMessage(name string, rowErr error) (string, error) {
 	if rowErr == nil {
-		return usercopy.BacktestPricesLeft() + " Run `fbull backtest create` again once it's fixed."
+		return usercopy.BacktestPricesLeft() + " Run `fbull backtest create` again once it's fixed.", nil
 	}
 	if rowStayed(rowErr) {
-		// A cutoff returns the context error itself when the row stays.
-		// Its text is the sentinel, so the sentence is built here and the
-		// context error stays unwrapped for errors.Is.
+		// The text of a context error is the sentinel. Use the cancel or
+		// timeout sentence so the prices clause has a not-removed sentence
+		// to join. The cut-off paths return that sentence themselves, with
+		// the context error off the chain.
+		message := rowErr.Error()
 		if errors.Is(rowErr, context.Canceled) || errors.Is(rowErr, context.DeadlineExceeded) {
-			return withPricesKept(endedIngestMessage(name, rowErr))
+			message = endedIngestMessage(name, rowErr)
 		}
-		return withPricesKept(rowErr.Error())
+		text, err := withPricesKept(message)
+		if err != nil {
+			// The row's own text stays in the log. The user gets the
+			// reportable sentence, and err stays on the unwrap chain.
+			log.Error().Str("backtest", name).Str("message", rowErr.Error()).Msg("row-kept message has no not-removed sentence")
+			return usercopy.BacktestCleanupInternal(name, pricesKeptClause()), err
+		}
+		return text, nil
 	}
 	if errors.Is(rowErr, context.Canceled) || errors.Is(rowErr, context.DeadlineExceeded) {
-		return endedIngestPricesLeft(name, rowErr)
+		return endedIngestPricesLeft(name, rowErr), nil
 	}
-	return withoutSavedClaim(rowErr.Error(), usercopy.BacktestPricesLeft())
+	return withoutSavedClaim(rowErr.Error(), usercopy.BacktestPricesLeft()), nil
 }
 
 // pricesKeptClause is the not-removed sentence when the row stayed and the
@@ -407,13 +426,18 @@ func pricesKeptClause() string {
 		", and some of its stored prices couldn't be removed either."
 }
 
+// errRowKeptShape is a row-kept message with no not-removed sentence, so the
+// prices clause has nowhere to go. The create fails with this error.
+var errRowKeptShape = errors.New("row-kept message has no not-removed sentence")
+
 // withPricesKept rewrites the not-removed sentence. A details marker stays
-// where the message already put it.
-func withPricesKept(message string) string {
+// where the message already put it. A message without that sentence is
+// errRowKeptShape.
+func withPricesKept(message string) (string, error) {
 	if !strings.Contains(message, usercopy.BacktestNotRemoved) {
-		panic("row-kept message has no not-removed sentence")
+		return "", errRowKeptShape
 	}
-	return strings.Replace(message, usercopy.BacktestNotRemoved, pricesKeptClause(), 1)
+	return strings.Replace(message, usercopy.BacktestNotRemoved, pricesKeptClause(), 1), nil
 }
 
 // withoutSavedClaim replaces only the "nothing was saved" claim.

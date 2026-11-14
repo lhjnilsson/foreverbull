@@ -66,9 +66,25 @@ func discardUnrecordedResolutions(ctx context.Context, backtests repository.Back
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after unrecorded later tickers")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+		if removed {
+			return ctxErr
+		}
+		// A cancel on this chain is stored with no message, and a timeout
+		// is stored as the deadline sentinel. The delete-first step would
+		// not be stored.
+		return markKept(false, plainSentence(endedLaterTickerMessage(name, ctxErr)))
 	}
 	return plainSentence(laterTickerNotRecordedMessage(name, removed))
+}
+
+// endedLaterTickerMessage is the step when a canceled or timed-out create
+// could not remove the backtest after a later ticker was not recorded.
+// The lead names which ending. The next step is to run create again, the
+// same step a cut-off uses. A failure that is not a cancel or a timeout
+// keeps the fbenv status step in laterTickerNotRecordedMessage.
+func endedLaterTickerMessage(name string, cause error) string {
+	saved, next := savedAndNext(name, "Run `fbull backtest create` again.", false)
+	return endedIngestLead(name, cause) + saved + " " + next
 }
 
 // laterTickerNotRecordedMessage is the step's whole message when the

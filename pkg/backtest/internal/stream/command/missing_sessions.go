@@ -1031,11 +1031,21 @@ func refuseMissingSessions(ctx context.Context, eng engine.Engine, db *pgxpool.P
 		provider = supplier.DefaultProvider
 	}
 	return "missing sessions", cleanupStoredPrices(ctx, store, key, b.Name, func() error {
-		err = deleteAfterFailure(ctx, backtests, b.Name, id)
-		removed := err == nil || errors.Is(err, pgx.ErrNoRows)
-		if !removed {
-			log.Warn().Err(err).Str("backtest", b.Name).Msg("error deleting backtest after missing sessions")
-		}
-		return markKept(removed, plainSentence(presentMissingSessions(b.Name, provider, days, gaps, removed, extraRanges, extraSymbols)))
+		return discardMissingSessions(ctx, backtests, b.Name, id, func(removed bool) string {
+			return presentMissingSessions(b.Name, provider, days, gaps, removed, extraRanges, extraSymbols)
+		})
 	})
+}
+
+// discardMissingSessions removes the backtest after missing sessions were
+// found. sentence is that copy, and it already says to delete the backtest
+// first when the row stayed. A cancel or a timeout is not wrapped: the
+// subscriber would store a cancel and drop the sentence.
+func discardMissingSessions(ctx context.Context, backtests repository.Backtest, name, id string, sentence func(removed bool) string) error {
+	err := deleteAfterFailure(ctx, backtests, name, id)
+	removed := err == nil || errors.Is(err, pgx.ErrNoRows)
+	if !removed {
+		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest after missing sessions")
+	}
+	return markKept(removed, plainSentence(sentence(removed)))
 }
