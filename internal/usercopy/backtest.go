@@ -31,3 +31,21 @@ func BacktestSavedAndNext(backtest, next string, removed bool) (string, string) 
 	}
 	return BacktestNotRemoved, BacktestDeleteFirst(backtest, next)
 }
+
+// BacktestCleanupInternalCause is the cause when a failed create's cleanup
+// message has no not-removed sentence to rewrite. The user is asked to
+// report it.
+const BacktestCleanupInternalCause = "foreverbull hit an internal error while cleaning up."
+
+// BacktestDeleteThenCreate is the one-sentence step when a partly saved
+// backtest has to be deleted before create is run again.
+func BacktestDeleteThenCreate(name string) string {
+	return fmt.Sprintf("Run `fbull backtest delete %s` first, then run `fbull backtest create` again.", name)
+}
+
+// BacktestCleanupInternal is the sentence for that cleanup failure.
+// pricesKept is the not-removed clause that also names the prices that stayed.
+func BacktestCleanupInternal(name, pricesKept string) string {
+	return fmt.Sprintf("Couldn't load data for backtest '%s': %s %s %s %s",
+		name, BacktestCleanupInternalCause, pricesKept, BacktestDeleteThenCreate(name), ReportIt)
+}

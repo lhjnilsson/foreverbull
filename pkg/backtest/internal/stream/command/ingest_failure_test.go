@@ -408,22 +408,30 @@ func TestWithoutSavedClaim(t *testing.T) {
 	// The row stayed, so the prices join the not-removed clause, before the
 	// delete-first step. The cause stays behind the details marker.
 	kept := markKept(false, plainSentence(ingestFailureMessage("test-backtest", readIngestFailure(errors.New("boom")), false)))
+	keptText, err := pricesLeftMessage("test-backtest", kept)
+	require.NoError(t, err)
 	require.Equal(t, "Couldn't load data for backtest 'test-backtest': the data service failed while ingesting prices. "+
 		"The backtest was partly saved and couldn't be removed, and some of its stored prices couldn't be removed either. "+
 		"Run `fbull backtest delete test-backtest` first. "+
 		"Run `fbull backtest create` again once it's fixed."+
-		"\nDetails: boom", pricesLeftMessage("test-backtest", kept))
+		"\nDetails: boom", keptText)
 
+	timedOut, err := pricesLeftMessage("test-backtest", context.DeadlineExceeded)
+	require.NoError(t, err)
 	require.Equal(t, "Couldn't load data for backtest 'test-backtest': the create timed out. "+
 		"The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
-		"Run `fbull backtest create` again.", pricesLeftMessage("test-backtest", context.DeadlineExceeded))
+		"Run `fbull backtest create` again.", timedOut)
 
+	canceled, err := pricesLeftMessage("test-backtest", context.Canceled)
+	require.NoError(t, err)
 	require.Equal(t, "Couldn't load data for backtest 'test-backtest': the create was canceled. "+
 		"The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
-		"Run `fbull backtest create` again.", pricesLeftMessage("test-backtest", context.Canceled))
+		"Run `fbull backtest create` again.", canceled)
 
+	none, err := pricesLeftMessage("test-backtest", nil)
+	require.NoError(t, err)
 	require.Equal(t, "The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
-		"Run `fbull backtest create` again once it's fixed.", pricesLeftMessage("test-backtest", nil))
+		"Run `fbull backtest create` again once it's fixed.", none)
 }
 
 // A refusal for this backtest without "The backtest wasn't saved." can't be
@@ -435,4 +443,14 @@ func TestIngestFailureMessageKeepsTheLeadWhenARefusalCantSayDeleteFirst(t *testi
 		"Run `fbull backtest create` again once it's fixed."+
 		"\nDetails: Couldn't load data for backtest 'demo': boom.",
 		ingestFailureMessage("demo", readIngestFailure(refusal), false))
+}
+
+// A row-kept message without the not-removed sentence used to panic.
+// withPricesKept returns the sentinel. The user-facing error is tested
+// on the cleanup path.
+func TestWithPricesKeptDoesNotPanicWithoutTheNotRemovedSentence(t *testing.T) {
+	t.Parallel()
+	text, err := withPricesKept("context canceled")
+	require.Empty(t, text)
+	require.ErrorIs(t, err, errRowKeptShape)
 }

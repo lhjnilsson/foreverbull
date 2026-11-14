@@ -300,7 +300,8 @@ func (test *BacktestCommandTest) TestUnusableCutoffDeleteFailureLeavesPricesText
 }
 
 // A deadline during an unrecorded cut-off whose row stays does not claim the
-// backtest wasn't saved. The deadline stays matchable: this path returns it.
+// backtest wasn't saved. The deadline is not on the unwrap chain, so the
+// task is stored as an error and the delete-first step is kept.
 func (test *BacktestCommandTest) TestUnrecordedCutoffDeadlineRowStays() {
 	test.createQuarter("AAA")
 	test.refuseBacktestDelete()
@@ -325,7 +326,7 @@ func (test *BacktestCommandTest) TestUnrecordedCutoffDeadlineRowStays() {
 	test.Require().EqualError(err, "Couldn't load data for backtest 'oef-2024q1': the create timed out. "+
 		"The backtest was partly saved and couldn't be removed, and some of its stored prices couldn't be removed either. "+
 		"Run `fbull backtest delete oef-2024q1` first. Run `fbull backtest create` again.")
-	test.Require().ErrorIs(err, context.DeadlineExceeded)
+	test.Require().NotErrorIs(err, context.DeadlineExceeded)
 	test.Require().NotErrorIs(err, context.Canceled)
 	test.Require().ErrorIs(err, del)
 	test.NotContains(err.Error(), "wasn't saved")

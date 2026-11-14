@@ -65,7 +65,7 @@ func discardUnrecordedCutoff(ctx context.Context, backtests repository.Backtest,
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest with no session cut-off")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return contextKept(removed, ctxErr)
+		return contextKept(name, removed, ctxErr)
 	}
 	saved, next := savedAndNext(name, "Run `fbull backtest create` again.", removed)
 	return markKept(removed, plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': foreverbull didn't record which trading "+
@@ -86,7 +86,7 @@ func discardUnusableCutoffRow(ctx context.Context, backtests repository.Backtest
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest with an unusable session cut-off")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return contextKept(removed, ctxErr)
+		return contextKept(name, removed, ctxErr)
 	}
 	saved, next := savedAndNext(name, "Run `fbull backtest create` again.", removed)
 	return markKept(removed, plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s. %s %s", name, cause.Error(), saved, next)))
@@ -129,14 +129,16 @@ func backtestThroughCutoff(stored *backtest.Backtest, closed time.Time) (*backte
 	return out, nil
 }
 
-// contextKept returns ctxErr when the row was removed. When the row stayed,
-// the same error is marked kept, so a failed price delete uses the
-// not-removed clause instead of claiming the backtest wasn't saved.
-func contextKept(removed bool, ctxErr error) error {
+// contextKept returns ctxErr when the row was removed, so a cleaned-up
+// cancel still reads as canceled. When the row stayed, the sentence names
+// the cancel or the timeout and says to delete the backtest first. The
+// context error is not wrapped: the subscriber stores a cancel with no
+// message when errors.Is(context.Canceled), which would hide that step.
+func contextKept(name string, removed bool, ctxErr error) error {
 	if removed {
 		return ctxErr
 	}
-	return markKept(false, ctxErr)
+	return markKept(false, plainSentence(endedIngestMessage(name, ctxErr)))
 }
 
 func utcDate(t time.Time) time.Time {
