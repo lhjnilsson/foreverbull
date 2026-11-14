@@ -144,6 +144,10 @@ spec:
               value: {{ .Values.broker.trading.enabled | quote }}
             - name: TRADING_PROFILES_FILE
               value: "/etc/foreverbull/profiles.yaml"
+            {{- with .Values.broker.stooqExchange }}
+            - name: STOOQ_EXCHANGE
+              value: {{ . | quote }}
+            {{- end }}
             - name: GRAFANA_URL
               value: {{ .Values.grafana.url | default (printf "http://localhost:%v" .Values.grafana.port) | quote }}
             - name: AUTH_ADMIN_PASSWORD_FILE

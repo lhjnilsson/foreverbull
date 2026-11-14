@@ -10,6 +10,10 @@ the chart refuses it first with the value name. */}}
 {{- if not (has (toString .Values.broker.logLevel) (list "debug" "info" "warning" "error")) }}
 {{- fail (printf "broker.logLevel must be debug, info, warning, or error, got %q" (toString .Values.broker.logLevel)) }}
 {{- end }}
+{{- $exchange := .Values.broker.stooqExchange | default "" | toString }}
+{{- if and $exchange (ne ($exchange | upper) "US") }}
+{{- fail (printf "broker.stooqExchange must be US, got %q" $exchange) }}
+{{- end }}
 {{- /* The password is expanded raw into POSTGRES_URL/DATABASE_URL
 ($(POSTGRES_PASSWORD) in foreverbull.postgresURL); Kubernetes does not
 URL-encode it, so a set value with reserved characters breaks the DSN.

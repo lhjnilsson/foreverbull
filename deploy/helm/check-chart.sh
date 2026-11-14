@@ -147,6 +147,11 @@ if grep -q 'name: AUTH_ENABLED' "${broker_manifest}"; then
   exit 1
 fi
 
+if grep -q 'name: STOOQ_EXCHANGE' "${broker_manifest}"; then
+  echo "default broker manifest must not set STOOQ_EXCHANGE" >&2
+  exit 1
+fi
+
 for forbidden in \
   ALPACA_MARKETS_API_KEY \
   SAXO_ACCESS_TOKEN \
@@ -177,7 +182,11 @@ for env_name in TRADING_ENABLED AUTH_ENABLED AUTH_COOKIE_SECURE AUTH_TRUST_PROXY
 done
 
 for case in 'broker.trading.enabled=yes|broker.trading.enabled must be true or false, got "yes"' \
-  'broker.logLevel=verbose|broker.logLevel must be debug, info, warning, or error, got "verbose"'; do
+  'broker.logLevel=verbose|broker.logLevel must be debug, info, warning, or error, got "verbose"' \
+  'broker.stooqExchange=nasdaq|broker.stooqExchange must be US, got "nasdaq"' \
+  'broker.stooqExchange=L|broker.stooqExchange must be US, got "L"' \
+  'broker.stooqExchange=DE|broker.stooqExchange must be US, got "DE"' \
+  'broker.stooqExchange=UK|broker.stooqExchange must be US, got "UK"'; do
   setting="${case%%|*}"
   message="${case#*|}"
   if output="$(helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set-string "${setting}" 2>&1)"; then
@@ -189,6 +198,18 @@ for case in 'broker.trading.enabled=yes|broker.trading.enabled must be true or f
     exit 1
   fi
 done
+
+us_render="$(helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set-string broker.stooqExchange=US)"
+if ! grep -A1 -E '^ +- name: STOOQ_EXCHANGE$' <<< "${us_render}" | grep -qE '^ +value: "US"$'; then
+  echo "broker.stooqExchange=US must render STOOQ_EXCHANGE=US" >&2
+  exit 1
+fi
+
+us_lower="$(helm template "${RELEASE}" "${CHART}" --namespace "${NAMESPACE}" --set-string broker.stooqExchange=us)"
+if ! grep -A1 -E '^ +- name: STOOQ_EXCHANGE$' <<< "${us_lower}" | grep -qE '^ +value: "us"$'; then
+  echo "broker.stooqExchange=us must render STOOQ_EXCHANGE=us" >&2
+  exit 1
+fi
 
 # Credentials come from Secret foreverbull-credentials, never a plain env value.
 for env_name in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD MINIO_SECRET; do
