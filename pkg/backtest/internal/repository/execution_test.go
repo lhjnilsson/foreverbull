@@ -377,8 +377,8 @@ func (test *ExecutionTest) TestPeriodCascadeAndUnique() {
 	created, err := executions.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)
 	period := &backtest.Period{Date: &pb.Date{Year: 2024, Month: 1, Day: 2}}
-	test.Require().NoError(executions.StorePeriods(ctx, created.Id, []*backtest.Period{period}))
-	err = executions.StorePeriods(ctx, created.Id, []*backtest.Period{period})
+	test.Require().NoError(executions.StoreResult(ctx, created.Id, backtest.ReturnBasis_RETURN_BASIS_TOTAL, 0, []*backtest.Period{period}))
+	err = executions.StoreResult(ctx, created.Id, backtest.ReturnBasis_RETURN_BASIS_TOTAL, 0, []*backtest.Period{period})
 	test.Require().ErrorContains(err, "unique_backtest_execution_period")
 
 	_, err = test.conn.Exec(ctx, `
