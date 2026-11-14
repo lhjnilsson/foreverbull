@@ -168,3 +168,56 @@ func (test *DeploymentTest) TestUpdateStatusAndLastSessionDate() {
 	test.Equal(int32(1), got.LastSessionDate.Month)
 	test.Equal(int32(2), got.LastSessionDate.Day)
 }
+
+// A stopped deployment has no error stored. A later ERROR write returns nil
+// and leaves it STOPPED with no error. ERROR on a separate RUNNING deployment
+// stores ERROR and the message. A status other than ERROR is still written
+// with no status check.
+func (test *DeploymentTest) TestUpdateStatusErrorOnlyWhileRunning() {
+	ctx := context.Background()
+	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
+	test.Require().NoError(err)
+
+	deployments := repository.Deployment{Conn: test.conn}
+	stoppedDeployment, err := deployments.Create(
+		ctx, version.Id, "default", "XNYS",
+		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true,
+	)
+	test.Require().NoError(err)
+
+	err = deployments.Stop(ctx, stoppedDeployment.Id)
+	test.Require().NoError(err)
+
+	err = deployments.UpdateStatus(ctx, stoppedDeployment.Id, pb.Deployment_ERROR, errors.New("late loop"))
+	test.Require().NoError(err)
+
+	stopped, err := deployments.Get(ctx, stoppedDeployment.Id)
+	test.Require().NoError(err)
+	test.Equal(pb.Deployment_STOPPED, stopped.Status)
+	test.Empty(stopped.GetError())
+
+	err = deployments.UpdateStatus(ctx, stoppedDeployment.Id, pb.Deployment_STOPPED, errors.New("stopped note"))
+	test.Require().NoError(err)
+
+	rewritten, err := deployments.Get(ctx, stoppedDeployment.Id)
+	test.Require().NoError(err)
+	test.Equal(pb.Deployment_STOPPED, rewritten.Status)
+	test.Equal("stopped note", rewritten.GetError())
+
+	runningDeployment, err := deployments.Create(
+		ctx, version.Id, "default", "XNYS",
+		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true,
+	)
+	test.Require().NoError(err)
+
+	err = deployments.UpdateStatus(ctx, runningDeployment.Id, pb.Deployment_ERROR, errors.New("clock failed"))
+	test.Require().NoError(err)
+
+	running, err := deployments.Get(ctx, runningDeployment.Id)
+	test.Require().NoError(err)
+	test.Equal(pb.Deployment_ERROR, running.Status)
+	test.Equal("clock failed", running.GetError())
+
+	err = deployments.UpdateStatus(ctx, "missing", pb.Deployment_ERROR, errors.New("gone"))
+	test.Require().NoError(err)
+}

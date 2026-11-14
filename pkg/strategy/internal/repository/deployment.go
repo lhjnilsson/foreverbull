@@ -146,6 +146,9 @@ func (db *Deployment) ListRunning(ctx context.Context) ([]*pb.Deployment, error)
 	return parseDeploymentRows(rows)
 }
 
+// UpdateStatus sets status and error. ERROR is stored only while the
+// deployment is RUNNING, so a late runner cannot replace STOPPED. Matching
+// no row is success. Any other status is written with no status check.
 func (db *Deployment) UpdateStatus(ctx context.Context, id string, status pb.Deployment_Status, statusErr error) error {
 	var errText *string
 	if statusErr != nil {
@@ -153,10 +156,14 @@ func (db *Deployment) UpdateStatus(ctx context.Context, id string, status pb.Dep
 		errText = &msg
 	}
 
-	_, err := db.Conn.Exec(ctx,
-		`UPDATE strategy_deployment SET status=$2, error=$3 WHERE id=$1`,
-		id, status, errText,
-	)
+	query := `UPDATE strategy_deployment SET status=$2, error=$3 WHERE id=$1`
+	args := []any{id, status, errText}
+	if status == pb.Deployment_ERROR {
+		query = `UPDATE strategy_deployment SET status=$2, error=$3 WHERE id=$1 AND status=$4`
+		args = append(args, pb.Deployment_RUNNING)
+	}
+
+	_, err := db.Conn.Exec(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
