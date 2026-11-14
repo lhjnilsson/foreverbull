@@ -340,10 +340,6 @@ func (db *Execution) GetNotices(ctx context.Context, executionID string) ([]stri
 	return notices, nil
 }
 
-func (db *Execution) StorePeriods(ctx context.Context, execution string, periods []*backtest.Period) error {
-	return storePeriods(ctx, db.Conn, execution, periods)
-}
-
 // returnBasisNames is how a return basis is stored. A run stored before
 // dividends were booked as cash has none.
 var returnBasisNames = map[backtest.ReturnBasis]string{
