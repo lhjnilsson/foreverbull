@@ -147,6 +147,11 @@ func (m *MemoryStore) UpdateStatus(_ context.Context, id string, status pb.Deplo
 	if !ok {
 		return fmt.Errorf("deployment %q not found", id)
 	}
+	// ERROR applies only while the deployment is RUNNING. A row that is
+	// already stopped keeps its status and error; that is not a failed write.
+	if status == pb.Deployment_ERROR && d.Status != pb.Deployment_RUNNING {
+		return nil
+	}
 	d.Status = status
 	if err != nil {
 		msg := err.Error()
