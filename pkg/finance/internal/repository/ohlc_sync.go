@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
@@ -560,8 +561,12 @@ func newDaysOnly(bars []*financepb.OHLC, from, last time.Time, stored map[string
 
 // overlapMatches reports whether the fetched close for the overlap day is a
 // positive finite price within rescaleTolerance of the stored close. A missing
-// overlap day or a bad close on either side is not a match, so the caller
-// replaces the stored history instead of appending next to it.
+// fetched day, a bad fetched close, or a stored day Close reads as missing is
+// not a match, so the caller replaces the stored history instead of appending
+// next to it. Close returns ErrNoRows for a day with no row and for a day
+// whose only rows are non-positive or non-finite, and Range still counts
+// those rows, so that result is not a match. Any other read error is
+// returned. A successful Close is already a finite positive close.
 func (db *OHLC) overlapMatches(ctx context.Context, provider, symbol string, day time.Time,
 	fetched []*financepb.OHLC,
 ) (bool, error) {
@@ -574,11 +579,11 @@ func (db *OHLC) overlapMatches(ctx context.Context, provider, symbol string, day
 			return false, nil
 		}
 		storedClose, err := db.Close(ctx, provider, symbol, day)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
 		if err != nil {
 			return false, err
-		}
-		if !positivePrice(storedClose) {
-			return false, nil
 		}
 		return math.Abs(o.GetClose()-storedClose)/storedClose <= rescaleTolerance, nil
 	}
