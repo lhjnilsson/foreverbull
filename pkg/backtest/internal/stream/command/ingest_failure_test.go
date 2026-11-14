@@ -1,12 +1,14 @@
 package command
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -332,6 +334,96 @@ func TestIngestFailureMessageKeepsTheLeadForAnUnexpectedRefusal(t *testing.T) {
 	detailed := status.Error(codes.Aborted, "Couldn't load data for backtest 'demo': boom\nDetails: KeyError: 'AAPL'")
 	require.Equal(t, otherFailureCopy+"\nDetails: KeyError: 'AAPL'",
 		ingestFailureMessage("demo", readIngestFailure(detailed), true))
+}
+
+// Each saved claim becomes BacktestPricesLeft and keeps a single run step.
+// A message with none of those claims only gains that sentence.
+func TestWithoutSavedClaim(t *testing.T) {
+	leftover := usercopy.BacktestPricesLeft()
+	once := leftover + " Run `fbull backtest create` again once it's fixed."
+	after := leftover + " Run `fbull backtest create` again after that."
+	driver := ingestFailureMessage("test-backtest", readIngestFailure(fmt.Errorf("error ingesting: %w",
+		status.Error(codes.FailedPrecondition, "the data service is missing its database driver (psycopg)"+
+			"\nDetails: ModuleNotFoundError: No module named 'psycopg' (postgresql://foreverbull:s3cr3t@postgres/x)"))), true)
+	unreachable := ingestFailureMessage("demo", readIngestFailure(status.Error(codes.Unavailable, "connection refused")), true)
+	generic := ingestFailureMessage("demo", readIngestFailure(status.Error(codes.Internal, "the data service failed\nDetails: KeyError: 'AAPL'")), true)
+	days := []time.Time{time.Date(2024, 2, 14, 0, 0, 0, 0, time.UTC)}
+	notSaved := missingSessionsMessage("oef-2024q1", "yahoo", days, []symbolGaps{{symbol: "XYZ", sessions: []int{0}}}, true)
+	tests := []struct {
+		name       string
+		in, want   string
+		runSteps   int
+		hideSecret bool
+	}{
+		{
+			name: "psycopg missing driver",
+			in:   driver,
+			want: "Couldn't load data for backtest 'test-backtest': the data service is missing its database driver " +
+				"(psycopg). This is a bug in the Foreverbull install, not in your strategy or settings. " + once +
+				"\nDetails: ModuleNotFoundError: No module named 'psycopg' (postgresql://foreverbull:***@postgres/x)",
+			runSteps:   1,
+			hideSecret: true,
+		},
+		{
+			name: "fbenv status",
+			in:   unreachable,
+			want: "Couldn't load data for backtest 'demo': Foreverbull's data service isn't reachable. " +
+				"Run `fbenv status` to check it's running. " + after +
+				"\nDetails: the broker couldn't reach the Zipline pod: connection refused",
+			runSteps: 1,
+		},
+		{
+			name: "generic ingest failure",
+			in:   generic,
+			want: "Couldn't load data for backtest 'demo': the data service failed while ingesting prices. " + once +
+				"\nDetails: KeyError: 'AAPL'",
+			runSteps: 1,
+		},
+		{
+			name: "backtest wasn't saved",
+			in:   notSaved,
+			want: "Couldn't load data for backtest 'oef-2024q1': yahoo is missing prices for XYZ on 2024-02-14, " +
+				"a trading day. " + leftover + " Try another provider with --provider, or change the backtest " +
+				"dates, then run `fbull backtest create` again.",
+			runSteps: 1,
+		},
+		{
+			name: "append fallback",
+			in:   "context canceled",
+			want: "context canceled " + leftover,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := withoutSavedClaim(tc.in, leftover)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, 1, strings.Count(got, leftover))
+			require.Equal(t, tc.runSteps, strings.Count(got, "fbull backtest create"))
+			if tc.hideSecret {
+				require.NotContains(t, got, "s3cr3t")
+			}
+		})
+	}
+
+	// The row stayed, so the prices join the not-removed clause, before the
+	// delete-first step. The cause stays behind the details marker.
+	kept := markKept(false, plainSentence(ingestFailureMessage("test-backtest", readIngestFailure(errors.New("boom")), false)))
+	require.Equal(t, "Couldn't load data for backtest 'test-backtest': the data service failed while ingesting prices. "+
+		"The backtest was partly saved and couldn't be removed, and some of its stored prices couldn't be removed either. "+
+		"Run `fbull backtest delete test-backtest` first. "+
+		"Run `fbull backtest create` again once it's fixed."+
+		"\nDetails: boom", pricesLeftMessage("test-backtest", kept))
+
+	require.Equal(t, "Couldn't load data for backtest 'test-backtest': the create timed out. "+
+		"The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
+		"Run `fbull backtest create` again.", pricesLeftMessage("test-backtest", context.DeadlineExceeded))
+
+	require.Equal(t, "Couldn't load data for backtest 'test-backtest': the create was canceled. "+
+		"The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
+		"Run `fbull backtest create` again.", pricesLeftMessage("test-backtest", context.Canceled))
+
+	require.Equal(t, "The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create. "+
+		"Run `fbull backtest create` again once it's fixed.", pricesLeftMessage("test-backtest", nil))
 }
 
 // A refusal for this backtest without "The backtest wasn't saved." can't be

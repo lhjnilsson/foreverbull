@@ -1119,42 +1119,45 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	}
 
 	metadata := map[string]string{}
-	// The two setup failures below are wrapped with %v, not %w, so only the
-	// data service's own gRPC status can select the broken-install copy.
-	objectKey := b.Name
-	if environment.GetAuthEnabled() {
-		objectKey = backtestID
-	}
+	// Creating the object is wrapped with %v, not %w, so only the data
+	// service's own gRPC status can select the broken-install copy.
+	objectKey := ingestionKey(b.Name, backtestID)
 	object, err := store.CreateObject(ctx, storage.IngestionsBucket, objectKey, storage.WithMetadata(metadata))
 	if err != nil {
 		return discardFailedIngest(ctx, backtests, b.Name, backtestID, fmt.Errorf("error creating ingestion: %v", err))
 	}
 
+	return ingestStored(ctx, msg, db, store, backtests, b, backtestID, object)
+}
+
+func ingestStored(ctx context.Context, msg stream.Message, db *pgxpool.Pool, store storage.Storage, backtests repository.Backtest, b *backtest.Backtest, backtestID string, object *storage.Object) error {
+	// Opening the engine is wrapped with %v, not %w, so only the data
+	// service's own gRPC status can select the broken-install copy.
 	ze, err := msg.Call(ctx, dependency.GetEngineKey)
 	if err != nil {
-		return discardFailedIngest(ctx, backtests, b.Name, backtestID, fmt.Errorf("error getting zipline engine: %v", err))
+		return finishFailedIngest(ctx, store, object.Name, backtests, b.Name, backtestID, fmt.Errorf("error getting zipline engine: %v", err))
 	}
 
 	engine, isEngine := ze.(engine.Engine)
 	if !isEngine {
-		return errors.New("error casting zipline engine")
+		return finishFailedIngest(ctx, store, object.Name, backtests, b.Name, backtestID, errors.New("error casting zipline engine"))
 	}
 
-	closed, err := loadSessionCutoff(ctx, backtests, b.Name, backtestID)
+	closed, err := loadSessionCutoff(ctx, store, object.Name, backtests, b.Name, backtestID)
 	if err != nil {
 		return err
 	}
 	capped, err := backtestThroughCutoff(b, closed)
 	if err != nil {
-		return discardUnusableCutoff(ctx, backtests, b.Name, backtestID, err)
+		return discardUnusableCutoff(ctx, store, object.Name, backtests, b.Name, backtestID, err)
 	}
 
 	notices, err := engine.Ingest(ctx, capped, object)
 	if err != nil {
-		if refused := ingestMissingSessions(ctx, engine, db, backtests, b, backtestID, err); refused != nil {
+		if refused := ingestMissingSessions(ctx, engine, db, store, object.Name, backtests, b, backtestID, err); refused != nil {
 			return refused
 		}
-		return discardFailedIngest(ctx, backtests, b.Name, backtestID, err)
+		return finishFailedIngest(ctx, store, object.Name, backtests, b.Name, backtestID, err)
 	}
 	if len(notices) > 0 {
 		// The backtest is kept. The notice rides on the completed INGESTING

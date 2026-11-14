@@ -36,6 +36,24 @@ func BacktestCreateQueueFull(backtest string, removed bool) string {
 	return fmt.Sprintf("Couldn't load data for backtest '%s': %s. %s %s", backtest, TaskStateNotRecorded, saved, next)
 }
 
+// BacktestIngestionMissing is the sentence when a session starts and that
+// backtest's prices are not loaded. Another backtest's ingestion is not used.
+// Experiments and the Web execution start reach the same failure, so the
+// next step ends at create.
+func BacktestIngestionMissing(backtest string) string {
+	return fmt.Sprintf("Couldn't start the session for backtest '%s': its prices aren't loaded. "+
+		"Delete it with `fbull backtest delete %s`, then create it again with `fbull backtest create`.",
+		backtest, backtest)
+}
+
+// BacktestPricesLeft replaces "The backtest wasn't saved." when stored prices
+// could not be removed. It has no next step of its own; the message keeps
+// the step it already had. Those prices do not refuse a new create. With
+// auth off a session can still read them until that create replaces the name.
+func BacktestPricesLeft() string {
+	return "The backtest wasn't saved, but some of its prices couldn't be removed. They don't stop a new create."
+}
+
 // BacktestSessionQueueFull is the sentence for a backtest session that
 // couldn't start on a full task queue.
 func BacktestSessionQueueFull(backtest string) string {

@@ -12,6 +12,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/socket"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -51,35 +52,29 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 
 	engine := depEngine.(engine.Engine)
 
-	var server *grpc.Server
-	var activity <-chan bool
+	var secret string
 	if environment.GetAuthEnabled() {
-		secret, ok := auth.LookupBacktestSecret(command.SessionID)
+		looked, ok := auth.LookupBacktestSecret(command.SessionID)
 		if !ok {
 			return fmt.Errorf("%s is missing", auth.SessionMetadata())
 		}
-		backtestID, idErr := sessions.BacktestID(ctx, command.SessionID)
-		if idErr != nil {
-			return fmt.Errorf("error getting session backtest: %w", idErr)
-		}
-		ingestion, getErr := s.GetObject(ctx, storage.IngestionsBucket, backtestID)
-		if getErr != nil {
-			return fmt.Errorf("error getting ingestion: %w", getErr)
-		}
-		if err = engine.DownloadIngestion(ctx, ingestion); err != nil {
-			log.Err(err).Msg("error downloading ingestion")
-			return fmt.Errorf("error downloading ingestion: %w", err)
-		}
+		secret = looked
+	}
+
+	ingestion, err := sessionIngestion(ctx, sessions, s, session.GetId(), session.GetBacktest())
+	if err != nil {
+		return err
+	}
+	if err = engine.DownloadIngestion(ctx, ingestion); err != nil {
+		log.Err(err).Msg("error downloading ingestion")
+		return fmt.Errorf("error downloading ingestion: %w", err)
+	}
+
+	var server *grpc.Server
+	var activity <-chan bool
+	if environment.GetAuthEnabled() {
 		server, activity, err = api.NewSecuredGRPCSessionServer(session, db, engine, secret)
 	} else {
-		ingestion, pickErr := newestIngestion(ctx, s)
-		if pickErr != nil {
-			return pickErr
-		}
-		if err = engine.DownloadIngestion(ctx, ingestion); err != nil {
-			log.Err(err).Msg("error downloading ingestion")
-			return fmt.Errorf("error downloading ingestion: %w", err)
-		}
 		server, activity, err = api.NewGRPCSessionServer(session, db, engine)
 	}
 	if err != nil {
@@ -138,24 +133,40 @@ func publishSessionPort(ctx context.Context, sessions sessionPortStore, server *
 	return nil
 }
 
-func newestIngestion(ctx context.Context, store storage.Storage) (*storage.Object, error) {
-	ingestions, err := store.ListObjects(ctx, storage.IngestionsBucket)
-	if err != nil {
-		log.Err(err).Msg("error listing ingestions")
-		return nil, fmt.Errorf("error listing ingestions: %w", err)
+// ingestionKey is the object key for a backtest's ingestion. Auth off stores
+// it under the backtest name. Auth on stores it under the backtest id.
+func ingestionKey(name, id string) string {
+	if environment.GetAuthEnabled() {
+		return id
 	}
-	if len(*ingestions) == 0 {
-		return nil, errors.New("no ingestions found")
-	}
-	var ingestion *storage.Object
-	for _, stored := range *ingestions {
-		stored.Refresh() //nolint: errcheck
-		if ingestion == nil || stored.LastModified.After(ingestion.LastModified) {
-			ingestion = &stored
+	return name
+}
+
+func sessionIngestion(ctx context.Context, sessions repository.Session, store storage.Storage, sessionID, backtestName string) (*storage.Object, error) {
+	id := ""
+	if environment.GetAuthEnabled() {
+		var err error
+		id, err = sessions.BacktestID(ctx, sessionID)
+		if err != nil {
+			return nil, fmt.Errorf("error getting session backtest: %w", err)
 		}
 	}
-	if ingestion == nil {
-		return nil, errors.New("no completed ingestions found, create one before running a session")
+	return ingestionByKey(ctx, store, backtestName, ingestionKey(backtestName, id))
+}
+
+// ingestionByKey loads one backtest's ingestion. A missing object is that
+// backtest's failure. Another backtest's object is not a substitute.
+func ingestionByKey(ctx context.Context, store storage.Storage, backtestName, key string) (*storage.Object, error) {
+	ingestion, err := store.GetObject(ctx, storage.IngestionsBucket, key)
+	if err != nil {
+		if storage.MissingObject(err) {
+			log.Err(err).Str("backtest", backtestName).Msg("no ingestion for backtest")
+			return nil, errors.New(usercopy.BacktestIngestionMissing(backtestName))
+		}
+		return nil, fmt.Errorf("error getting ingestion for backtest %s: %w", backtestName, err)
+	}
+	if err := ingestion.Refresh(); err != nil {
+		return nil, fmt.Errorf("error refreshing ingestion for backtest %s: %w", backtestName, err)
 	}
 	return ingestion, nil
 }

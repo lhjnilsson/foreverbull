@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -47,6 +48,7 @@ type Storage interface {
 	GetObject(ctx context.Context, bucket Bucket, name string) (*Object, error)
 	CreateObject(ctx context.Context, bucket Bucket, name string,
 		opts ...func(*minio.PutObjectOptions) error) (*Object, error)
+	DeleteObject(ctx context.Context, bucket Bucket, name string) error
 }
 
 type Object struct {
@@ -262,6 +264,28 @@ func (s *MinioStorage) CopyIngestion(ctx context.Context, fromKey, toKey string)
 	})
 	if err != nil {
 		return fmt.Errorf("%s: copy %s to %s: %w", IngestionsBucket, fromKey, toKey, err)
+	}
+	return nil
+}
+
+// MissingObject reports whether err is a missing object. A missing key is
+// not an outage of the store. The check follows a wrapped error. MinIO's
+// ToErrorResponse does not.
+func MissingObject(err error) bool {
+	if err == nil {
+		return false
+	}
+	var resp minio.ErrorResponse
+	if !errors.As(err, &resp) {
+		return false
+	}
+	return resp.Code == "NoSuchKey"
+}
+
+func (s *MinioStorage) DeleteObject(ctx context.Context, bucket Bucket, name string) error {
+	err := s.client.RemoveObject(ctx, string(bucket), name, minio.RemoveObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("error deleting object: %w", err)
 	}
 	return nil
 }

@@ -372,5 +372,8 @@ func sessionRunError(backtest string, err error) error {
 	case errors.Is(err, stream.ErrStateNotRecorded):
 		return status.Error(codes.ResourceExhausted, usercopy.BacktestSessionQueueFull(backtest))
 	}
+	if err.Error() == usercopy.BacktestIngestionMissing(backtest) {
+		return status.Error(codes.FailedPrecondition, usercopy.BacktestIngestionMissing(backtest))
+	}
 	return fmt.Errorf("error publishing session run command: %w", err)
 }
