@@ -33,6 +33,7 @@ type grpcSessionServer struct {
 
 	bars     worker.BarSource
 	provider string
+	calendar worker.SessionCalendar
 
 	// sessionID names the trading session in the user's sentences.
 	sessionID string
@@ -53,6 +54,14 @@ func WithBars(source worker.BarSource, provider string) sessionOption {
 func WithSessionID(id string) sessionOption {
 	return func(gs *grpcSessionServer) {
 		gs.sessionID = id
+	}
+}
+
+// WithSessionCalendar is the XNYS calendar the trading step reads when it
+// checks that each symbol's newest bar is not older than the as-of session.
+func WithSessionCalendar(calendar worker.SessionCalendar) sessionOption {
+	return func(gs *grpcSessionServer) {
+		gs.calendar = calendar
 	}
 }
 
@@ -96,7 +105,10 @@ func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.Confi
 		if err != nil {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
-		poolOpts = append(poolOpts, worker.WithBars(gs.bars, provider))
+		if gs.calendar == nil {
+			return nil, status.Error(codes.FailedPrecondition, worker.CalendarNotConfigured().Error())
+		}
+		poolOpts = append(poolOpts, worker.WithBars(gs.bars, provider), worker.WithSessionBarRequired(gs.calendar))
 	}
 	var err error
 	gs.wp, err = worker.NewPool(ctx, req.GetAlgorithm(), poolOpts...)

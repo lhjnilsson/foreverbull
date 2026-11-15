@@ -52,14 +52,17 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 		return err
 	}
 	bars := financebars.New(db)
+	calendar := api.NewXNYSCalendar(db)
 	if environment.GetAuthEnabled() {
 		secret, ok := auth.LookupTradingSecret(cmd.Id)
 		if !ok {
 			return fmt.Errorf("%s is missing", auth.SessionMetadata())
 		}
-		server, activity, err = api.NewSecuredGRPCSessionServer(trading, secret, api.WithBars(bars, provider), api.WithSessionID(cmd.Id))
+		server, activity, err = api.NewSecuredGRPCSessionServer(trading, secret,
+			api.WithBars(bars, provider), api.WithSessionCalendar(calendar), api.WithSessionID(cmd.Id))
 	} else {
-		server, activity, err = api.NewGRPCSessionServer(trading, api.WithBars(bars, provider), api.WithSessionID(cmd.Id))
+		server, activity, err = api.NewGRPCSessionServer(trading,
+			api.WithBars(bars, provider), api.WithSessionCalendar(calendar), api.WithSessionID(cmd.Id))
 	}
 	if err != nil {
 		return fmt.Errorf("error creating grpc session server: %w", err)
