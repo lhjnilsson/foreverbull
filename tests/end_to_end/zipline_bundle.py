@@ -6,13 +6,14 @@ pytest module.
 
     python - stale <backtest>   rewrite the newest ingest the way the
                                 pre-alignment ingester left it and store
-                                it as the backtest's ingestion
+                                it as that backtest's ingestion object
     python - state <backtest>   print the ingest count, the newest
                                 ingest's version, and whether its asset
                                 dates are misaligned, as JSON
 """
 
 import json
+import os
 import shutil
 import sqlite3
 import sys
@@ -20,6 +21,8 @@ import tarfile
 
 from contextlib import closing
 from pathlib import Path
+
+from sqlalchemy import text
 
 
 # The image copies foreverbull_zipline to /app and runs it from there; the
@@ -30,13 +33,14 @@ from foreverbull_zipline.data_bundles.bundle_alignment import BUNDLE_VERSION_MAR
 from foreverbull_zipline.data_bundles.bundle_alignment import bundle_dates_misaligned
 from foreverbull_zipline.data_bundles.bundle_alignment import bundle_version
 from foreverbull_zipline.data_bundles.bundle_alignment import latest_ingest_dir
+from foreverbull_zipline.database import get_engine
 from zipline.utils.paths import data_path
 
 from foreverbull.broker.storage import Storage
 
 
-# internal/storage: storage.IngestionsBucket. A run downloads the newest
-# object in this bucket, named after the backtest.
+# internal/storage: storage.IngestionsBucket. A run downloads the object
+# stored under the backtest id.
 INGESTIONS_BUCKET = "ingestions"
 # The old ingester kept Yahoo's 09:30 ET (14:30 UTC) bar stamps as the
 # asset dates instead of the midnight session label.
@@ -80,7 +84,20 @@ def make_stale(backtest: str) -> None:
     archive = f"/tmp/{backtest}-stale.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(data_path([backtest]), arcname=backtest)
-    Storage.from_environment().upload_object(INGESTIONS_BUCKET, backtest, archive)
+    Storage.from_environment().upload_object(INGESTIONS_BUCKET, ingestion_key(backtest), archive)
+
+
+def ingestion_key(backtest: str) -> str:
+    """The object key a run downloads, which is the backtest id."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        sys.exit("DATABASE_URL is not set")
+    db = get_engine(database_url)
+    with db.connect() as connection:
+        row = connection.execute(text("SELECT id FROM backtest WHERE name = :name"), {"name": backtest}).first()
+    if row is None or not str(row[0]).strip():
+        sys.exit(f"backtest {backtest!r} has no id")
+    return str(row[0]).strip()
 
 
 def print_state(backtest: str) -> None:

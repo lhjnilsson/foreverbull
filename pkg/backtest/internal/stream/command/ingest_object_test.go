@@ -39,9 +39,7 @@ func ingestEngineFailure() *engine.MockEngine {
 func (test *BacktestCommandTest) ingestWithStore(name string, ziplineEngine engine.Engine, deleteErr error) (*stream.MockMessage, *storage.MockStorage) {
 	test.recordClosedEndIfMissing(name)
 	store := new(storage.MockStorage)
-	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).
-		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: name}, nil)
-	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, name).Run(func(mock.Arguments) {
+	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, test.ingestionObjectID(name)).Run(func(mock.Arguments) {
 		// The row is still there: prices are deleted before the backtest record.
 		_, getErr := (&repository.Backtest{Conn: test.db}).Get(context.Background(), name)
 		test.Require().NoError(getErr)
@@ -66,16 +64,17 @@ func (test *BacktestCommandTest) periodForIngest(name string) {
 	test.Require().NoError(err)
 }
 
-// A failed ingest removes the object CreateObject wrote. The sentence the
-// user reads stays the ingest failure.
+// A failed ingest removes the id-keyed object. The sentence the user reads
+// stays the ingest failure.
 func (test *BacktestCommandTest) TestFailedIngestDeletesTheIngestionObject() {
 	test.periodForIngest("test-backtest")
+	id := test.ingestionObjectID("test-backtest")
 	msg, store := test.ingestWithStore("test-backtest", ingestEngineFailure(), nil)
 
 	err := command.Ingest(context.Background(), msg)
 	test.Require().EqualError(err, failedIngestSentence)
 	test.NotContains(err.Error(), "s3cr3t")
-	store.AssertCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, "test-backtest")
+	store.AssertCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, id)
 
 	_, err = (&repository.Backtest{Conn: test.db}).Get(context.Background(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
@@ -85,6 +84,7 @@ func (test *BacktestCommandTest) TestFailedIngestDeletesTheIngestionObject() {
 // error are both returned.
 func (test *BacktestCommandTest) TestFailedIngestReportsObjectDeleteError() {
 	test.periodForIngest("test-backtest")
+	id := test.ingestionObjectID("test-backtest")
 	del := errors.New("object storage refused the delete")
 	msg, store := test.ingestWithStore("test-backtest", ingestEngineFailure(), del)
 
@@ -98,7 +98,7 @@ func (test *BacktestCommandTest) TestFailedIngestReportsObjectDeleteError() {
 	test.NotContains(err.Error(), "object storage refused the delete")
 	test.NotContains(err.Error(), "error deleting")
 	test.NotContains(err.Error(), "s3cr3t")
-	store.AssertCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, "test-backtest")
+	store.AssertCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, id)
 
 	_, err = (&repository.Backtest{Conn: test.db}).Get(context.Background(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
@@ -226,10 +226,9 @@ func (test *BacktestCommandTest) TestDeadlineIngestRowAndPriceDeleteFailure() {
 // A value that is not an engine still deletes the prices before the row.
 func (test *BacktestCommandTest) TestIngestCastFailureDeletesPricesBeforeTheRow() {
 	test.periodForIngest("test-backtest")
+	id := test.ingestionObjectID("test-backtest")
 	store := new(storage.MockStorage)
-	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, "test-backtest", mock.Anything).
-		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: "test-backtest"}, nil)
-	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, "test-backtest").Run(func(mock.Arguments) {
+	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, id).Run(func(mock.Arguments) {
 		_, getErr := (&repository.Backtest{Conn: test.db}).Get(context.Background(), "test-backtest")
 		test.Require().NoError(getErr)
 	}).Return(nil)
@@ -245,7 +244,7 @@ func (test *BacktestCommandTest) TestIngestCastFailureDeletesPricesBeforeTheRow(
 	test.Require().EqualError(err, "Couldn't load data for backtest 'test-backtest': the data service failed while ingesting prices. "+
 		"Nothing was saved, so run `fbull backtest create` again once it's fixed."+
 		"\nDetails: error casting zipline engine")
-	store.AssertCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, "test-backtest")
+	store.AssertCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, id)
 	_, err = (&repository.Backtest{Conn: test.db}).Get(context.Background(), "test-backtest")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
@@ -308,9 +307,7 @@ func (test *BacktestCommandTest) TestUnrecordedCutoffDeadlineRowStays() {
 	ctx := &deadlineAfter{Context: context.Background()}
 	eng := new(engine.MockEngine)
 	store := new(storage.MockStorage)
-	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, quarterBacktest, mock.Anything).
-		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: quarterBacktest}, nil)
-	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, quarterBacktest).Run(func(mock.Arguments) {
+	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, test.ingestionObjectID(quarterBacktest)).Run(func(mock.Arguments) {
 		ctx.expire()
 	}).Return(del)
 	msg := new(stream.MockMessage)
@@ -422,9 +419,7 @@ func (d *deadlineAfter) Err() error {
 
 func (test *BacktestCommandTest) priceDeleteMessage(name string, eng engine.Engine, deleteErr error) *stream.MockMessage {
 	store := new(storage.MockStorage)
-	store.On("CreateObject", mock.Anything, storage.IngestionsBucket, name, mock.Anything).
-		Return(&storage.Object{Bucket: storage.IngestionsBucket, Name: name}, nil)
-	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, name).Run(func(mock.Arguments) {
+	store.On("DeleteObject", mock.Anything, storage.IngestionsBucket, test.ingestionObjectID(name)).Run(func(mock.Arguments) {
 		_, getErr := (&repository.Backtest{Conn: test.db}).Get(context.Background(), name)
 		test.Require().NoError(getErr)
 	}).Return(deleteErr)
@@ -446,5 +441,5 @@ func (test *BacktestCommandTest) TestSuccessfulIngestKeepsTheIngestionObject() {
 
 	err := command.Ingest(context.Background(), msg)
 	test.Require().NoError(err)
-	store.AssertNotCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, "test-backtest")
+	store.AssertNotCalled(test.T(), "DeleteObject", mock.Anything, storage.IngestionsBucket, mock.Anything)
 }
