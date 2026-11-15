@@ -391,7 +391,7 @@ func (test *BacktestTest) TestCreateRollsBackAFailedPeriodAsset() {
 	}
 	_, err := backtests.Create(ctx, partial)
 	test.Require().Error(err)
-	test.ErrorContains(err, "period asset")
+	test.Require().ErrorContains(err, "period asset")
 
 	_, err = backtests.Get(ctx, partial.Name)
 	test.Require().ErrorIs(err, pgx.ErrNoRows)

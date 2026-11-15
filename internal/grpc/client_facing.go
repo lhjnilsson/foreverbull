@@ -61,6 +61,10 @@ func clientFacingError(err error) error {
 			codes.PermissionDenied, codes.Unauthenticated, codes.ResourceExhausted,
 			codes.Unavailable, codes.DeadlineExceeded:
 			return status.Error(st.Code(), clientInternal)
+		case codes.OK, codes.Canceled, codes.Unknown, codes.Aborted,
+			codes.OutOfRange, codes.Unimplemented, codes.Internal, codes.DataLoss:
+			// These are not a client outcome. Same result as an unknown code.
+			return status.Error(codes.Internal, clientInternalDatabase)
 		default:
 			return status.Error(codes.Internal, clientInternalDatabase)
 		}

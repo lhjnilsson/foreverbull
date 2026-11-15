@@ -87,7 +87,7 @@ func TestHTTP(t *testing.T) {
 			"foreverbull couldn't record the task as finished. Run it again. If it repeats, please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.",
 			"foreverbull couldn't confirm whether the task finished. Don't assume it completed. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.",
 		}
-		require.Equal(t, sentences, []string{usercopy.TaskFinishedNotSaved, usercopy.TaskEndNotConfirmed})
+		require.Equal(t, []string{usercopy.TaskFinishedNotSaved, usercopy.TaskEndNotConfirmed}, sentences)
 		for _, sentence := range sentences {
 			for _, err := range []error{errors.New(sentence), status.Error(codes.Internal, sentence)} {
 				rec := httptest.NewRecorder()

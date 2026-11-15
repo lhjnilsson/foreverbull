@@ -20,15 +20,22 @@ var ErrServicesUnreachable = errors.New(usercopy.ServicesUnreachable)
 // stored.
 var ErrStateNotRecorded = errors.New(usercopy.TaskStateNotRecorded)
 
+// userSentence is a sentence a person reads. errors.New rejects a final
+// period; the text is that sentence, unchanged. The pointer is the
+// errors.Is identity, as errors.New's pointer is.
+type userSentence struct{ text string }
+
+func (e *userSentence) Error() string { return e.text }
+
 // ErrTaskFinishedNotSaved is a task whose success was not stored after the
 // publish came back without a definite refusal. The task is failed with
 // this cause instead of leaving its waiter until the context ends.
-var ErrTaskFinishedNotSaved = errors.New(usercopy.TaskFinishedNotSaved)
+var ErrTaskFinishedNotSaved error = &userSentence{text: usercopy.TaskFinishedNotSaved}
 
 // ErrTaskEndNotConfirmed is a task whose final outcome could not be
 // checked after an ambiguous publish. The waiter ends with this cause.
 // Nothing is recorded for it, because the outcome may already be saved.
-var ErrTaskEndNotConfirmed = errors.New(usercopy.TaskEndNotConfirmed)
+var ErrTaskEndNotConfirmed error = &userSentence{text: usercopy.TaskEndNotConfirmed}
 
 // jsStreamStoreFailed is the JetStream error code for a publish the stream
 // couldn't store, such as "maximum bytes exceeded" on a full stream with

@@ -116,6 +116,6 @@ func (test *BacktestCommandTest) TestCanceledIngestSaysToDeleteWhenRemovalFails(
 			"Run `fbull backtest create` again.")
 	test.NotContains(err.Error(), "refused")
 	test.NotContains(err.Error(), "data service")
-	test.NotErrorIs(err, context.Canceled)
+	test.Require().NotErrorIs(err, context.Canceled)
 	test.requireKept()
 }

@@ -20,7 +20,7 @@ func TestAsLookupPassesACancelledContextThrough(t *testing.T) {
 	err := asLookup(ctx, "alpaca", "XYZ", fmt.Errorf("asset status: %w", cause))
 	require.ErrorIs(t, err, context.Canceled)
 	var lookup *LookupError
-	require.False(t, errors.As(err, &lookup), "a cancelled create is not a failed lookup")
+	require.NotErrorAs(t, err, &lookup, "a cancelled create is not a failed lookup")
 }
 
 func TestAsLookupKeepsANetworkFailureWhileTheContextIsLive(t *testing.T) {
