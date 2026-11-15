@@ -2,12 +2,17 @@ package worker_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	// Tests build 16:00 America/New_York closes. The image may have no zoneinfo.
+	_ "time/tzdata"
+
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
 	"github.com/lhjnilsson/foreverbull/pkg/service/worker"
@@ -197,6 +202,410 @@ func (test *PoolTest) TestProcessFailsWhenARequestedSymbolHasNoBars() {
 	_, err = pool.Process(context.TODO(), other, []string{"IBM"}, portfolio)
 	test.Require().EqualError(err, "no bars for IBM on 2024-06-02")
 	test.Equal(2, source.calls)
+}
+
+// asOf is 17:00 in New York on 2026-11-13, after the 16:30 close, so the
+// as-of session is that date. sessionBar is the Yahoo open stamp of that
+// session, and olderBar is the open stamp of the previous one.
+func asOfSessionFixtures() (asOf, sessionBar, olderBar time.Time) {
+	asOf = time.Date(2026, time.November, 13, 22, 0, 0, 0, time.UTC)
+	sessionBar = time.Date(2026, time.November, 13, 14, 30, 0, 0, time.UTC)
+	olderBar = time.Date(2026, time.November, 12, 14, 30, 0, 0, time.UTC)
+	return asOf, sessionBar, olderBar
+}
+
+const missingAsOfBarMessage = "trading: yahoo has no price for AAPL on 2026-11-13, the latest finished XNYS session, so foreverbull won't trade on older prices. Run `fbull trading run` again once yahoo has that day's prices."
+
+var newYork = func() *time.Location {
+	location, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		panic(err)
+	}
+	return location
+}()
+
+// nySession is one XNYS row: the date, and a 16:00 New York close.
+func nySession(year int, month time.Month, day int) worker.CalendarSession {
+	return worker.CalendarSession{
+		Date:  time.Date(year, month, day, 0, 0, 0, 0, time.UTC),
+		Close: time.Date(year, month, day, 16, 0, 0, 0, newYork),
+	}
+}
+
+type memoryCalendar struct {
+	sessions []worker.CalendarSession
+}
+
+type failingCalendar struct {
+	err error
+}
+
+func (f failingCalendar) LastSession(context.Context, time.Time) (time.Time, error) {
+	return time.Time{}, f.err
+}
+
+func (m memoryCalendar) LastSession(_ context.Context, asOf time.Time) (time.Time, error) {
+	return worker.LastFinishedSession(m.sessions, asOf)
+}
+
+// fixtureCalendar is the week of 2026-11-13, a Friday. Saturday and Sunday
+// are not rows.
+func fixtureCalendar() worker.SessionCalendar {
+	return memoryCalendar{sessions: []worker.CalendarSession{
+		nySession(2026, time.November, 11),
+		nySession(2026, time.November, 12),
+		nySession(2026, time.November, 13),
+	}}
+}
+
+func (test *PoolTest) TestTradingFailsWhenTheAsOfBarIsMissing() {
+	asOf, sessionBar, olderBar := asOfSessionFixtures()
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(olderBar)},
+		{Symbol: "MSFT", Close: 11, Timestamp: timestamppb.New(sessionBar)},
+		{Symbol: "IBM", Close: 12, Timestamp: timestamppb.New(olderBar)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"), worker.WithSessionBarRequired(fixtureCalendar()))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	// The portfolio clock is the as-of. The timestamp argument is not.
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	other := time.Date(2020, time.January, 2, 0, 0, 0, 0, time.UTC)
+	_, err = pool.Process(context.TODO(), other, []string{"AAPL", "MSFT"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrMissingAsOfBar)
+	test.Require().EqualError(err, missingAsOfBarMessage)
+	test.NotContains(err.Error(), "MSFT")
+	test.Equal(1, source.calls)
+
+	_, err = pool.Process(context.TODO(), asOf, []string{"IBM", "AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrMissingAsOfBar)
+	test.Require().EqualError(err, "trading: yahoo has no prices for IBM and AAPL on 2026-11-13, the latest finished XNYS session, so foreverbull won't trade on older prices. Run `fbull trading run` again once yahoo has that day's prices.")
+	test.Equal(2, source.calls)
+}
+
+func (test *PoolTest) TestTradingAcceptsTheLastCompletedSessionBeforeTheClose() {
+	// 10:00 in New York. Friday's session has not closed, so the as-of
+	// session is Thursday. A Thursday bar is enough. Requiring Friday
+	// would refuse every run before 16:30.
+	morning := time.Date(2026, time.November, 13, 15, 0, 0, 0, time.UTC)
+	thursday := time.Date(2026, time.November, 12, 14, 30, 0, 0, time.UTC)
+	wednesday := time.Date(2026, time.November, 11, 14, 30, 0, 0, time.UTC)
+
+	stale := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(wednesday)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(stale, "yahoo"), worker.WithSessionBarRequired(fixtureCalendar()))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(morning)}
+	_, err = pool.Process(context.TODO(), morning, []string{"AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrMissingAsOfBar)
+	test.Require().EqualError(err, "trading: yahoo has no price for AAPL on 2026-11-12, the latest finished XNYS session, so foreverbull won't trade on older prices. Run `fbull trading run` again once yahoo has that day's prices.")
+
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(wednesday)},
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(thursday)},
+	}}
+	var mu sync.Mutex
+	var got time.Time
+	handler := func(req *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, bar := range req.GetBars() {
+			when := bar.GetTimestamp().AsTime()
+			if when.After(got) {
+				got = when
+			}
+		}
+		return &servicePb.WorkerResponse{}
+	}
+	live, socket := test.startBarsPool(source, "yahoo", fixtureCalendar(), handler)
+	defer socket.Close()
+	defer live.Close()
+
+	_, err = live.Process(context.TODO(), morning, []string{"AAPL"}, portfolio)
+	test.Require().NoError(err)
+	test.True(thursday.Equal(got))
+}
+
+func (test *PoolTest) TestTradingProceedsWhenTheAsOfBarIsPresent() {
+	asOf, sessionBar, olderBar := asOfSessionFixtures()
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(olderBar)},
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(sessionBar)},
+		{Symbol: "MSFT", Close: 11, Timestamp: timestamppb.New(sessionBar)},
+	}}
+	var mu sync.Mutex
+	var requests []*servicePb.WorkerRequest
+	handler := func(req *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		mu.Lock()
+		defer mu.Unlock()
+		requests = append(requests, proto.Clone(req).(*servicePb.WorkerRequest))
+		return &servicePb.WorkerResponse{}
+	}
+	pool, socket := test.startBarsPool(source, "yahoo", fixtureCalendar(), handler)
+	defer socket.Close()
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	_, err := pool.Process(context.TODO(), asOf, []string{"AAPL", "MSFT"}, portfolio)
+	test.Require().NoError(err)
+	test.Require().Len(requests, 1)
+	test.Equal([]string{"AAPL", "MSFT"}, requests[0].GetSymbols())
+	test.Require().Len(requests[0].GetBars(), 3)
+	var newest time.Time
+	for _, bar := range requests[0].GetBars() {
+		if bar.GetSymbol() != "AAPL" {
+			continue
+		}
+		when := bar.GetTimestamp().AsTime()
+		if when.After(newest) {
+			newest = when
+		}
+	}
+	test.True(sessionBar.Equal(newest))
+}
+
+func (test *PoolTest) TestBacktestHandsAnOlderBar() {
+	asOf, sessionBar, olderBar := asOfSessionFixtures()
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(olderBar)},
+		{Symbol: "MSFT", Close: 11, Timestamp: timestamppb.New(sessionBar)},
+	}}
+	var mu sync.Mutex
+	var requests []*servicePb.WorkerRequest
+	handler := func(req *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		mu.Lock()
+		defer mu.Unlock()
+		requests = append(requests, proto.Clone(req).(*servicePb.WorkerRequest))
+		return &servicePb.WorkerResponse{}
+	}
+	pool, socket := test.startBarsPool(source, "yahoo", nil, handler)
+	defer socket.Close()
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	_, err := pool.Process(context.TODO(), asOf, []string{"AAPL", "MSFT"}, portfolio)
+	test.Require().NoError(err)
+	test.Require().Len(requests, 1)
+	test.Require().Len(requests[0].GetBars(), 2)
+	test.Equal("AAPL", requests[0].GetBars()[0].GetSymbol())
+	test.True(olderBar.Equal(requests[0].GetBars()[0].GetTimestamp().AsTime()))
+}
+
+func (test *PoolTest) TestTradingMondayMorningUsesFriday() {
+	// 10:00 Monday. Friday's close has finished. Saturday and Sunday are
+	// not sessions, so the as-of session is Friday, and a Friday bar is
+	// enough.
+	morning := time.Date(2026, time.November, 16, 10, 0, 0, 0, newYork)
+	friday := time.Date(2026, time.November, 13, 14, 30, 0, 0, time.UTC)
+	thursday := time.Date(2026, time.November, 12, 14, 30, 0, 0, time.UTC)
+	calendar := memoryCalendar{sessions: []worker.CalendarSession{
+		nySession(2026, time.November, 13),
+		nySession(2026, time.November, 16),
+	}}
+
+	stale := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(thursday)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(stale, "yahoo"), worker.WithSessionBarRequired(calendar))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(morning)}
+	_, err = pool.Process(context.TODO(), morning, []string{"AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrMissingAsOfBar)
+	test.Require().EqualError(err, missingAsOfBarMessage)
+
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(thursday)},
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(friday)},
+	}}
+	var got time.Time
+	handler := func(req *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		for _, bar := range req.GetBars() {
+			when := bar.GetTimestamp().AsTime()
+			if when.After(got) {
+				got = when
+			}
+		}
+		return &servicePb.WorkerResponse{}
+	}
+	live, socket := test.startBarsPool(source, "yahoo", calendar, handler)
+	defer socket.Close()
+	defer live.Close()
+
+	_, err = live.Process(context.TODO(), morning, []string{"AAPL"}, portfolio)
+	test.Require().NoError(err)
+	test.True(friday.Equal(got))
+}
+
+func (test *PoolTest) TestTradingMorningAfterThanksgivingNamesThePriorSession() {
+	// 2026-11-26 is Thanksgiving and is not a session. Friday morning the
+	// as-of session is Wednesday 2026-11-25, not the holiday.
+	morning := time.Date(2026, time.November, 27, 10, 0, 0, 0, newYork)
+	tuesday := time.Date(2026, time.November, 24, 14, 30, 0, 0, time.UTC)
+	calendar := memoryCalendar{sessions: []worker.CalendarSession{
+		nySession(2026, time.November, 25),
+		nySession(2026, time.November, 27),
+	}}
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(tuesday)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"), worker.WithSessionBarRequired(calendar))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(morning)}
+	_, err = pool.Process(context.TODO(), morning, []string{"AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrMissingAsOfBar)
+	test.Require().EqualError(err, "trading: yahoo has no price for AAPL on 2026-11-25, the latest finished XNYS session, so foreverbull won't trade on older prices. Run `fbull trading run` again once yahoo has that day's prices.")
+}
+
+func (test *PoolTest) TestTradingSaturdayAfterTheCloseNamesFriday() {
+	saturday := time.Date(2026, time.November, 14, 17, 0, 0, 0, newYork)
+	thursday := time.Date(2026, time.November, 12, 14, 30, 0, 0, time.UTC)
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(thursday)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"), worker.WithSessionBarRequired(fixtureCalendar()))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(saturday)}
+	_, err = pool.Process(context.TODO(), saturday, []string{"AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrMissingAsOfBar)
+	test.Require().EqualError(err, missingAsOfBarMessage)
+}
+
+func (test *PoolTest) TestTradingKeepsABarNewerThanTheSession() {
+	// 10:00 New York is before the close, so the as-of session is Thursday.
+	// Yahoo's Friday open stamp is 14:30 UTC, which is already <= asOf.
+	// That newer bar is the history, not a reason to refuse.
+	asOf := time.Date(2026, time.November, 13, 15, 0, 0, 0, time.UTC)
+	thursday := time.Date(2026, time.November, 12, 14, 30, 0, 0, time.UTC)
+	fridayOpen := time.Date(2026, time.November, 13, 14, 30, 0, 0, time.UTC)
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 9, Timestamp: timestamppb.New(thursday)},
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(fridayOpen)},
+	}}
+	var got time.Time
+	handler := func(req *servicePb.WorkerRequest) *servicePb.WorkerResponse {
+		for _, bar := range req.GetBars() {
+			when := bar.GetTimestamp().AsTime()
+			if when.After(got) {
+				got = when
+			}
+		}
+		return &servicePb.WorkerResponse{}
+	}
+	pool, socket := test.startBarsPool(source, "yahoo", fixtureCalendar(), handler)
+	defer socket.Close()
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	_, err := pool.Process(context.TODO(), asOf, []string{"AAPL"}, portfolio)
+	test.Require().NoError(err)
+	test.True(fridayOpen.Equal(got))
+}
+
+func (test *PoolTest) TestTradingFailsWhenTheCalendarHasNoSession() {
+	asOf := time.Date(2026, time.November, 13, 22, 0, 0, 0, time.UTC)
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(asOf)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"), worker.WithSessionBarRequired(memoryCalendar{}))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	_, err = pool.Process(context.TODO(), asOf, []string{"AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrNoCompletedSession)
+	test.Require().Equal("Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.", usercopy.ReportIt)
+	test.Require().EqualError(err, "trading: foreverbull's XNYS calendar has no finished trading session at or before 2026-11-13T22:00:00Z, so it won't trade. "+usercopy.ReportIt)
+}
+
+func (test *PoolTest) TestTradingHidesACalendarReadFailure() {
+	asOf := time.Date(2026, time.November, 13, 22, 0, 0, 0, time.UTC)
+	cause := errors.New("pq: password=secret relation trading_calendar_date")
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(asOf)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo,
+		worker.WithBars(source, "yahoo"),
+		worker.WithSessionBarRequired(failingCalendar{err: worker.CalendarReadFailed(cause)}),
+	)
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	_, err = pool.Process(context.TODO(), asOf, []string{"AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrCalendarRead)
+	test.Require().ErrorIs(err, cause)
+	test.Require().EqualError(err, "trading: foreverbull couldn't read its XNYS trading calendar, so it won't trade. "+usercopy.RetryStep("fbull trading run")+" If it repeats, please report it at "+usercopy.IssuesURL+" with this message.")
+	test.NotContains(err.Error(), "password")
+	test.NotContains(err.Error(), "relation")
+}
+
+func (test *PoolTest) TestTradingNilCalendarIsNotConfigured() {
+	asOf := time.Date(2026, time.November, 13, 22, 0, 0, 0, time.UTC)
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "AAPL", Close: 10, Timestamp: timestamppb.New(asOf)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"), worker.WithSessionBarRequired(nil))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	_, err = pool.Process(context.TODO(), asOf, []string{"AAPL"}, portfolio)
+	test.Require().ErrorIs(err, worker.ErrCalendarNotConfigured)
+	test.Require().NotErrorIs(err, worker.ErrNoCompletedSession)
+	test.Require().EqualError(err, "trading: this broker wasn't set up with the XNYS trading calendar, so it won't trade. "+usercopy.ReportIt)
+}
+
+func (test *PoolTest) TestTradingStillNamesASymbolWithNoBars() {
+	asOf, _, _ := asOfSessionFixtures()
+	source := &recordingBars{bars: []*finance_pb.OHLC{
+		{Symbol: "MSFT", Close: 11, Timestamp: timestamppb.New(asOf)},
+	}}
+	algo, _ := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{Name: "handle_data"})
+	pool, err := worker.NewPool(context.TODO(), algo, worker.WithBars(source, "yahoo"), worker.WithSessionBarRequired(fixtureCalendar()))
+	test.Require().NoError(err)
+	defer pool.Close()
+
+	portfolio := &finance_pb.Portfolio{Timestamp: timestamppb.New(asOf)}
+	_, err = pool.Process(context.TODO(), asOf, []string{"AAPL"}, portfolio)
+	test.Require().EqualError(err, "no bars for AAPL on 2026-11-13")
+	test.Require().NotErrorIs(err, worker.ErrMissingAsOfBar)
+}
+
+func (test *PoolTest) startBarsPool(source worker.BarSource, provider string, calendar worker.SessionCalendar, handler func(*servicePb.WorkerRequest) *servicePb.WorkerResponse) (worker.Pool, mangos.Socket) {
+	test.T().Helper()
+	algo, runner := test_helper.WorkerSimulator(test.T(), &test_helper.WorkerFunction{CB: handler, Name: "handle_data"})
+	opts := []worker.Option{worker.WithBars(source, provider)}
+	if calendar != nil {
+		opts = append(opts, worker.WithSessionBarRequired(calendar))
+	}
+	pool, err := worker.NewPool(context.TODO(), algo, opts...)
+	test.Require().NoError(err)
+	configuration := pool.Configure()
+	socket, err := rep.NewSocket()
+	test.Require().NoError(err)
+	test.Require().NoError(socket.Dial(fmt.Sprintf("tcp://localhost:%d", configuration.BrokerPort)))
+	test.Require().NoError(socket.SetOption(mangos.OptionRecvDeadline, time.Second))
+	test.Require().NoError(socket.SetOption(mangos.OptionSendDeadline, time.Second))
+	go runner(socket)
+	return pool, socket
 }
 
 func (test *PoolTest) TestProcessEmptySymbolListIsNotMissingBars() {

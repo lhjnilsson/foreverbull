@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/socket"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	finance_pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	worker_pb "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/service/service"
@@ -39,6 +40,56 @@ func WithBars(source BarSource, provider string) Option {
 	return func(p *pool) {
 		p.bars = source
 		p.provider = provider
+	}
+}
+
+// SessionCalendar is the XNYS calendar a trading step reads. LastSession
+// is the latest session whose close, plus the 30-minute finality margin,
+// is at or before asOf. The time is midnight UTC on that session's date.
+// A calendar with no such session returns ErrNoCompletedSession. The pool
+// does not invent a weekday.
+type SessionCalendar interface {
+	LastSession(ctx context.Context, asOf time.Time) (time.Time, error)
+}
+
+// CalendarSession is one row of that calendar.
+type CalendarSession struct {
+	// Date is the session date. The UTC calendar day is the day named.
+	Date time.Time
+	// Close is the session close, an absolute instant.
+	Close time.Time
+}
+
+// sessionFinality is the 30 minutes after the close before a session
+// counts as finished, the same margin a price fetch stops at.
+const sessionFinality = 30 * time.Minute
+
+// ErrNoCompletedSession is a trading clock with no finished XNYS session
+// at or before asOf. The pool does not substitute a day.
+var ErrNoCompletedSession = errors.New("no completed session")
+
+// ErrCalendarNotConfigured is a trading step with no XNYS calendar.
+var ErrCalendarNotConfigured = errors.New("xnys calendar is not configured")
+
+// ErrCalendarRead is a trading step whose XNYS calendar query failed.
+// The user sentence does not include the database error. Unwrap keeps it
+// for errors.Is and errors.As.
+var ErrCalendarRead = errors.New("xnys calendar read failed")
+
+// ErrMissingAsOfBar is a trading run whose newest bar is older than the
+// as-of session. The error that wraps it names the provider, every such
+// symbol, and that date. Trading does not use an older bar.
+var ErrMissingAsOfBar = errors.New("no bar on the as-of session")
+
+// WithSessionBarRequired fails a trading step when a symbol's newest bar
+// is older than the as-of session. calendar supplies that session. Trading
+// sets it. A backtest does not: that path still hands over the bars it
+// loaded, including an older day. A nil calendar is not a guess: the step
+// fails with ErrCalendarNotConfigured.
+func WithSessionBarRequired(calendar SessionCalendar) Option {
+	return func(p *pool) {
+		p.requireSessionBar = true
+		p.calendar = calendar
 	}
 }
 
@@ -84,8 +135,10 @@ type pool struct {
 	algo      *worker_pb.Algorithm
 	namespace Namespace
 
-	bars     BarSource
-	provider string
+	bars              BarSource
+	provider          string
+	requireSessionBar bool
+	calendar          SessionCalendar
 }
 
 func (p *pool) startNamespaceListener() {
@@ -288,6 +341,21 @@ func (p *pool) lookupBars(ctx context.Context, symbols []string, asOf time.Time)
 	if len(missing) > 0 {
 		return nil, missingBarsError(missing, asOf)
 	}
+	if p.requireSessionBar {
+		// The portfolio clock is often the next morning, a Saturday, or
+		// the day after a holiday. The session is the calendar's, not a
+		// day counted back from the clock. A newest bar older than that
+		// session is refused. A bar on the session, or a later one List
+		// already capped at asOf, is the history the strategy gets.
+		session, err := p.asOfSession(ctx, asOf)
+		if err != nil {
+			return nil, err
+		}
+		stale := symbolsWithoutSessionBar(symbols, loaded, session)
+		if len(stale) > 0 {
+			return nil, missingAsOfBarError(p.provider, stale, session)
+		}
+	}
 	return loaded, nil
 }
 
@@ -319,6 +387,192 @@ func missingBarSymbols(requested []string, bars []*finance_pb.OHLC) []string {
 // calendar day, the same day the client names when it builds stock_data.
 func missingBarsError(symbols []string, asOf time.Time) error {
 	return fmt.Errorf("no bars for %s on %s", joinSymbols(symbols), asOf.UTC().Format(time.DateOnly))
+}
+
+// symbolsWithoutSessionBar are the requested symbols whose newest bar is
+// older than the session, in request order, once each. session is the
+// as-of session at midnight UTC. A symbol with no timestamped bar is
+// included. A bar on the session date, or a later date, is not.
+func symbolsWithoutSessionBar(requested []string, bars []*finance_pb.OHLC, session time.Time) []string {
+	missing := make([]string, 0)
+	seen := make(map[string]struct{}, len(requested))
+	for _, symbol := range requested {
+		if _, ok := seen[symbol]; ok {
+			continue
+		}
+		seen[symbol] = struct{}{}
+		newest, ok := newestBar(bars, symbol)
+		if !ok || barIsOlderThanSession(newest, session) {
+			missing = append(missing, symbol)
+		}
+	}
+	return missing
+}
+
+// newestBar is the latest timestamp stored for symbol. A bar with no
+// timestamp is not a session.
+func newestBar(bars []*finance_pb.OHLC, symbol string) (time.Time, bool) {
+	var newest time.Time
+	found := false
+	for _, bar := range bars {
+		if bar == nil || bar.GetSymbol() != symbol || bar.GetTimestamp() == nil {
+			continue
+		}
+		when := bar.GetTimestamp().AsTime()
+		if !found || when.After(newest) {
+			newest = when
+			found = true
+		}
+	}
+	return newest, found
+}
+
+// barIsOlderThanSession is true when the bar's UTC date is before the
+// session date. A bar on that date or a later one is not an older price.
+func barIsOlderThanSession(bar, session time.Time) bool {
+	by, bm, bd := bar.UTC().Date()
+	sy, sm, sd := session.UTC().Date()
+	barDay := time.Date(by, bm, bd, 0, 0, 0, 0, time.UTC)
+	sessionDay := time.Date(sy, sm, sd, 0, 0, 0, 0, time.UTC)
+	return barDay.Before(sessionDay)
+}
+
+func (p *pool) asOfSession(ctx context.Context, asOf time.Time) (time.Time, error) {
+	if p.calendar == nil {
+		return time.Time{}, CalendarNotConfigured()
+	}
+	session, err := p.calendar.LastSession(ctx, asOf)
+	if err != nil {
+		if errors.Is(err, ErrNoCompletedSession) {
+			return time.Time{}, missingCompletedSession(asOf)
+		}
+		// A calendar failure already has its user sentence. Prefixing it
+		// would put the database text, or a second wrapper, on Run.
+		return time.Time{}, err
+	}
+	return session, nil
+}
+
+// LastFinishedSession is the latest session whose close plus the 30-minute
+// finality margin is at or before asOf. sessions are calendar rows the
+// caller loaded. The result is midnight UTC on that session's date. No
+// such row is ErrNoCompletedSession. The function does not know which
+// weekdays or holidays the exchange closes.
+func LastFinishedSession(sessions []CalendarSession, asOf time.Time) (time.Time, error) {
+	var best time.Time
+	found := false
+	for _, session := range sessions {
+		if session.Close.Add(sessionFinality).After(asOf) {
+			continue
+		}
+		day := utcDay(session.Date)
+		if !found || day.After(best) {
+			best = day
+			found = true
+		}
+	}
+	if !found {
+		return time.Time{}, ErrNoCompletedSession
+	}
+	return best, nil
+}
+
+func utcDay(t time.Time) time.Time {
+	year, month, day := t.UTC().Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+// noCompletedSessionError names the clock reading. It wraps
+// ErrNoCompletedSession. The pool does not trade on a guessed day.
+type noCompletedSessionError struct {
+	at string
+}
+
+func missingCompletedSession(asOf time.Time) error {
+	return &noCompletedSessionError{at: asOf.UTC().Format(time.RFC3339)}
+}
+
+func (e *noCompletedSessionError) Error() string {
+	return "trading: foreverbull's XNYS calendar has no finished trading session at or before " + e.at + ", so it won't trade. " + usercopy.ReportIt
+}
+
+func (e *noCompletedSessionError) Unwrap() error {
+	return ErrNoCompletedSession
+}
+
+// asOfBarError names the provider and every symbol whose newest bar is
+// older than the as-of session. The sentence is the whole message a
+// caller shows. It wraps ErrMissingAsOfBar. fbull trading run is the
+// path that sets this check, so the ending tells the user to run it again.
+type asOfBarError struct {
+	provider string
+	symbols  []string
+	day      string
+}
+
+func missingAsOfBarError(provider string, symbols []string, session time.Time) error {
+	return &asOfBarError{
+		provider: provider,
+		symbols:  symbols,
+		day:      session.UTC().Format(time.DateOnly),
+	}
+}
+
+func (e *asOfBarError) Error() string {
+	kind := "price"
+	if len(e.symbols) != 1 {
+		kind = "prices"
+	}
+	return fmt.Sprintf(
+		"trading: %s has no %s for %s on %s, the latest finished XNYS session, so foreverbull won't trade on older prices. Run `fbull trading run` again once %s has that day's prices.",
+		e.provider, kind, joinSymbols(e.symbols), e.day, e.provider,
+	)
+}
+
+func (e *asOfBarError) Unwrap() error {
+	return ErrMissingAsOfBar
+}
+
+// CalendarNotConfigured is the refusal when trading has no XNYS calendar.
+// It wraps ErrCalendarNotConfigured.
+func CalendarNotConfigured() error {
+	return calendarNotConfiguredError{}
+}
+
+type calendarNotConfiguredError struct{}
+
+func (calendarNotConfiguredError) Error() string {
+	return "trading: this broker wasn't set up with the XNYS trading calendar, so it won't trade. " + usercopy.ReportIt
+}
+
+func (calendarNotConfiguredError) Unwrap() error {
+	return ErrCalendarNotConfigured
+}
+
+// CalendarReadFailed is the refusal when the XNYS calendar query fails.
+// The sentence does not include cause. Unwrap keeps ErrCalendarRead and
+// cause for errors.Is and errors.As.
+func CalendarReadFailed(cause error) error {
+	return &calendarReadError{cause: cause}
+}
+
+type calendarReadError struct {
+	cause error
+}
+
+func (e *calendarReadError) Error() string {
+	// ReportIt starts with a capital Please. This ending is lowercase
+	// after "If it repeats,", so it uses the issues URL on its own.
+	return "trading: foreverbull couldn't read its XNYS trading calendar, so it won't trade. " +
+		usercopy.RetryStep("fbull trading run") +
+		" If it repeats, please report it at " + usercopy.IssuesURL + " with this message."
+}
+
+func (e *calendarReadError) Unwrap() []error {
+	if e == nil || e.cause == nil {
+		return []error{ErrCalendarRead}
+	}
+	return []error{ErrCalendarRead, e.cause}
 }
 
 // joinSymbols writes A, A and B, or A, B and C.
