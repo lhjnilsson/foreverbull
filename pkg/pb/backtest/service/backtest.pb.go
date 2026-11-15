@@ -941,7 +941,7 @@ type CreateBacktestRequest_CreateFromETF struct {
 	StartDate *pb.Date `protobuf:"bytes,2,opt,name=start_date,json=startDate,proto3" json:"start_date,omitempty"`
 	EndDate   *pb.Date `protobuf:"bytes,3,opt,name=end_date,json=endDate,proto3" json:"end_date,omitempty"`
 	BaseEtf   string   `protobuf:"bytes,4,opt,name=base_etf,json=baseEtf,proto3" json:"base_etf,omitempty"`
-	// yahoo, stooq, or alpaca. Empty means yahoo.
+	// yahoo, stooq, or alpaca. Empty is refused at create.
 	Provider string `protobuf:"bytes,5,opt,name=provider,proto3" json:"provider,omitempty"`
 	// Profile name when provider is alpaca. Ignored for yahoo and stooq.
 	Profile string `protobuf:"bytes,6,opt,name=profile,proto3" json:"profile,omitempty"`

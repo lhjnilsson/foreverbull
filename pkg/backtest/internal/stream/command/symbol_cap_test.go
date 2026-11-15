@@ -46,6 +46,7 @@ func (test *BacktestCommandTest) createFromFile(name string, assets []*backtest.
 		bytes, err := proto.Marshal(&backtest.Backtest{
 			Name:      name,
 			Benchmark: "SPY",
+			Provider:  "yahoo",
 			Periods: []*backtest.Backtest_Period{{
 				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
 				EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},

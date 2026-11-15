@@ -15,6 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/command"
@@ -72,6 +73,7 @@ func (test *BacktestCommandTest) SetupSuite() {
 	test.backtest = &backtest.Backtest{
 		Name:      "test-backtest",
 		Benchmark: "SPY",
+		Provider:  "yahoo",
 		Periods: []*backtest.Backtest_Period{
 			{
 				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
@@ -148,6 +150,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
 		b := backtest.Backtest{
 			Name:      "test-backtest-from_backtest",
 			Benchmark: "SPY",
+			Provider:  "yahoo",
 			Periods: []*backtest.Backtest_Period{
 				{
 					StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
@@ -214,6 +217,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 		test.Require().NoError(create(&backtest.Backtest{
 			Name:      name,
 			Benchmark: "SPY",
+			Provider:  "yahoo",
 			Periods: period(
 				&backtest.Backtest_Period_Asset{Symbol: spelling, Enabled: true},
 				&backtest.Backtest_Period_Asset{Symbol: "AAPL", Enabled: true},
@@ -226,6 +230,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 	test.Require().NoError(create(&backtest.Backtest{
 		Name:      "share-class-all",
 		Benchmark: "BRK.B",
+		Provider:  "yahoo",
 		Periods: period(
 			&backtest.Backtest_Period_Asset{Symbol: "BRK.B", Enabled: true},
 			&backtest.Backtest_Period_Asset{Symbol: "BRK-B", Enabled: true},
@@ -241,6 +246,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 	test.Require().NoError(create(&backtest.Backtest{
 		Name:      "share-class-exchange",
 		Benchmark: "VOD.L",
+		Provider:  "yahoo",
 		Periods: period(
 			&backtest.Backtest_Period_Asset{Symbol: "VOD.L", Enabled: true},
 			&backtest.Backtest_Period_Asset{Symbol: "BRK.B", Enabled: true},
@@ -253,7 +259,8 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 
 	// Two spellings that disagree on enabled are refused, not guessed.
 	err = create(&backtest.Backtest{
-		Name: "share-class-conflict",
+		Name:     "share-class-conflict",
+		Provider: "yahoo",
 		Periods: period(
 			&backtest.Backtest_Period_Asset{Symbol: "BRK.B", Enabled: true},
 			&backtest.Backtest_Period_Asset{Symbol: "BRKB", Enabled: false},
@@ -271,6 +278,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 		payload.ETFName = "iShares S&P 100"
 		payload.StartDate = "2022-01-01"
 		payload.EndDate = "2023-12-31"
+		payload.Provider = "yahoo"
 	})
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
@@ -1367,8 +1375,38 @@ func etfCreateMessage(t *testing.T, name, etf, start, end string) *stream.MockMe
 		payload.ETFName = etf
 		payload.StartDate = start
 		payload.EndDate = end
+		payload.Provider = "yahoo"
 	})
 	return message
+}
+
+func TestCreateRefusesAMissingProvider(t *testing.T) {
+	for _, provider := range []string{"", "  "} {
+		message := new(stream.MockMessage)
+		message.On("ParsePayload", &bs.CreateBacktestFromBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+			payload := args.Get(0).(*bs.CreateBacktestFromBacktestCommand)
+			bytes, err := proto.Marshal(&backtest.Backtest{Name: "spy", Provider: provider})
+			require.NoError(t, err)
+			payload.Backtest = bytes
+		})
+		err := command.CreateBacktestFromBacktest(context.Background(), message)
+		require.ErrorIs(t, err, repository.ErrProviderMissing)
+		require.EqualError(t, err, usercopy.BacktestProviderMissing)
+		message.AssertNotCalled(t, "MustGet", mock.Anything)
+	}
+
+	message := new(stream.MockMessage)
+	message.On("ParsePayload", &bs.CreateBacktestFromETFCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromETFCommand)
+		payload.BacktestName = "spy"
+		payload.ETFName = "iShares S&P 100"
+		payload.StartDate = "2020-01-01"
+		payload.EndDate = "2020-12-31"
+	})
+	err := command.CreateBacktestFromETF(context.Background(), message)
+	require.ErrorIs(t, err, repository.ErrProviderMissing)
+	require.EqualError(t, err, usercopy.BacktestProviderMissing)
+	message.AssertNotCalled(t, "MustGet", mock.Anything)
 }
 
 func TestCreateBacktestFromETFRejectsInvalidInput(t *testing.T) {

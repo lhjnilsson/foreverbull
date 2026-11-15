@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/internal/web"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -198,11 +199,16 @@ func TestHTTP(t *testing.T) {
 		fake := &fakeBacktests{create: &servicePb.CreateBacktestResponse{Backtest: sample}}
 		mux := http.NewServeMux()
 		api.RegisterHTTP(mux, fake)
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", `{"name":"spy","start":"2024-01-02","end":"2024-06-28"}`))
-
-		require.Equal(t, http.StatusOK, rec.Code)
-		require.Empty(t, fake.createReq.GetBacktest().GetBacktest().GetProvider())
+		for _, body := range []string{
+			`{"name":"spy","start":"2024-01-02","end":"2024-06-28"}`,
+			`{"name":"spy","start":"2024-01-02","end":"2024-06-28","provider":"  "}`,
+		} {
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", body))
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.JSONEq(t, `{"error":"`+usercopy.BacktestProviderMissing+`"}`, rec.Body.String())
+			require.Nil(t, fake.createReq)
+		}
 	})
 
 	t.Run("create rejects a bad date", func(t *testing.T) {
@@ -242,7 +248,7 @@ func TestHTTP(t *testing.T) {
 		mux := http.NewServeMux()
 		api.RegisterHTTP(mux, &fakeBacktests{createErr: fmt.Errorf("postgres password=secret")})
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", `{"name":"spy","start":"2024-01-02","end":"2024-06-28"}`))
+		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", `{"name":"spy","start":"2024-01-02","end":"2024-06-28","provider":"yahoo"}`))
 
 		require.Equal(t, http.StatusInternalServerError, rec.Code)
 		require.NotContains(t, rec.Body.String(), "secret")

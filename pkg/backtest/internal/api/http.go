@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/web"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
@@ -87,6 +88,10 @@ type backtestCreateBody struct {
 
 func (h backtestRoutes) create(w http.ResponseWriter, r *http.Request) {
 	entity, err := backtestFromRequest(r)
+	if errors.Is(err, repository.ErrProviderMissing) {
+		web.BadRequestSentence(w, err.Error())
+		return
+	}
 	if err != nil {
 		web.BadRequest(w)
 		return
@@ -144,8 +149,8 @@ func (h backtestRoutes) execution(w http.ResponseWriter, r *http.Request) {
 	web.WriteMessage(w, resp)
 }
 
-// backtestFromRequest maps name, start, end, and optional provider onto one period.
-// Start and end are YYYY-MM-DD. An empty provider stays empty so repository create assigns yahoo.
+// backtestFromRequest maps name, start, end, and provider onto one period.
+// Start and end are YYYY-MM-DD. An empty provider is refused.
 // Benchmark and profile stay empty. The form has no symbols.
 func backtestFromRequest(r *http.Request) (*backtest.Backtest, error) {
 	var body backtestCreateBody
@@ -207,13 +212,13 @@ func dateBefore(left, right *pb.Date) bool {
 	return left.GetDay() < right.GetDay()
 }
 
-// normalizeProvider accepts yahoo, stooq, alpaca, or empty.
-// Empty is not rewritten here. (*repository.Backtest).Create maps that to yahoo.
+// normalizeProvider accepts yahoo, stooq, or alpaca.
+// Empty is refused. Create does not store yahoo in its place.
 func normalizeProvider(raw string) (string, error) {
 	provider := strings.ToLower(strings.TrimSpace(raw))
 	switch provider {
 	case "":
-		return "", nil
+		return "", repository.ErrProviderMissing
 	case "yahoo", "stooq", "alpaca":
 		return provider, nil
 	default:

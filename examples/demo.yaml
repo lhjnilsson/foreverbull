@@ -1,8 +1,8 @@
 # Small demo universe for `fbull backtest create`.
 # Ten liquid US symbols that traded through 2023, plus SPY as benchmark.
-# Optional price source: yahoo (default), stooq, or alpaca.
+# Price source: yahoo, stooq, or alpaca. Required.
 # `fbull backtest create --provider` overrides this field.
-# provider: yahoo
+provider: yahoo
 # profile is an Alpaca profile name when provider is alpaca. It is not a credential.
 name: demo
 benchmark: SPY

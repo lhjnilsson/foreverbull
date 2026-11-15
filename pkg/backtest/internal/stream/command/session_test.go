@@ -59,7 +59,8 @@ func (test *CommandSessionTest) SetupSubTest() {
 	test.Require().NoError(err)
 	backtests := repository.Backtest{Conn: test.db}
 	backtest := backtest.Backtest{
-		Name: "test-backtest",
+		Name:     "test-backtest",
+		Provider: "yahoo",
 	}
 	test.backtest, err = backtests.Create(context.TODO(), &backtest)
 	test.Require().NoError(err)
@@ -115,7 +116,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		own := "missing-" + uuid.NewString()
 		other := "newer-" + uuid.NewString()
 		session := test.backtestSession(own)
-		_, err := (&repository.Backtest{Conn: test.db}).Create(context.Background(), &backtest.Backtest{Name: other})
+		_, err := (&repository.Backtest{Conn: test.db}).Create(context.Background(), &backtest.Backtest{Name: other, Provider: "yahoo"})
 		test.Require().NoError(err)
 		store := test.minio()
 		_, err = store.CreateObject(context.Background(), storage.IngestionsBucket, other)
@@ -135,7 +136,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		own := "own-" + uuid.NewString()
 		other := "newer-" + uuid.NewString()
 		session := test.backtestSession(own)
-		_, err := (&repository.Backtest{Conn: test.db}).Create(context.Background(), &backtest.Backtest{Name: other})
+		_, err := (&repository.Backtest{Conn: test.db}).Create(context.Background(), &backtest.Backtest{Name: other, Provider: "yahoo"})
 		test.Require().NoError(err)
 		ownID := test.backtestObjectID(own)
 		otherID := test.backtestObjectID(other)
@@ -221,7 +222,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		test.T().Setenv(environment.AuthEnabled, "false")
 		name := "again-" + uuid.NewString()
 		backtests := repository.Backtest{Conn: test.db}
-		_, err := backtests.Create(context.Background(), &backtest.Backtest{Name: name})
+		_, err := backtests.Create(context.Background(), &backtest.Backtest{Name: name, Provider: "yahoo"})
 		test.Require().NoError(err)
 		oldID := test.backtestObjectID(name)
 		store := test.minio()
@@ -231,7 +232,7 @@ func (test *CommandSessionTest) TestSessionRun() {
 		test.Require().NoError(err)
 		test.Require().NoError(backtests.Delete(context.Background(), name))
 
-		_, err = backtests.Create(context.Background(), &backtest.Backtest{Name: name})
+		_, err = backtests.Create(context.Background(), &backtest.Backtest{Name: name, Provider: "yahoo"})
 		test.Require().NoError(err)
 		newID := test.backtestObjectID(name)
 		test.NotEqual(oldID, newID)
@@ -289,7 +290,7 @@ func (test *CommandSessionTest) minio() storage.Storage {
 }
 
 func (test *CommandSessionTest) backtestSession(name string) *backtest.Session {
-	_, err := (&repository.Backtest{Conn: test.db}).Create(context.Background(), &backtest.Backtest{Name: name})
+	_, err := (&repository.Backtest{Conn: test.db}).Create(context.Background(), &backtest.Backtest{Name: name, Provider: "yahoo"})
 	test.Require().NoError(err)
 	session, err := (&repository.Session{Conn: test.db}).Create(context.Background(), name)
 	test.Require().NoError(err)

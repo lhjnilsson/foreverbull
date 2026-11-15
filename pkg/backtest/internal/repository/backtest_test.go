@@ -10,6 +10,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -43,6 +44,7 @@ func (test *BacktestTest) SetupTest() {
 	test.backtest = &backtest.Backtest{
 		Name:      "test_backtest",
 		Benchmark: "benchmark",
+		Provider:  "yahoo",
 	}
 }
 
@@ -356,6 +358,35 @@ func (test *BacktestTest) TestMigrateBacktestProviderLeavesInvalidRows() {
 	test.Equal("nasdaq", provider)
 }
 
+// Create with no provider is refused. The sentence names the cause and the
+// next step, and the row is not stored. An explicit provider still stores.
+func (test *BacktestTest) TestCreateRefusesAMissingProvider() {
+	ctx := context.Background()
+	for _, provider := range []string{"", " ", "\t"} {
+		item := proto.Clone(test.backtest).(*backtest.Backtest)
+		item.Name = "missing-provider"
+		item.Provider = provider
+		_, err := test.uut.Create(ctx, item)
+		test.Require().ErrorIs(err, repository.ErrProviderMissing)
+		test.EqualError(err, usercopy.BacktestProviderMissing)
+
+		_, err = test.uut.Get(ctx, item.Name)
+		test.Require().ErrorIs(err, pgx.ErrNoRows)
+	}
+
+	item := proto.Clone(test.backtest).(*backtest.Backtest)
+	item.Name = "explicit-yahoo"
+	item.Provider = "yahoo"
+	stored, err := test.uut.Create(ctx, item)
+	test.Require().NoError(err)
+	test.Equal("explicit-yahoo", stored.Name)
+	test.Equal("yahoo", stored.Provider)
+
+	again, err := test.uut.Get(ctx, item.Name)
+	test.Require().NoError(err)
+	test.Equal("yahoo", again.Provider)
+}
+
 // A row that omits provider must fail loudly rather than be stored as yahoo.
 func (test *BacktestTest) TestInsertWithoutProviderFails() {
 	ctx := context.Background()
@@ -380,6 +411,7 @@ func (test *BacktestTest) TestCreateRollsBackAFailedPeriodAsset() {
 	partial := &backtest.Backtest{
 		Name:      "partial-asset",
 		Benchmark: "SPY",
+		Provider:  "yahoo",
 		Periods: []*backtest.Backtest_Period{{
 			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
 			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
@@ -451,6 +483,7 @@ func TestCreateOwnedWithMembersRollsBackAFailedMember(t *testing.T) {
 	item := &backtest.Backtest{
 		Name:      "partial-owned",
 		Benchmark: "OEF",
+		Provider:  "yahoo",
 		Periods: []*backtest.Backtest_Period{{
 			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
 			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},

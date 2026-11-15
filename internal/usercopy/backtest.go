@@ -7,6 +7,12 @@ import "fmt"
 const CloseOnUniverseDropFixed = "Close on universe drop is set when the backtest is created and can't be changed. " +
 	"To use a different setting, create a new backtest with `fbull backtest create`."
 
+// BacktestProviderMissing is the refusal when create is given no price
+// provider. Yahoo is not stored in its place. The next step names the
+// providers and does not name a command.
+const BacktestProviderMissing = "This backtest has no price provider, so it can't be created. " +
+	"Set the provider to yahoo, stooq, or alpaca, then create the backtest again."
+
 // BacktestNotSaved says a failed create kept nothing. It is only true when
 // the backtest was removed.
 const BacktestNotSaved = "The backtest wasn't saved."

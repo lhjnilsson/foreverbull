@@ -201,15 +201,15 @@ uv run fbenv stop --remove --purge # uninstall; local also deletes the Kind clus
 
 `fbull backtest create` is the ingest. It stores the universe, downloads daily bars for every symbol and the benchmark, and loads those bars into Zipline. The command prints progress for Creating, Downloading, Ingesting, and Storing, then prints the backtest. A symbol with no price data under any of its tickers fails the create: the backtest is removed and nothing is saved.
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` sends `yahoo`, which is what the server stores. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: yahoo (default)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
+`fbull backtest create` reads `provider` and optional `profile` from the YAML file. `--provider` overrides the file. Omitting `provider` is refused, and nothing is stored. Create prints `Using provider: <name> (<source>)`, where the source is `from --provider` or `from <YAML file name>`, for example `Using provider: yahoo (from demo.yaml)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is a name in the trading profiles file, used only when `provider` is `alpaca`. It is ignored for `yahoo` and `stooq`. Do not put API keys, tokens, or passwords in the YAML, in `.foreverbull/config.yaml`, or in Helm values.
 
 Bars for one symbol and day can exist once per provider. A Yahoo create does not replace Stooq rows, and the reverse is also true. The demo file is [examples/demo.yaml](examples/demo.yaml): name `demo`, benchmark `SPY`, and ten liquid US symbols (AAPL, MSFT, AMZN, GOOGL, JPM, JNJ, XOM, PG, KO, WMT). The sample window is 2023-01-01 through 2023-12-31. Edit those dates in the file before you create. The broker pod needs outbound HTTPS to the price host.
 
-Commands below are from `client/` after `uv sync`, with the platform already running. Yahoo is the default path here. Stooq and Alpaca bars are opt-in with `--provider` (or `provider` in the YAML); see [client/cli/README.md](client/cli/README.md) for those recipes and for Stooq's bot-check note.
+Commands below are from `client/` after `uv sync`, with the platform already running. The demo file sets `provider: yahoo`. Stooq and Alpaca bars use `--provider` (or `provider` in the YAML); see [client/cli/README.md](client/cli/README.md) for those recipes and for Stooq's bot-check note.
 
-#### Yahoo (default)
+#### Yahoo
 
-Yahoo is the default. Leave `provider` out of the file, or pass `--provider yahoo`. No API key is required. Yahoo serves both asset lookup and daily bars.
+Set `provider: yahoo` in the file, or pass `--provider yahoo`. No API key is required. Yahoo serves both asset lookup and daily bars.
 
 ```bash
 cd client

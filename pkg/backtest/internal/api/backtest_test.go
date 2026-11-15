@@ -99,7 +99,8 @@ func (test *BacktestServerTest) createBacktest(name string) *backtest.Backtest {
 
 	backtests := repository.Backtest{Conn: test.pgx}
 	b := backtest.Backtest{
-		Name: name,
+		Name:     name,
+		Provider: "yahoo",
 	}
 	backtest, err := backtests.Create(context.TODO(), &b)
 	test.Require().NoError(err)

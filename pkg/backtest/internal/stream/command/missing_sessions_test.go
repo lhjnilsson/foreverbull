@@ -168,6 +168,7 @@ func (test *BacktestCommandTest) createPeriod(start, end time.Time, symbols ...s
 	_, err := backtests.Create(context.TODO(), &backtest.Backtest{
 		Name:      quarterBacktest,
 		Benchmark: "OEF",
+		Provider:  "yahoo",
 		Periods: []*backtest.Backtest_Period{{
 			StartDate: pb.GoTimeToDate(start),
 			EndDate:   pb.GoTimeToDate(end),

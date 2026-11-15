@@ -41,7 +41,7 @@ func TestLoadStoredBacktestRejectsForgedOwner(t *testing.T) {
 	require.NoError(t, repository.MigrateBacktestOwner(ctx, pool, ownerID, quietCopier{}))
 
 	backtests := repository.Backtest{Conn: pool}
-	_, err = backtests.CreateOwned(ctx, ownerID, &backtest.Backtest{Name: "spy"})
+	_, err = backtests.CreateOwned(ctx, ownerID, &backtest.Backtest{Name: "spy", Provider: "yahoo"})
 	require.NoError(t, err)
 	var id string
 	err = pool.QueryRow(ctx, `SELECT id FROM backtest WHERE owner_id = $1 AND name = 'spy'`, ownerID).Scan(&id)

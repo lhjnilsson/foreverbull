@@ -476,21 +476,21 @@ function CreateBacktest({ onDone, onCreated }: { onDone: () => void; onCreated: 
   const set =
     (key: "name" | "start" | "end" | "provider") => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setF({ ...f, [key]: event.target.value });
-  const ok = f.name.trim() && f.start && f.end;
+  const ok = Boolean(f.name.trim() && f.start && f.end && f.provider);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || !ok) return;
     setError("");
     setPending(true);
-    const body: { name: string; start: string; end: string; provider?: string; autoCloseOnUniverseDrop: boolean } = {
+    const body: { name: string; start: string; end: string; provider: string; autoCloseOnUniverseDrop: boolean } = {
       name: f.name.trim(),
       start: f.start,
       end: f.end,
       autoCloseOnUniverseDrop: f.closeOnDrop,
     };
-    // An empty provider is omitted. The server stores yahoo.
-    if (f.provider) body.provider = f.provider;
+    // The server refuses a create that omits the provider.
+    body.provider = f.provider;
     const result = await postJson("/api/backtests", body);
     setPending(false);
     if (!result.ok) {

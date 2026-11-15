@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
-	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPB "github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	"google.golang.org/protobuf/proto"
@@ -53,6 +52,10 @@ type Backtest struct {
 // option stored on an existing backtest.
 var ErrCloseOnUniverseDropFixed = errors.New(usercopy.CloseOnUniverseDropFixed)
 
+// ErrProviderMissing is returned when create is given no price provider.
+// Its text is the user sentence. Yahoo is not stored in its place.
+var ErrProviderMissing = errors.New(usercopy.BacktestProviderMissing)
+
 // closeOnUniverseDrop is the stored choice. An omitted field is on.
 func closeOnUniverseDrop(item *backtest.Backtest) bool {
 	if item == nil || item.AutoCloseOnUniverseDrop == nil {
@@ -84,7 +87,7 @@ func normalizeBacktestProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	switch provider {
 	case "":
-		return supplier.DefaultProvider, nil
+		return "", ErrProviderMissing
 	case "yahoo", "stooq", "alpaca":
 		return provider, nil
 	default:

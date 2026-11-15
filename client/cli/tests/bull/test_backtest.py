@@ -20,6 +20,7 @@ import typer
 import yaml
 
 from foreverbull_cli.bull.backtest import backtest
+from foreverbull_cli.bull.backtest import backtest_provider_missing
 from foreverbull_cli.bull.cli import cli
 from foreverbull_cli.bull.summary import format_drawdown
 from foreverbull_cli.bull.summary import format_percent
@@ -124,6 +125,8 @@ def test_backtest_create(runner):
             backtest,
             [
                 "create",
+                "--provider",
+                "yahoo",
             ],
             input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
         )
@@ -162,7 +165,9 @@ def test_backtest_create_prints_table_from_the_broker_stream(runner):
                 frame(done, done, done, done, _sample_backtest()),
             ]
         )
-        result = runner(backtest, ["create"], input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n")
+        result = runner(
+            backtest, ["create", "--provider", "yahoo"], input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n"
+        )
 
     assert result.exit_code == 0, result.stdout
     lines = result.stdout.splitlines()
@@ -225,7 +230,9 @@ def _created_record(monkeypatch, symbols: list[str], *, columns: int, verbose: b
                 )
             ]
         )
-        result = CliRunner().invoke(backtest, ["create"], input="demo\niShares S&P 100\n2024-01-02\n2024-03-28\n")
+        result = CliRunner().invoke(
+            backtest, ["create", "--provider", "yahoo"], input="demo\niShares S&P 100\n2024-01-02\n2024-03-28\n"
+        )
     assert result.exit_code == 0, result.stdout
     lines = result.stdout.splitlines()
     return lines[lines.index("Created Backtest") :]
@@ -1028,7 +1035,7 @@ def test_backtest_create_reprompts_invalid_dates(runner):
         )
         result = runner(
             backtest,
-            ["create"],
+            ["create", "--provider", "yahoo"],
             input="\ndemo\niShares S&P 100\nnot-a-date\n1999-01-01\n2020-01-01\n2019-12-31\n2020-01-31\n",
         )
 
@@ -1069,7 +1076,7 @@ def _created_backtest_response():
 def test_backtest_create_without_input_fails(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.backtest.create") as mock_create:
-        result = CliRunner().invoke(backtest, ["create"])
+        result = CliRunner().invoke(backtest, ["create", "--provider", "yahoo"])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -1082,7 +1089,7 @@ def test_backtest_create_without_input_fails(monkeypatch):
 def test_backtest_create_eof_after_the_name_fails(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.backtest.create") as mock_create:
-        result = CliRunner().invoke(backtest, ["create"], input="demo\n")
+        result = CliRunner().invoke(backtest, ["create", "--provider", "yahoo"], input="demo\n")
 
     assert result.exit_code == 1
     assert result.stdout.splitlines()[-1] == "✖ No input was given. Pass --file, or answer the prompts in a terminal."
@@ -1093,7 +1100,7 @@ def test_backtest_create_unknown_etf_then_eof_does_not_call_broker(monkeypatch):
     # The bad name is rejected and the prompt asks again. EOF then cancels the create.
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     with patch("foreverbull.broker.backtest.create") as mock_create:
-        result = CliRunner().invoke(backtest, ["create"], input="demo\nnot-a-fund\n")
+        result = CliRunner().invoke(backtest, ["create", "--provider", "yahoo"], input="demo\nnot-a-fund\n")
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
@@ -1109,7 +1116,7 @@ def test_backtest_create_reprompts_unknown_etf(runner):
         mock_create.return_value = _created_backtest_response()
         result = runner(
             backtest,
-            ["create"],
+            ["create", "--provider", "yahoo"],
             input="demo\nnot-a-fund\niShares S&P 100\n2020-01-01\n2020-01-31\n",
         )
 
@@ -1126,7 +1133,7 @@ def test_backtest_create_reprompts_end_after_today(runner):
         mock_create.return_value = _created_backtest_response()
         result = runner(
             backtest,
-            ["create"],
+            ["create", "--provider", "yahoo"],
             input=f"demo\niShares S&P 100\n2020-01-01\n{future.isoformat()}\n2020-01-31\n",
         )
 
@@ -1145,7 +1152,7 @@ def test_backtest_create_reprompts_start_after_today(runner):
         mock_create.return_value = _created_backtest_response()
         result = runner(
             backtest,
-            ["create"],
+            ["create", "--provider", "yahoo"],
             input=f"demo\niShares S&P 100\n{future.isoformat()}\n2020-01-01\n2020-01-31\n",
         )
 
@@ -1161,7 +1168,7 @@ def test_backtest_create_reprompts_non_iso_date(runner):
         mock_create.return_value = _created_backtest_response()
         result = runner(
             backtest,
-            ["create"],
+            ["create", "--provider", "yahoo"],
             input="demo\niShares S&P 100\n20200101\n2020-02-31\n2020-01-01\n2020-01-31\n",
         )
 
@@ -1179,7 +1186,7 @@ def test_backtest_create_accepts_long_range(runner):
         mock_create.return_value = _created_backtest_response()
         result = runner(
             backtest,
-            ["create"],
+            ["create", "--provider", "yahoo"],
             input="long\niShares S&P 100\n2020-01-01\n2025-12-31\n",
         )
 
@@ -1199,6 +1206,7 @@ def test_backtest_create_from_file(runner):
     payload = {
         "name": "from_file",
         "benchmark": "QQQ",
+        "provider": "yahoo",
         "periods": [
             {
                 "start_date": "2021-01-01",
@@ -1249,13 +1257,14 @@ def test_backtest_create_from_file(runner):
     assert "2021-01-01" in result.stdout
     assert "QQQ" in result.stdout
     assert "AAPL" in result.stdout
-    assert "Using provider: yahoo (default)" in result.stdout
+    assert f"Using provider: yahoo (from {Path(cfg_file.name).name})" in result.stdout
 
 
 def _file_payload(**extra: object) -> dict:
     payload = {
         "name": "from_file",
         "benchmark": "QQQ",
+        "provider": "yahoo",
         "periods": [
             {
                 "start_date": "2021-01-01",
@@ -1446,7 +1455,7 @@ def test_backtest_create_etf_can_turn_close_on_drop_off(runner):
         mock_create.return_value = _created_backtest_response()
         result = runner(
             backtest,
-            ["create", "--no-close-on-universe-drop"],
+            ["create", "--provider", "yahoo", "--no-close-on-universe-drop"],
             input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
         )
 
@@ -1562,19 +1571,68 @@ def test_backtest_create_etf_sends_provider_flag(runner):
     assert "Using provider: stooq (from --provider)" in result.stdout
 
 
-def test_backtest_create_etf_without_flag_uses_default_provider(runner):
+def test_backtest_create_refuses_a_missing_provider():
+    sentence = backtest_provider_missing()
     with patch("foreverbull.broker.backtest.create") as mock_create:
-        mock_create.return_value = _created_backtest_response()
-        result = runner(
-            backtest,
-            ["create"],
-            input="demo\niShares S&P 100\n2020-01-01\n2020-01-31\n",
-        )
+        result = CliRunner().invoke(backtest, ["create"])
 
-    assert result.exit_code == 0
-    request = mock_create.call_args.kwargs["entity"]
-    assert request.provider == "yahoo"
-    assert "Using provider: yahoo (default)" in result.stdout
+    assert result.exit_code == 1
+    assert result.output == f"✖ {sentence}\n"
+    mock_create.assert_not_called()
+
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(
+            {
+                "name": "from_file",
+                "benchmark": "QQQ",
+                "periods": [
+                    {
+                        "start_date": "2021-01-01",
+                        "end_date": "2021-01-31",
+                        "assets": [{"symbol": "AAPL", "enabled": True}],
+                    }
+                ],
+            },
+            cfg_file,
+        )
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 1
+    assert result.output == f"✖ {sentence}\n"
+    mock_create.assert_not_called()
+
+
+def test_backtest_create_refuses_a_whitespace_provider():
+    sentence = backtest_provider_missing()
+    with (
+        patch("foreverbull.broker.backtest.create") as mock_create,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(
+            {
+                "name": "from_file",
+                "benchmark": "QQQ",
+                "provider": "   ",
+                "periods": [
+                    {
+                        "start_date": "2021-01-01",
+                        "end_date": "2021-01-31",
+                        "assets": [{"symbol": "AAPL", "enabled": True}],
+                    }
+                ],
+            },
+            cfg_file,
+        )
+        cfg_file.flush()
+        result = CliRunner().invoke(backtest, ["create", "--file", cfg_file.name])
+    Path(cfg_file.name).unlink(missing_ok=True)
+    assert result.exit_code == 1
+    assert result.output == f"✖ {sentence}\n"
+    mock_create.assert_not_called()
 
 
 def test_backtest_create_help_shows_provider_text():
@@ -1585,7 +1643,7 @@ def test_backtest_create_help_shows_provider_text():
     option = next(param for param in command.params if param.name == "provider")
     assert isinstance(option, click.Option)
 
-    assert option.help == "Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: yahoo."
+    assert option.help == "Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Required."
 
 
 def test_backtest_get(runner):
