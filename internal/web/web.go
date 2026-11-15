@@ -190,6 +190,18 @@ func BadRequest(w http.ResponseWriter) {
 	writeJSON(w, http.StatusBadRequest, []byte(`{"error":"bad request"}`))
 }
 
+// BadRequestSentence writes 400 with a sentence the page shows as written.
+func BadRequestSentence(w http.ResponseWriter, sentence string) {
+	encoded, err := json.Marshal(struct {
+		Error string `json:"error"`
+	}{Error: sentence})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, []byte(`{"error":"internal"}`))
+		return
+	}
+	writeJSON(w, http.StatusBadRequest, encoded)
+}
+
 // WriteError maps a missing row to 404. Permission and auth failures use
 // their status. A task outcome the user must read is that sentence.
 // Other failures stay 500 and do not echo the cause.

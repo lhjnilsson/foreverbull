@@ -39,6 +39,7 @@ mkdir -p my_strategy
 cat > my_strategy/backtest.yaml <<'YAML'
 name: my-demo
 benchmark: SPY
+provider: yahoo
 periods:
   - start_date: "2023-01-01"
     end_date: "2023-12-31"
@@ -59,7 +60,7 @@ uv run fbull backtest create --file my_strategy/backtest.yaml
 uv run fbull backtest get my-demo
 ```
 
-`create` prints `Using provider: yahoo (default)`, a spinner for Creating, Downloading, Ingesting, and Storing, then a `Created Backtest` table. Yahoo is the default price source and needs no API key. To use Stooq or Alpaca bars, add `provider:` to the YAML or pass `--provider`; see [client/cli/README.md](../client/cli/README.md).
+`create` prints `Using provider: yahoo (from backtest.yaml)`, a spinner for Creating, Downloading, Ingesting, and Storing, then a `Created Backtest` table. Yahoo needs no API key. To use Stooq or Alpaca bars, set `provider:` in the YAML or pass `--provider`; see [client/cli/README.md](../client/cli/README.md). An omitted provider is refused.
 
 The name must be new. If `my-demo` already exists, either reuse it and skip `create`, or remove it with `uv run fbull backtest delete my-demo --force` and create it again. The repository's [examples/demo.yaml](../examples/demo.yaml) (backtest `demo`) works the same way.
 

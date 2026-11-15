@@ -124,7 +124,7 @@ class CreateBacktestRequest(Message[_CreateBacktestRequestFields]):
                 string base_etf = 4;
                 ```
             provider:
-                yahoo, stooq, or alpaca. Empty means yahoo.
+                yahoo, stooq, or alpaca. Empty is refused at create.
 
                 ```proto
                 string provider = 5;

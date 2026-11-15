@@ -38,7 +38,8 @@ func (test *SessionTest) SetupTest() {
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
 	backtest := backtest.Backtest{
-		Name: "backtest",
+		Name:     "backtest",
+		Provider: "yahoo",
 	}
 	test.storedBacktest, err = backtests.Create(ctx, &backtest)
 	test.Require().NoError(err)
@@ -123,7 +124,8 @@ func (test *SessionTest) TestListByBacktest() {
 
 	backtests := &repository.Backtest{Conn: test.conn}
 	backtest2 := backtest.Backtest{
-		Name: "backtest2",
+		Name:     "backtest2",
+		Provider: "yahoo",
 	}
 	test.storedBacktest, err = backtests.Create(ctx, &backtest2)
 	test.Require().NoError(err)

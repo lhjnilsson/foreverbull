@@ -153,7 +153,7 @@ The execution stores its `return_basis` (`total` or `adjusted_close`) and that c
 
 ## CLI
 
-`fbull backtest create` reads optional `provider` and `profile` from the YAML file. A flag `--provider` overrides the file. An omitted provider is stored as `yahoo`. Create prints `Using provider: <name> (<source>)`, with source `default`, `from --provider`, or `from <YAML file name>`. The printed backtest shows the provider. An unknown name fails with the valid list. While prices download, the Downloading row reads `Downloading prices: N of TOTAL symbols` and updates in place, at most every 2 seconds. Progress goes over core NATS (`foreverbull-progress.…`), not the `foreverbull` JetStream stream, and is not written to `message_states`.
+`fbull backtest create` reads `provider` and optional `profile` from the YAML file. A flag `--provider` overrides the file. An omitted provider is refused, and nothing is stored. Create prints `Using provider: <name> (<source>)`, with source `from --provider` or `from <YAML file name>`. The printed backtest shows the provider. An unknown name fails with the valid list. While prices download, the Downloading row reads `Downloading prices: N of TOTAL symbols` and updates in place, at most every 2 seconds. Progress goes over core NATS (`foreverbull-progress.…`), not the `foreverbull` JetStream stream, and is not written to `message_states`.
 
 `fbull strategy deploy --no-dry-run` requires `--backend <profile>`. Dry-run may omit it. The help text still says live mode is refused.
 

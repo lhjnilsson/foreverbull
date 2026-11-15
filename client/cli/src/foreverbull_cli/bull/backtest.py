@@ -60,10 +60,18 @@ _DETAILS_MARKER = "\nDetails: "
 _VERBOSE_LEVELS = frozenset({"WARNING", "INFO", "DEBUG"})
 
 
+def backtest_provider_missing() -> str:
+    """The sentence when create is given no price provider."""
+    return (
+        "This backtest has no price provider, so it can't be created. "
+        "Run `fbull backtest create` again with --provider yahoo, stooq, or alpaca."
+    )
+
+
 def _normalize_provider(raw: object) -> str | None:
     provider = "" if raw is None else str(raw).strip().lower()
     if provider == "":
-        provider = _DEFAULT_PROVIDER
+        _fail(backtest_provider_missing())
     if provider not in _PRICE_PROVIDER_SET:
         console.print(f"[red]Unknown price provider {provider!r}. Valid providers: {', '.join(_PRICE_PROVIDERS)}.")
         return None
@@ -71,11 +79,11 @@ def _normalize_provider(raw: object) -> str | None:
 
 
 def _choose_provider(flag_provider: str | None, raw: object, file_name: str) -> tuple[str | None, str]:
-    """Return the provider and where it came from: the flag, then the YAML file, then the default."""
+    """Return the provider and where it came from: the flag, then the YAML file."""
     if flag_provider is not None:
         return flag_provider, "from --provider"
     if raw is None or str(raw).strip() == "":
-        return _DEFAULT_PROVIDER, "default"
+        _fail(backtest_provider_missing())
     return _normalize_provider(raw), f"from {file_name or 'backtest.yaml'}"
 
 
@@ -516,7 +524,7 @@ def create(
         typer.Option(
             "--provider",
             show_default=False,
-            help="Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Default: yahoo.",
+            help="Price source: yahoo, stooq or alpaca. Overrides `provider` in the YAML file. Required.",
         ),
     ] = None,
     close_on_universe_drop: Annotated[
@@ -532,8 +540,8 @@ def create(
 
     Without --file, ETF prompt choices come from `fbull backtest etfs`.
     A bad name, fund, or date is re-asked before any download.
-    Optional YAML fields `provider` and `profile` are sent on the create request.
-    `--provider` overrides the file. An omitted provider is sent as yahoo.
+    Optional YAML field `profile` is sent on the create request.
+    `--provider` overrides `provider` in the file. An omitted provider is refused.
     """
     flag_provider: str | None = None
     if provider is not None:
@@ -594,6 +602,8 @@ def create(
             )
         )
     else:
+        if flag_provider is None:
+            _fail(backtest_provider_missing())
         name = _ask_name()
         base_etf = _ask_etf()
         # None is an empty ETF catalog. EOF at a prompt already exited.

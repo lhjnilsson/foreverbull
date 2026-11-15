@@ -301,7 +301,7 @@ Missed closes stay `skipped_missed_close` (no Process, no PlaceOrder). Catch-up 
 | `pkg/strategy/internal/runner/` | `PlaceOrder` when `!dry_run`; keep skip-missed; fake Trading records calls |
 | `pkg/strategy/module.go` | Wire Processor for paper; Trading already optional |
 | CLI `client/cli/.../bull/strategy.py` | Experiments table; deploy `--yes` / `--no-dry-run` / `--backend` for paper only. Live refused |
-| CLI `client/cli/.../bull/backtest.py` | `create` sends `provider` (default `yahoo`) and optional `profile`. `--provider` overrides the file |
+| CLI `client/cli/.../bull/backtest.py` | `create` sends `provider` and optional `profile`. An omitted provider is refused. `--provider` overrides the file |
 | `pkg/strategy/implementation.md` | PoC contract; this file is the follow-on. Do not rewrite PoC history |
 | Yahoo / Alpaca marketdata files | Keep |
 

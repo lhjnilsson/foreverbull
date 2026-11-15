@@ -51,18 +51,18 @@ uv run fbull backtest delete demo
 
 `create` stores the universe, downloads daily bars, and ingests them into Zipline (progress: Creating, Downloading, Ingesting, Storing). A symbol whose download fails is stored with `enabled: false`.
 
-`create` reads optional `provider` and `profile` from the YAML. `--provider` overrides the file. Omitting `provider` sends `yahoo`. Create prints `Using provider: <name> (<source>)`, where the source is `default`, `from --provider`, or `from <YAML file name>`, for example `Using provider: yahoo (default)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is an Alpaca profile name and is ignored unless `provider` is `alpaca`. Do not put API keys in the YAML.
+`create` reads `provider` and optional `profile` from the YAML. `--provider` overrides the file. Omitting `provider` is refused. Create prints `Using provider: <name> (<source>)`, where the source is `from --provider` or `from <YAML file name>`, for example `Using provider: yahoo (from demo.yaml)` or `Using provider: stooq (from --provider)`. The printed backtest includes the provider. An unknown name exits non-zero and lists the valid providers (`yahoo`, `stooq`, `alpaca`). `profile` is an Alpaca profile name and is ignored unless `provider` is `alpaca`. Do not put API keys in the YAML.
 
 | Provider | How to select it | What it prices |
 | --- | --- | --- |
-| Yahoo (default) | omit `provider`, or `yahoo` | Asset lookup and daily bars |
+| Yahoo | `provider: yahoo` or `--provider yahoo` | Asset lookup and daily bars |
 | Stooq | `provider: stooq` or `--provider stooq` | Daily bars from Stooq. Asset lookup stays on Yahoo |
 | Alpaca | `provider: alpaca` and optional `profile` | Daily bars with that profile's key. Asset lookup stays on Yahoo |
 
 Bars are stored per provider, so Yahoo and Stooq can both keep a close for the same symbol and day. A run reads only its backtest's provider. The demo file is [examples/demo.yaml](../../examples/demo.yaml) (name `demo`, benchmark `SPY`, ten liquid US symbols, 2023-01-01 through 2023-12-31). From `client/`:
 
 ```bash
-# Yahoo (provider omitted)
+# Yahoo (provider: yahoo in the file)
 uv run fbull backtest create --file ../examples/demo.yaml
 uv run fbull backtest get demo
 
@@ -73,7 +73,7 @@ uv run fbull backtest create --file ../examples/demo.yaml --provider stooq
 
 Stooq may block automated downloads with a bot-check page. Create then stops at the first blocked symbol and says to retry with `--provider yahoo`.
 
-`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `periods` with `start_date` / `end_date` / `assets`) plus optional `provider`, `profile`, and `auto_close_on_universe_drop`. Without `--file`, create prompts for a name, an ETF, and dates, and sends `yahoo` unless `--provider` is set.
+`--file` YAML matches the cookiecutter `backtest.yaml` shape (`name`, `benchmark`, `provider`, `periods` with `start_date` / `end_date` / `assets`) plus optional `profile` and `auto_close_on_universe_drop`. Without `--file`, pass `--provider`. Create then prompts for a name, an ETF, and dates.
 
 When this is on (the default), foreverbull closes any held position in a symbol that leaves the universe, at that session's close. After the symbol is added back, the strategy may buy again; the old position is not restored. When this is off, held positions stay open through a drop, including a drop with no re-add. The strategy can flatten a held non-member, but it can't add to that position or open a new one until the name is a member again. This only applies to an ETF universe; it has no effect on a symbol-list backtest. To use a different setting, create a new backtest.
 

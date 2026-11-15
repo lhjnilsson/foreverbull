@@ -44,7 +44,8 @@ func (test *ExecutionTest) SetupTest() {
 	ctx := context.Background()
 	backtests := &repository.Backtest{Conn: test.conn}
 	b := backtest.Backtest{
-		Name: "backtest",
+		Name:     "backtest",
+		Provider: "yahoo",
 		Periods: []*backtest.Backtest_Period{
 			{
 				StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
@@ -318,9 +319,8 @@ func (test *ExecutionTest) TestMigrateExecutionProviderUpgradesOldTable() {
 	test.Require().ErrorContains(err, "backtest_execution")
 }
 
-// SetupTest creates the backtest with an empty provider. The execution copies the stored provider,
-// so it is supplier.DefaultProvider.
-func (test *ExecutionTest) TestCreateWithEmptyBacktestProviderStoresDefaultProvider() {
+// The execution copies the provider stored on the backtest.
+func (test *ExecutionTest) TestCreateCopiesStoredProvider() {
 	ctx := context.Background()
 	created, err := test.uut.Create(ctx, test.execution, nil)
 	test.Require().NoError(err)

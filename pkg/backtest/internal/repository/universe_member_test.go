@@ -78,6 +78,7 @@ func (test *UniverseMemberTest) TestCreateWithMembersRollsBackAFailedMember() {
 	item := &backtest.Backtest{
 		Name:      "partial-members",
 		Benchmark: "OEF",
+		Provider:  "yahoo",
 		Periods: []*backtest.Backtest_Period{{
 			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
 			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
@@ -122,6 +123,7 @@ func (test *UniverseMemberTest) createBacktest(name string) {
 	_, err := test.backtests.Create(context.Background(), &backtest.Backtest{
 		Name:      name,
 		Benchmark: "OEF",
+		Provider:  "yahoo",
 	})
 	test.Require().NoError(err)
 }

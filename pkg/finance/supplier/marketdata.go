@@ -7,10 +7,10 @@ import (
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
 
-// DefaultProvider is the price source for a backtest whose provider is empty.
-// It is the one Go place to change that default. The Python client keeps its
-// own DEFAULT_PROVIDER in client/src/foreverbull/models/finance.py, and both
-// must name the same provider.
+// DefaultProvider is the price source used when a stored row or a worker
+// environment has no provider. Create does not substitute it. The Python
+// client keeps DEFAULT_PROVIDER in client/src/foreverbull/models/finance.py
+// for an unset OHLC_PROVIDER, and both must name the same provider.
 const DefaultProvider = "yahoo"
 
 // Marketdata is a price and metadata provider. Every call takes the caller's

@@ -49,6 +49,9 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error unmarshalling backtest: %w", err)
 	}
+	if err := missingProvider(b.GetProvider()); err != nil {
+		return err
+	}
 
 	// A universe file may spell a share class BRK.B, BRK-B or BRKB; all are
 	// stored as BRKB. ETF holdings keep their own names (aliases).
@@ -64,10 +67,22 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {
+		if errors.Is(err, repository.ErrProviderMissing) {
+			return err
+		}
 		if errors.Is(err, repository.ErrCloseOnUniverseDropFixed) {
 			return plainSentence(err.Error())
 		}
 		return fmt.Errorf("error creating backtest: %w", err)
+	}
+	return nil
+}
+
+// missingProvider refuses a create that names no price source.
+// The sentinel's text is the sentence the user sees. Yahoo is not substituted.
+func missingProvider(provider string) error {
+	if strings.TrimSpace(provider) == "" {
+		return repository.ErrProviderMissing
 	}
 	return nil
 }
@@ -87,6 +102,9 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	// Same sentences as the create prompt. Fail before any holdings download.
 	start, end, err := validateETFCreateInput(command.BacktestName, command.ETFName, command.StartDate, command.EndDate, time.Now())
 	if err != nil {
+		return err
+	}
+	if err := missingProvider(command.Provider); err != nil {
 		return err
 	}
 
@@ -150,6 +168,9 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	}
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktestWithMembers(ctx, backtests, command.OwnerID, &b, memberIntervals(result)); err != nil {
+		if errors.Is(err, repository.ErrProviderMissing) {
+			return err
+		}
 		if errors.Is(err, repository.ErrCloseOnUniverseDropFixed) {
 			return plainSentence(err.Error())
 		}

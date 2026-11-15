@@ -101,6 +101,7 @@ func (test *BacktestModuleTest) TestBacktestModule() {
 				StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
 				EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
 				BaseEtf:   "iShares S&P 100",
+				Provider:  "yahoo",
 			},
 		},
 	})

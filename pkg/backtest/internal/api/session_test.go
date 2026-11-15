@@ -73,7 +73,8 @@ func (s *SessionTest) SetupTest() {
 
 	backtests := repository.Backtest{Conn: s.conn}
 	backtest := backtest.Backtest{
-		Name: "backtest",
+		Name:     "backtest",
+		Provider: "yahoo",
 		Periods: []*backtest.Backtest_Period{
 			{StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1}, EndDate: &pb.Date{Year: 2024, Month: 12, Day: 31}},
 		},
@@ -497,7 +498,8 @@ func TestCreateExecutionAuthOnUsesBacktestID(t *testing.T) {
 
 	backtests := repository.Backtest{Conn: pool}
 	_, err = backtests.CreateOwned(ctx, admin.ID, &backtest.Backtest{
-		Name: "spy",
+		Name:     "spy",
+		Provider: "yahoo",
 		Periods: []*backtest.Backtest_Period{{
 			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
 			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},

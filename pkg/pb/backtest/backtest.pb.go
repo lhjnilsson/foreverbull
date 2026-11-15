@@ -29,7 +29,7 @@ type Backtest struct {
 	Name      string             `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Benchmark string             `protobuf:"bytes,5,opt,name=benchmark,proto3" json:"benchmark,omitempty"`
 	Periods   []*Backtest_Period `protobuf:"bytes,6,rep,name=periods,proto3" json:"periods,omitempty"`
-	// yahoo, stooq, or alpaca. Empty on the wire means yahoo at create time.
+	// yahoo, stooq, or alpaca. Empty is refused at create.
 	Provider string `protobuf:"bytes,7,opt,name=provider,proto3" json:"provider,omitempty"`
 	// Profile name for an alpaca price source. Not a credential.
 	Profile string `protobuf:"bytes,8,opt,name=profile,proto3" json:"profile,omitempty"`

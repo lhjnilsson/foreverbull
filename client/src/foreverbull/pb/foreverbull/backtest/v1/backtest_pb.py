@@ -41,7 +41,7 @@ class Backtest(Message[_BacktestFields]):
             repeated foreverbull.backtest.v1.Backtest.Period periods = 6;
             ```
         provider:
-            yahoo, stooq, or alpaca. Empty on the wire means yahoo at create time.
+            yahoo, stooq, or alpaca. Empty is refused at create.
 
             ```proto
             string provider = 7;
