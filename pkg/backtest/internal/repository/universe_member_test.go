@@ -90,7 +90,7 @@ func (test *UniverseMemberTest) TestCreateWithMembersRollsBackAFailedMember() {
 	}
 	_, err := test.backtests.CreateWithMembers(ctx, item, overlap)
 	test.Require().Error(err)
-	test.ErrorContains(err, "universe_member")
+	test.Require().ErrorContains(err, "universe_member")
 
 	_, err = test.backtests.Get(ctx, item.Name)
 	test.Require().ErrorIs(err, pgx.ErrNoRows)

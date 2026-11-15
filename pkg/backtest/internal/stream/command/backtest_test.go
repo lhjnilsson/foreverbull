@@ -452,7 +452,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETFRollsBackWhenMemberWri
 	}
 	err = test.createETFBacktest("partial-etf", "2023-01-01", "2023-01-31", listings)
 	test.Require().Error(err)
-	test.ErrorContains(err, "universe_member")
+	test.Require().ErrorContains(err, "universe_member")
 
 	backtests := repository.Backtest{Conn: test.db}
 	_, err = backtests.Get(ctx, "partial-etf")

@@ -760,7 +760,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 			return nil, fmt.Errorf("store asset for later ticker %s: %w", candidate, err)
 		}
 
-		laterFrom := start
+		var laterFrom time.Time
 		if end != nil {
 			laterFrom = end.AddDate(0, 0, 1)
 		} else {

@@ -47,6 +47,23 @@ jobs:
           name: code-coverage
           path: coverage.txt
 
+  # Same checkout and Go setup as lint-unit-tests. The linter version is
+  # pinned here; .golangci.yaml stays the config.
+  golangci-lint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+
   # GitHub Actions loads workflows only from the repository root. The scaffold
   # under the plugin directory never runs, so this job is what executes the
   # plugin Jest suite.

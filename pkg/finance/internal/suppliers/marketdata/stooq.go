@@ -133,13 +133,19 @@ func WithStooqExchange(exchange string) StooqOption {
 	}
 }
 
+// userSentence is a sentence a person reads. errors.New rejects a final
+// period; the text is that sentence, unchanged.
+type userSentence struct{ text string }
+
+func (e *userSentence) Error() string { return e.text }
+
 // NormalizeStooqExchange returns Stooq's suffix for an exchange name.
 // Only US is accepted. An empty value and any other value are the sentences
 // a person sees.
 func NormalizeStooqExchange(exchange string) (string, error) {
 	switch strings.ToUpper(strings.TrimSpace(exchange)) {
 	case "":
-		return "", errors.New(usercopy.StooqExchangeMissing)
+		return "", &userSentence{text: usercopy.StooqExchangeMissing}
 	case "US":
 		return "us", nil
 	default:
@@ -287,7 +293,7 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 		return "", "", errors.New("stooq: empty symbol")
 	}
 	if c.exchange == "" {
-		return "", "", errors.New(usercopy.StooqExchangeMissing)
+		return "", "", &userSentence{text: usercopy.StooqExchangeMissing}
 	}
 	lower := strings.ToLower(symbol)
 	upper := strings.ToUpper(symbol)

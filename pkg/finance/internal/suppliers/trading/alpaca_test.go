@@ -18,6 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -480,15 +481,18 @@ func alpacaOrderPages(t *testing.T, total int, queries *[]string) http.Handler {
 		}
 		q := r.URL.Query()
 		*queries = append(*queries, r.URL.RawQuery)
-		require.Equal(t, "open", q.Get("status"))
-		require.Equal(t, "500", q.Get("limit"))
-		require.Equal(t, "desc", q.Get("direction"))
-		require.Empty(t, q.Get("after"))
-		require.Empty(t, q.Get("until"))
+		assert.Equal(t, "open", q.Get("status"))
+		assert.Equal(t, "500", q.Get("limit"))
+		assert.Equal(t, "desc", q.Get("direction"))
+		assert.Empty(t, q.Get("after"))
+		assert.Empty(t, q.Get("until"))
 		start := 0
 		if token := q.Get("before_order_id"); token != "" {
 			n, err := strconv.Atoi(token)
-			require.NoError(t, err)
+			assert.NoError(t, err)
+			if err != nil {
+				return
+			}
 			start = n + 1
 		}
 		w.Header().Set("Content-Type", "application/json")

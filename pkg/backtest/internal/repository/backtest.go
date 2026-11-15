@@ -49,9 +49,16 @@ type Backtest struct {
 	Conn postgres.Query
 }
 
+// userSentence is a sentence a person reads. errors.New rejects a final
+// period; the text is that sentence, unchanged. The pointer is the
+// errors.Is identity, as errors.New's pointer is.
+type userSentence struct{ text string }
+
+func (e *userSentence) Error() string { return e.text }
+
 // ErrCloseOnUniverseDropFixed is returned when a create would change the
 // option stored on an existing backtest.
-var ErrCloseOnUniverseDropFixed = errors.New(usercopy.CloseOnUniverseDropFixed)
+var ErrCloseOnUniverseDropFixed error = &userSentence{text: usercopy.CloseOnUniverseDropFixed}
 
 // closeOnUniverseDrop is the stored choice. An omitted field is on.
 func closeOnUniverseDrop(item *backtest.Backtest) bool {
