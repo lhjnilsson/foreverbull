@@ -140,7 +140,7 @@ jobs:
           push: true
       - name: Install Cosign
         if: steps.existing.outputs.state == 'absent'
-        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.2, installs cosign v3.0.6
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3, installs cosign v3.1.4
       - name: Sign the published index
         if: steps.existing.outputs.state == 'absent'
         env:
@@ -249,7 +249,7 @@ jobs:
           push: true
       - name: Install Cosign
         if: steps.existing.outputs.state == 'absent'
-        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.2, installs cosign v3.0.6
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3, installs cosign v3.1.4
       - name: Sign the published index
         if: steps.existing.outputs.state == 'absent'
         env:
@@ -359,7 +359,7 @@ jobs:
           push: true
       - name: Install Cosign
         if: steps.existing.outputs.state == 'absent'
-        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.2, installs cosign v3.0.6
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3, installs cosign v3.1.4
       - name: Sign the published index
         if: steps.existing.outputs.state == 'absent'
         env:
