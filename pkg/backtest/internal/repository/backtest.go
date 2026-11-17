@@ -61,7 +61,7 @@ var ErrCloseOnUniverseDropFixed error = &userSentence{text: usercopy.CloseOnUniv
 
 // ErrProviderMissing is returned when create is given no price provider.
 // Its text is the user sentence. Yahoo is not stored in its place.
-var ErrProviderMissing = errors.New(usercopy.BacktestProviderMissing)
+var ErrProviderMissing error = &userSentence{text: usercopy.BacktestProviderMissing}
 
 // closeOnUniverseDrop is the stored choice. An omitted field is on.
 func closeOnUniverseDrop(item *backtest.Backtest) bool {

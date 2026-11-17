@@ -368,7 +368,7 @@ func (test *BacktestTest) TestCreateRefusesAMissingProvider() {
 		item.Provider = provider
 		_, err := test.uut.Create(ctx, item)
 		test.Require().ErrorIs(err, repository.ErrProviderMissing)
-		test.EqualError(err, usercopy.BacktestProviderMissing)
+		test.Require().EqualError(err, usercopy.BacktestProviderMissing)
 
 		_, err = test.uut.Get(ctx, item.Name)
 		test.Require().ErrorIs(err, pgx.ErrNoRows)
