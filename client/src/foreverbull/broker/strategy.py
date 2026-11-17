@@ -103,6 +103,7 @@ def deploy(
     version_rev: int | None = None,
     dry_run: bool = True,
     confirm: bool = False,
+    skip_missed: bool = False,
     backend: str | None = None,
     calendar_code: str | None = None,
     symbols: list[str] | None = None,
@@ -112,6 +113,7 @@ def deploy(
         mode=strategy_pb.Deployment.Mode.PAPER,
         dry_run=dry_run,
         confirm=confirm,
+        skip_missed=skip_missed,
         symbols=symbols or [],
     )
     if version_id:

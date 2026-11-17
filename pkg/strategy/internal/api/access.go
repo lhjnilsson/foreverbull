@@ -361,6 +361,10 @@ func (s *StrategyServer) deployAuthed(ctx context.Context, req *servicePb.Deploy
 	if req.DryRun != nil {
 		dryRun = *req.DryRun
 	}
+	skipMissed := false
+	if req.SkipMissed != nil {
+		skipMissed = *req.SkipMissed
+	}
 	backend := strings.TrimSpace(req.GetBackend())
 	if err := s.paperReady(backend, dryRun, req.GetConfirm()); err != nil {
 		return nil, err
@@ -372,7 +376,7 @@ func (s *StrategyServer) deployAuthed(ctx context.Context, req *servicePb.Deploy
 	deployments := repository.Deployment{Conn: s.pgx}
 	deployment, err := deployments.Create(
 		ctx, version.GetId(), backend, calendar,
-		pb.Deployment_PAPER, req.GetSymbols(), pb.Deployment_SESSION_CLOSE, dryRun,
+		pb.Deployment_PAPER, req.GetSymbols(), pb.Deployment_SESSION_CLOSE, dryRun, skipMissed,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {

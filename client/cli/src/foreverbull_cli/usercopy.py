@@ -16,6 +16,17 @@ from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
 # One block names at most this many later-ticker resolutions, then one line for the rest.
 LATER_TICKERS_SHOWN = 5
 
+# The API and the broker log keep this code. The status table shows the sentence.
+SKIPPED_MISSED_CLOSE = "skipped_missed_close"
+SKIPPED_MISSED_CLOSE_STATUS = "Missed the close. Skipped because of --skip-missed."
+
+
+def deployment_run_error(stored: str) -> str:
+    """The Error cell of `fbull strategy status`. Any other stored text is shown as stored."""
+    if stored == SKIPPED_MISSED_CLOSE:
+        return SKIPPED_MISSED_CLOSE_STATUS
+    return stored
+
 
 @dataclass(frozen=True)
 class LaterTicker:

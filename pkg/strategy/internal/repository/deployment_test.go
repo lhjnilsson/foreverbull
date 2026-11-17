@@ -48,7 +48,7 @@ func (test *DeploymentTest) TestCreatePaperDryRun() {
 	deployment, err := deployments.Create(
 		ctx, version.Id, "default", "XNYS",
 		pb.Deployment_PAPER, []string{"AAPL", "MSFT"},
-		pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 	test.NotEmpty(deployment.Id)
@@ -60,10 +60,30 @@ func (test *DeploymentTest) TestCreatePaperDryRun() {
 	test.Equal([]string{"AAPL", "MSFT"}, deployment.Symbols)
 	test.Equal(pb.Deployment_SESSION_CLOSE, deployment.ScheduleKind)
 	test.True(deployment.DryRun)
+	test.False(deployment.SkipMissed)
 	test.Equal(pb.Deployment_RUNNING, deployment.Status)
 	test.NotNil(deployment.StartedAt)
 	test.Nil(deployment.StoppedAt)
 	test.Nil(deployment.LastSessionDate)
+}
+
+func (test *DeploymentTest) TestCreateSkipMissed() {
+	ctx := context.Background()
+	_, version, err := createStrategyAndVersion(ctx, test.conn, "mean-rev", "algo:local", nil)
+	test.Require().NoError(err)
+
+	deployments := repository.Deployment{Conn: test.conn}
+	deployment, err := deployments.Create(
+		ctx, version.Id, "", "XNYS",
+		pb.Deployment_PAPER, []string{"AAPL"},
+		pb.Deployment_SESSION_CLOSE, true, true,
+	)
+	test.Require().NoError(err)
+	test.True(deployment.GetSkipMissed())
+
+	got, err := deployments.Get(ctx, deployment.Id)
+	test.Require().NoError(err)
+	test.True(got.GetSkipMissed())
 }
 
 func (test *DeploymentTest) TestOneRunningDeploymentPerStrategy() {
@@ -74,13 +94,13 @@ func (test *DeploymentTest) TestOneRunningDeploymentPerStrategy() {
 	deployments := repository.Deployment{Conn: test.conn}
 	first, err := deployments.Create(
 		ctx, version.Id, "default", "XNYS",
-		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 
 	_, err = deployments.Create(
 		ctx, version.Id, "default", "XNYS",
-		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().Error(err)
 
@@ -89,7 +109,7 @@ func (test *DeploymentTest) TestOneRunningDeploymentPerStrategy() {
 
 	second, err := deployments.Create(
 		ctx, version.Id, "default", "XNYS",
-		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 	test.NotEqual(first.Id, second.Id)
@@ -120,12 +140,12 @@ func (test *DeploymentTest) TestGetRunningAndList() {
 	deployments := repository.Deployment{Conn: test.conn}
 	created, err := deployments.Create(
 		ctx, meanRev.Id, "default", "XNYS",
-		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 	_, err = deployments.Create(
 		ctx, other.Id, "default", "XNYS",
-		pb.Deployment_PAPER, []string{"EWU"}, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, []string{"EWU"}, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 
@@ -150,7 +170,7 @@ func (test *DeploymentTest) TestUpdateStatusAndLastSessionDate() {
 	deployments := repository.Deployment{Conn: test.conn}
 	deployment, err := deployments.Create(
 		ctx, version.Id, "default", "XNYS",
-		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 
@@ -181,7 +201,7 @@ func (test *DeploymentTest) TestUpdateStatusErrorOnlyWhileRunning() {
 	deployments := repository.Deployment{Conn: test.conn}
 	stoppedDeployment, err := deployments.Create(
 		ctx, version.Id, "default", "XNYS",
-		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 
@@ -206,7 +226,7 @@ func (test *DeploymentTest) TestUpdateStatusErrorOnlyWhileRunning() {
 
 	runningDeployment, err := deployments.Create(
 		ctx, version.Id, "default", "XNYS",
-		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, []string{"SPY"}, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 

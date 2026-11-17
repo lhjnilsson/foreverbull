@@ -22,6 +22,53 @@ func TestExperimentRunFailed(t *testing.T) {
 			[]string{usercopy.CauseRunFailed, usercopy.CauseFailureNotStored, usercopy.CauseNotSent}))
 }
 
+func TestMissedSessionClose(t *testing.T) {
+	require.Equal(t,
+		"Deployment 'mean-rev' missed the close on 2024-03-04, so it didn't trade that session and stopped with an error. "+
+			"Run `fbull strategy deploy mean-rev` again with the same options plus --skip-missed to skip missed closes and keep trading.",
+		mustMissed(t, "mean-rev", []string{"2024-03-04"}))
+	require.Equal(t,
+		"A deployment missed the close on 2024-03-04, so it didn't trade that session and stopped with an error. "+
+			"Run `fbull strategy deploy` again with the same options plus --skip-missed to skip missed closes and keep trading.",
+		mustMissed(t, "  ", []string{"2024-03-04"}))
+	require.Equal(t,
+		"Deployment 'mean-rev' missed the closes on 2024-03-04 and 2024-03-05, so it didn't trade those sessions and stopped with an error. "+
+			"Run `fbull strategy deploy mean-rev` again with the same options plus --skip-missed to skip missed closes and keep trading.",
+		mustMissed(t, "mean-rev", []string{"2024-03-04", "2024-03-05"}))
+	require.Equal(t,
+		"A deployment missed the closes on 2024-03-04 and 2024-03-05, so it didn't trade those sessions and stopped with an error. "+
+			"Run `fbull strategy deploy` again with the same options plus --skip-missed to skip missed closes and keep trading.",
+		mustMissed(t, "", []string{"2024-03-04", "2024-03-05"}))
+	require.Equal(t,
+		"Deployment 'mean-rev' missed the closes on 2024-03-04 to 2024-03-08 (5 sessions), so it didn't trade those sessions and stopped with an error. "+
+			"Run `fbull strategy deploy mean-rev` again with the same options plus --skip-missed to skip missed closes and keep trading.",
+		mustMissed(t, "mean-rev", []string{
+			"2024-03-04", "2024-03-05", "2024-03-06", "2024-03-07", "2024-03-08",
+		}))
+	require.Equal(t,
+		"A deployment missed the closes on 2024-03-04 to 2024-03-08 (5 sessions), so it didn't trade those sessions and stopped with an error. "+
+			"Run `fbull strategy deploy` again with the same options plus --skip-missed to skip missed closes and keep trading.",
+		mustMissed(t, " ", []string{
+			"2024-03-04", "2024-03-05", "2024-03-06", "2024-03-07", "2024-03-08",
+		}))
+}
+
+func TestMissedSessionCloseRejectsNoDates(t *testing.T) {
+	sentence, err := usercopy.MissedSessionClose("mean-rev", nil)
+	require.EqualError(t, err, "missed close has no session date")
+	require.Empty(t, sentence)
+	sentence, err = usercopy.MissedSessionClose("mean-rev", []string{})
+	require.EqualError(t, err, "missed close has no session date")
+	require.Empty(t, sentence)
+}
+
+func mustMissed(t *testing.T, strategy string, dates []string) string {
+	t.Helper()
+	sentence, err := usercopy.MissedSessionClose(strategy, dates)
+	require.NoError(t, err)
+	return sentence
+}
+
 func TestDeploymentSentences(t *testing.T) {
 	require.Equal(t, "Couldn't start deployment 'mean-rev'. Run `fbenv status` to check that the environment is running, "+
 		"then run `fbull strategy deploy mean-rev` again.", usercopy.DeploymentStartFailed("mean-rev", false))

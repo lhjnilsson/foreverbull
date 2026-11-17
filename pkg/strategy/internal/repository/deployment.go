@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS strategy_deployment (
 	symbols text[] NOT NULL DEFAULT '{}',
 	schedule_kind int NOT NULL DEFAULT 0,
 	dry_run boolean NOT NULL DEFAULT true,
+	skip_missed boolean NOT NULL DEFAULT false,
 	status int NOT NULL DEFAULT 0,
 	last_session_date date,
 	error text,
@@ -47,6 +48,7 @@ func (db *Deployment) Create(
 	symbols []string,
 	scheduleKind pb.Deployment_ScheduleKind,
 	dryRun bool,
+	skipMissed bool,
 ) (*pb.Deployment, error) {
 	if symbols == nil {
 		symbols = []string{}
@@ -56,12 +58,12 @@ func (db *Deployment) Create(
 	err := db.Conn.QueryRow(ctx,
 		`INSERT INTO strategy_deployment (
 			strategy_id, version_id, mode, backend, calendar_code, symbols,
-			schedule_kind, dry_run, status, started_at
+			schedule_kind, dry_run, skip_missed, status, started_at
 		)
-		SELECT strategy_id, id, $2, $3, $4, $5, $6, $7, $8, NOW()
+		SELECT strategy_id, id, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
 		FROM strategy_version WHERE id=$1
 		RETURNING id`,
-		versionID, mode, backend, calendarCode, symbols, scheduleKind, dryRun, pb.Deployment_RUNNING,
+		versionID, mode, backend, calendarCode, symbols, scheduleKind, dryRun, skipMissed, pb.Deployment_RUNNING,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create strategy deployment: %w", err)
@@ -209,7 +211,7 @@ func (db *Deployment) SetLastSessionDate(ctx context.Context, id string, date *i
 
 const deploymentSelect = `
 SELECT d.id, d.strategy_id, s.name, d.version_id, v.rev, d.mode, d.backend,
-	d.calendar_code, d.symbols, d.schedule_kind, d.dry_run, d.status, d.error,
+	d.calendar_code, d.symbols, d.schedule_kind, d.dry_run, d.skip_missed, d.status, d.error,
 	d.last_session_date, d.started_at, d.stopped_at
 FROM strategy_deployment d
 JOIN strategy s ON d.strategy_id = s.id
@@ -225,7 +227,7 @@ func (db *Deployment) scanOne(ctx context.Context, query string, args ...interfa
 
 	err := db.Conn.QueryRow(ctx, query, args...).Scan(
 		&d.Id, &d.StrategyId, &d.StrategyName, &d.VersionId, &d.VersionRev, &d.Mode, &d.Backend,
-		&d.CalendarCode, &symbols, &d.ScheduleKind, &d.DryRun, &d.Status, &errText,
+		&d.CalendarCode, &symbols, &d.ScheduleKind, &d.DryRun, &d.SkipMissed, &d.Status, &errText,
 		&lastSession, &startedAt, &stoppedAt,
 	)
 	if err != nil {
@@ -250,7 +252,7 @@ func parseDeploymentRows(rows pgx.Rows) ([]*pb.Deployment, error) {
 
 		err := rows.Scan(
 			&d.Id, &d.StrategyId, &d.StrategyName, &d.VersionId, &d.VersionRev, &d.Mode, &d.Backend,
-			&d.CalendarCode, &symbols, &d.ScheduleKind, &d.DryRun, &d.Status, &errText,
+			&d.CalendarCode, &symbols, &d.ScheduleKind, &d.DryRun, &d.SkipMissed, &d.Status, &errText,
 			&lastSession, &startedAt, &stoppedAt,
 		)
 		if err != nil {

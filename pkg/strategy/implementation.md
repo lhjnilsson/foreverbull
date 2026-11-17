@@ -244,7 +244,7 @@ sequenceDiagram
 
 On broker restart: load deployments with `status=running` and continue from the last persisted calendar date (do not double-fire the same session).
 
-**Catch-up policy (PoC):** if the process was down across a close, skip missed sessions and log them (`skipped_missed_close`). Do not replay three days of orders on Monday morning. A later “replay” flag can exist on the runner interface.
+**Catch-up policy:** a missed close fails the deployment unless it was deployed with skip-missed. The stored error is the missed-close sentence. It says to run `fbull strategy deploy <name>` again with the same options plus `--skip-missed` (or `fbull strategy deploy` when the name is blank). The session is not marked skipped, and `last_session_date` does not move. With `--skip-missed` (or `skip_missed` on the deploy request), each missed close is stored as `skipped_missed_close`, logged, and the deployment continues. There is no replay of orders.
 
 ### 5.3 Why not put the loop in Finance?
 

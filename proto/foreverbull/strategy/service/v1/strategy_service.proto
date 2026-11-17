@@ -158,6 +158,8 @@ message DeployRequest {
   foreverbull.strategy.v1.Deployment.ScheduleKind schedule_kind = 8;
   // Unset means true (paper dry-run is the default).
   optional bool dry_run = 9;
+  // Unset means false. A missed close fails the deployment unless this is set.
+  optional bool skip_missed = 12;
   // Required when mode is LIVE.
   bool confirm = 10;
   string owner = 11;

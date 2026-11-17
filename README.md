@@ -270,7 +270,7 @@ uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--mode paper --no-dry-run --backend <profile> --yes` (or `--confirm`) and `TRADING_ENABLED=true`. `--backend` is a profile name, not a key. `--mode live` is refused.
+Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--mode paper --no-dry-run --backend <profile> --yes` (or `--confirm`) and `TRADING_ENABLED=true`. `--backend` is a profile name, not a key. `--mode live` is refused. A missed close fails the deployment. Run `fbull strategy deploy <name>` again with the same options plus `--skip-missed` to skip missed closes and keep trading. With the flag, each skipped close is recorded and the deployment continues.
 
 ### Trading profiles
 

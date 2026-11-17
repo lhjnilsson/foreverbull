@@ -88,6 +88,8 @@ message Deployment {
   optional foreverbull.common.Date last_session_date = 14;
   optional google.protobuf.Timestamp started_at = 15;
   optional google.protobuf.Timestamp stopped_at = 16;
+  // Off unless deploy set it. A missed close fails the deployment.
+  bool skip_missed = 17;
 }
 
 message DeploymentRun {
