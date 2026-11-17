@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -15,6 +16,9 @@ import (
 
 const (
 	PresignedURLExpiry = 24 * time.Hour
+
+	// ResultMaxBytes is the largest stored execution result the broker will read.
+	ResultMaxBytes int64 = 128 << 20
 
 	// /minio/health/live can succeed while BucketExists still returns
 	// "Server not initialized yet". Ten tries at 300ms is the bound.
@@ -140,6 +144,31 @@ func NewMinioStorage(ctx context.Context) (Storage, error) {
 	}
 
 	return storage, nil
+}
+
+var (
+	// ErrResultMissing is a stored execution result that is not there.
+	// The text does not name a bucket, a host, or a credential.
+	ErrResultMissing = errors.New("execution result missing")
+	// ErrResultTooLarge is a stored execution result above ResultMaxBytes.
+	ErrResultTooLarge = errors.New("execution result too large")
+)
+
+// ResultKey reports whether id can be used as an execution-result object name.
+// Only letters, digits, and hyphens are accepted, so the name cannot be a path.
+func ResultKey(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		letter := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		digit := r >= '0' && r <= '9'
+		if letter || digit || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func minioNotInitialized(err error) bool {
@@ -326,4 +355,31 @@ func (s *MinioStorage) CreateObject(ctx context.Context, bucket Bucket, name str
 	}
 
 	return s.GetObject(ctx, bucket, name)
+}
+
+// ReadResult opens the stored Zipline result for one execution.
+// The caller closes the reader. A missing or empty object is ErrResultMissing.
+// An object above ResultMaxBytes is ErrResultTooLarge and is not opened.
+func (s *MinioStorage) ReadResult(ctx context.Context, executionID string) (io.ReadCloser, int64, error) {
+	if !ResultKey(executionID) {
+		return nil, 0, ErrResultMissing
+	}
+	info, err := s.client.StatObject(ctx, string(ResultsBucket), executionID, minio.StatObjectOptions{})
+	if err != nil {
+		if MissingObject(err) {
+			return nil, 0, ErrResultMissing
+		}
+		return nil, 0, fmt.Errorf("stat execution result: %w", err)
+	}
+	if info.Size <= 0 {
+		return nil, 0, ErrResultMissing
+	}
+	if info.Size > ResultMaxBytes {
+		return nil, 0, ErrResultTooLarge
+	}
+	obj, err := s.client.GetObject(ctx, string(ResultsBucket), executionID, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("open execution result: %w", err)
+	}
+	return obj, info.Size, nil
 }

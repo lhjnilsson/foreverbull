@@ -418,6 +418,13 @@ class TestClusterManager:
         assert "--namespace" in helm[0]
         assert helm[0][helm[0].index("--namespace") + 1] == "foreverbull"
         assert "replicaCount=0" in helm[0]
+        joined = " ".join(helm[0])
+        assert "STORAGE_" not in joined
+        assert "minioadmin" not in joined
+        assert "minio-accessKey" not in joined
+        assert "minio-secretKey" not in joined
+        assert "MINIO_ACCESS_KEY" not in joined
+        assert "MINIO_SECRET" not in joined
 
     def test_grafana_web_url_strips_credentials_and_remote_origin(self, tmp_path: Path):
         local = Config(

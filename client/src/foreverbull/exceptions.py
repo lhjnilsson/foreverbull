@@ -27,3 +27,7 @@ class ConfigurationError(Exception):
 
 class RuntimeError(Exception):
     pass
+
+
+class ResultError(Exception):
+    """The broker did not return a usable execution result. The message names the execution."""

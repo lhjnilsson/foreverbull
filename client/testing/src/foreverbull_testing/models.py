@@ -1,4 +1,4 @@
-import tempfile
+import io
 
 from dataclasses import dataclass
 from datetime import UTC
@@ -15,7 +15,8 @@ from foreverbull import Asset as BaseAsset
 from foreverbull import Assets as BaseAssets
 from foreverbull import Portfolio
 from foreverbull import models
-from foreverbull.broker.storage import Storage
+from foreverbull.broker.backtest import get_execution_result
+from foreverbull.exceptions import ResultError
 from foreverbull.foreverbull import BacktestSession
 from foreverbull.pb import pb_utils
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
@@ -164,6 +165,18 @@ class PortfolioManager:
         )
 
 
+def _result_detail(exc: BaseException) -> str:
+    details = getattr(exc, "details", None)
+    if callable(details):
+        message = details()
+        if message:
+            return str(message)
+    text = str(exc).strip()
+    if text:
+        return text
+    return exc.__class__.__name__
+
+
 class BacktestResult:
     def __init__(self, backtest: backtest_pb.Backtest, execution_id: str):
         self._backtest = backtest
@@ -174,13 +187,26 @@ class BacktestResult:
     def dataframe(self) -> pandas.DataFrame:
         if self.__df is not None:
             return self.__df
-        storage = Storage.from_environment()
-        with tempfile.NamedTemporaryFile() as tmp:
-            storage.download_object("results", self._execution_id, tmp.name)
-            df = pandas.read_pickle(tmp.name)
-            assert type(df) is pandas.DataFrame, "result is not a dataframe"
-        self.__df = df
-        return df
+        try:
+            raw = get_execution_result(self._execution_id)
+        except ResultError:
+            raise
+        except Exception as exc:
+            raise ResultError(
+                f"Couldn't read the result for execution {self._execution_id}. {_result_detail(exc)}"
+            ) from exc
+        try:
+            loaded = pandas.read_pickle(io.BytesIO(raw))
+        except Exception as exc:
+            raise ResultError(
+                f"Couldn't read the result for execution {self._execution_id}. The broker's answer is not a dataframe."
+            ) from exc
+        if type(loaded) is not pandas.DataFrame:
+            raise ResultError(
+                f"Couldn't read the result for execution {self._execution_id}. The broker's answer is not a dataframe."
+            )
+        self.__df = loaded
+        return loaded
 
 
 class Backtest:

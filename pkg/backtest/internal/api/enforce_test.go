@@ -91,7 +91,7 @@ func TestGrantsAuthorizeBacktest(t *testing.T) {
 
 	published := new(stream.MockStream)
 	published.On("Publish", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	server := api.NewBacktestServer(pool, published)
+	server := api.NewBacktestServer(pool, published, nil)
 
 	mux := http.NewServeMux()
 	auth.RegisterHTTP(mux, pool)
@@ -319,7 +319,7 @@ func TestOwnedCreateSendsStoredBacktest(t *testing.T) {
 			require.NoError(t, err)
 		}).
 		Return((<-chan *streamPb.Orchestration_Step)(steps))
-	server := api.NewBacktestServer(pool, orchestrated)
+	server := api.NewBacktestServer(pool, orchestrated, nil)
 
 	capture := &createCapture{ctx: auth.WithAccount(ctx, owner)}
 	err = server.CreateBacktest(&servicePb.CreateBacktestRequest{

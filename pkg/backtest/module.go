@@ -45,8 +45,12 @@ var Module = fx.Options( //nolint: gochecknoglobals
 		func(ce container.Engine) engine.Engine {
 			return backtest.NewLazyEngine(ce)
 		},
-		func(pgx *pgxpool.Pool, eventStream stream.Stream) *api.BacktestServer {
-			return api.NewBacktestServer(pgx, eventStream)
+		func(pgx *pgxpool.Pool, eventStream stream.Stream, st storage.Storage) *api.BacktestServer {
+			var results api.ResultReader
+			if reader, ok := st.(api.ResultReader); ok {
+				results = reader
+			}
+			return api.NewBacktestServer(pgx, eventStream, results)
 		},
 	),
 	fx.Invoke(

@@ -58,6 +58,8 @@ uv run pytest --backtest demo
 
 With a name, the fixture looks the backtest up with `foreverbull.broker.backtest.get`. A broker error or a missing name fails the test and names the cause. A found backtest opens `broker.backtest.create_session`. A session that fails to start, or a session that never starts, fails the test and names the cause. A started session connects with `Foreverbull.backtest_session` and yields the existing `foreverbull_testing.models.Backtest`. Runs go through `Backtest.run_execution`. The fixture does not call `trading_session` or `PlaceOrder`, and it does not set `TRADING_ENABLED`. The broker is the Kind/Helm stack (`task build`, then `fbenv create` and `fbenv start`), not this plugin.
 
+📝 `BacktestResult.dataframe` reads the stored result from the broker. It does not use `STORAGE_*`.
+
 ## Tests for this package
 
 From `client/`:

@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BacktestServicer_ListBacktests_FullMethodName  = "/foreverbull.backtest.service.v1.BacktestServicer/ListBacktests"
-	BacktestServicer_CreateBacktest_FullMethodName = "/foreverbull.backtest.service.v1.BacktestServicer/CreateBacktest"
-	BacktestServicer_GetBacktest_FullMethodName    = "/foreverbull.backtest.service.v1.BacktestServicer/GetBacktest"
-	BacktestServicer_DeleteBacktest_FullMethodName = "/foreverbull.backtest.service.v1.BacktestServicer/DeleteBacktest"
-	BacktestServicer_CreateSession_FullMethodName  = "/foreverbull.backtest.service.v1.BacktestServicer/CreateSession"
-	BacktestServicer_GetSession_FullMethodName     = "/foreverbull.backtest.service.v1.BacktestServicer/GetSession"
-	BacktestServicer_ListExecutions_FullMethodName = "/foreverbull.backtest.service.v1.BacktestServicer/ListExecutions"
-	BacktestServicer_GetExecution_FullMethodName   = "/foreverbull.backtest.service.v1.BacktestServicer/GetExecution"
+	BacktestServicer_ListBacktests_FullMethodName      = "/foreverbull.backtest.service.v1.BacktestServicer/ListBacktests"
+	BacktestServicer_CreateBacktest_FullMethodName     = "/foreverbull.backtest.service.v1.BacktestServicer/CreateBacktest"
+	BacktestServicer_GetBacktest_FullMethodName        = "/foreverbull.backtest.service.v1.BacktestServicer/GetBacktest"
+	BacktestServicer_DeleteBacktest_FullMethodName     = "/foreverbull.backtest.service.v1.BacktestServicer/DeleteBacktest"
+	BacktestServicer_CreateSession_FullMethodName      = "/foreverbull.backtest.service.v1.BacktestServicer/CreateSession"
+	BacktestServicer_GetSession_FullMethodName         = "/foreverbull.backtest.service.v1.BacktestServicer/GetSession"
+	BacktestServicer_ListExecutions_FullMethodName     = "/foreverbull.backtest.service.v1.BacktestServicer/ListExecutions"
+	BacktestServicer_GetExecution_FullMethodName       = "/foreverbull.backtest.service.v1.BacktestServicer/GetExecution"
+	BacktestServicer_GetExecutionResult_FullMethodName = "/foreverbull.backtest.service.v1.BacktestServicer/GetExecutionResult"
 )
 
 // BacktestServicerClient is the client API for BacktestServicer service.
@@ -41,6 +42,10 @@ type BacktestServicerClient interface {
 	GetSession(ctx context.Context, in *GetSessionRequest, opts ...grpc.CallOption) (*GetSessionResponse, error)
 	ListExecutions(ctx context.Context, in *ListExecutionsRequest, opts ...grpc.CallOption) (*ListExecutionsResponse, error)
 	GetExecution(ctx context.Context, in *GetExecutionRequest, opts ...grpc.CallOption) (*GetExecutionResponse, error)
+	// GetExecutionResult streams the stored result for one execution.
+	// The caller must be allowed to read that execution. The stream is the
+	// result bytes, not a storage URL or a credential.
+	GetExecutionResult(ctx context.Context, in *GetExecutionResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetExecutionResultResponse], error)
 }
 
 type backtestServicerClient struct {
@@ -149,6 +154,25 @@ func (c *backtestServicerClient) GetExecution(ctx context.Context, in *GetExecut
 	return out, nil
 }
 
+func (c *backtestServicerClient) GetExecutionResult(ctx context.Context, in *GetExecutionResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetExecutionResultResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BacktestServicer_ServiceDesc.Streams[2], BacktestServicer_GetExecutionResult_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GetExecutionResultRequest, GetExecutionResultResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BacktestServicer_GetExecutionResultClient = grpc.ServerStreamingClient[GetExecutionResultResponse]
+
 // BacktestServicerServer is the server API for BacktestServicer service.
 // All implementations must embed UnimplementedBacktestServicerServer
 // for forward compatibility.
@@ -161,6 +185,10 @@ type BacktestServicerServer interface {
 	GetSession(context.Context, *GetSessionRequest) (*GetSessionResponse, error)
 	ListExecutions(context.Context, *ListExecutionsRequest) (*ListExecutionsResponse, error)
 	GetExecution(context.Context, *GetExecutionRequest) (*GetExecutionResponse, error)
+	// GetExecutionResult streams the stored result for one execution.
+	// The caller must be allowed to read that execution. The stream is the
+	// result bytes, not a storage URL or a credential.
+	GetExecutionResult(*GetExecutionResultRequest, grpc.ServerStreamingServer[GetExecutionResultResponse]) error
 	mustEmbedUnimplementedBacktestServicerServer()
 }
 
@@ -194,6 +222,9 @@ func (UnimplementedBacktestServicerServer) ListExecutions(context.Context, *List
 }
 func (UnimplementedBacktestServicerServer) GetExecution(context.Context, *GetExecutionRequest) (*GetExecutionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetExecution not implemented")
+}
+func (UnimplementedBacktestServicerServer) GetExecutionResult(*GetExecutionResultRequest, grpc.ServerStreamingServer[GetExecutionResultResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method GetExecutionResult not implemented")
 }
 func (UnimplementedBacktestServicerServer) mustEmbedUnimplementedBacktestServicerServer() {}
 func (UnimplementedBacktestServicerServer) testEmbeddedByValue()                          {}
@@ -346,6 +377,17 @@ func _BacktestServicer_GetExecution_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BacktestServicer_GetExecutionResult_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetExecutionResultRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BacktestServicerServer).GetExecutionResult(m, &grpc.GenericServerStream[GetExecutionResultRequest, GetExecutionResultResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BacktestServicer_GetExecutionResultServer = grpc.ServerStreamingServer[GetExecutionResultResponse]
+
 // BacktestServicer_ServiceDesc is the grpc.ServiceDesc for BacktestServicer service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -387,6 +429,11 @@ var BacktestServicer_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "CreateSession",
 			Handler:       _BacktestServicer_CreateSession_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetExecutionResult",
+			Handler:       _BacktestServicer_GetExecutionResult_Handler,
 			ServerStreams: true,
 		},
 	},
