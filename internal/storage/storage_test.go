@@ -24,6 +24,16 @@ func TestMinioNotInitialized(t *testing.T) {
 	require.True(t, minioNotInitialized(fmt.Errorf("wrap: %w", errors.New("Server not initialized yet"))))
 }
 
+func TestResultKey(t *testing.T) {
+	require.True(t, ResultKey("01234567-89ab-cdef-0123-456789abcdef"))
+	require.False(t, ResultKey(""))
+	require.False(t, ResultKey("../secrets"))
+	require.False(t, ResultKey("results/exec"))
+	require.False(t, ResultKey("http://minio:9000"))
+	require.False(t, ResultKey("has space"))
+	require.False(t, ResultKey(string(bytes.Repeat([]byte("a"), 129))))
+}
+
 func TestMissingObject(t *testing.T) {
 	require.False(t, MissingObject(nil))
 	require.False(t, MissingObject(errors.New("connection refused")))

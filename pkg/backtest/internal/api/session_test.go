@@ -191,7 +191,7 @@ func (s *SessionTest) TestCreateExecutionStoresUsedArguments() {
 		s.True(proto.Equal(want[i], stored[i]))
 	}
 
-	reader := api.NewBacktestServer(s.conn, nil)
+	reader := api.NewBacktestServer(s.conn, nil, nil)
 	got, err := reader.GetExecution(context.Background(), &servicePb.GetExecutionRequest{ExecutionId: rsp.Execution.Id})
 	s.Require().NoError(err)
 	s.Equal(rsp.Execution.Id, got.GetExecution().GetId())

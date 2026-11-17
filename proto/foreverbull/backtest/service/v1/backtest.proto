@@ -144,6 +144,22 @@ message GetExecutionResponse {
   string provider = 4;
 }
 
+message GetExecutionResultRequest {
+  string execution_id = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+}
+
+// GetExecutionResultResponse is one chunk of the stored Zipline result.
+// The bytes are the result itself. The message has no storage address.
+message GetExecutionResultResponse {
+  bytes data = 1;
+}
+
 service BacktestServicer {
   rpc ListBacktests(ListBacktestsRequest) returns (ListBacktestsResponse) {}
   rpc CreateBacktest(CreateBacktestRequest) returns (stream CreateBacktestResponse) {}
@@ -153,4 +169,8 @@ service BacktestServicer {
   rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
   rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {}
   rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {}
+  // GetExecutionResult streams the stored result for one execution.
+  // The caller must be allowed to read that execution. The stream is the
+  // result bytes, not a storage URL or a credential.
+  rpc GetExecutionResult(GetExecutionResultRequest) returns (stream GetExecutionResultResponse) {}
 }

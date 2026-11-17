@@ -34,8 +34,9 @@ import (
 type BacktestServerTest struct {
 	suite.Suite
 
-	pgx    *pgxpool.Pool
-	stream *stream.MockStream
+	pgx     *pgxpool.Pool
+	stream  *stream.MockStream
+	results *memoryResults
 
 	listener *bufconn.Listener
 	server   *grpc.Server
@@ -63,7 +64,8 @@ func (test *BacktestServerTest) SetupSubTest() {
 	test.Require().NoError(err)
 
 	test.stream = new(stream.MockStream)
-	server := api.NewBacktestServer(test.pgx, test.stream)
+	test.results = &memoryResults{}
+	server := api.NewBacktestServer(test.pgx, test.stream, test.results)
 	servicePb.RegisterBacktestServicerServer(test.server, server)
 
 	go func() {

@@ -25,14 +25,16 @@ import (
 type BacktestServer struct {
 	servicePb.UnimplementedBacktestServicerServer
 
-	pgx    *pgxpool.Pool
-	stream stream.Stream
+	pgx     *pgxpool.Pool
+	stream  stream.Stream
+	results ResultReader
 }
 
-func NewBacktestServer(pgx *pgxpool.Pool, stream stream.Stream) *BacktestServer {
+func NewBacktestServer(pgx *pgxpool.Pool, stream stream.Stream, results ResultReader) *BacktestServer {
 	return &BacktestServer{
-		pgx:    pgx,
-		stream: stream,
+		pgx:     pgx,
+		stream:  stream,
+		results: results,
 	}
 }
 

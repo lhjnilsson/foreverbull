@@ -121,11 +121,10 @@ Zipline is reached by in-cluster Service `zipline:50055`. Service pods get
 `LOGLEVEL` (`internal/container` `Start`). They do not get `DATABASE_URL` or
 the MinIO keys. The broker has no HTTP listener.
 
-The Python storage client (`foreverbull.broker.storage`) has no default
-endpoint or keys and does not switch to another endpoint when the one it
-is given does not answer. Outside the cluster, set `STORAGE_ENDPOINT`
-(`localhost:9000` on local Kind), `STORAGE_ACCESS_KEY`, and
-`STORAGE_SECRET_KEY` before reading results from storage.
+A laptop reads a backtest result from the broker (`GetExecutionResult`).
+It does not receive MinIO keys or `STORAGE_*` values. Zipline, inside the
+cluster, still reads those variables from the credentials Secret. The
+broker streams the result bytes and does not return a storage address.
 
 Persistence is cluster PVCs (`persistence.*`). Historical Docker host binds
 under `.foreverbull/{postgres,minio,nats}` are not used.

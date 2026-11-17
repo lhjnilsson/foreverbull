@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from grpc import StatusCode, method_handlers_generic_handler, unary_stream_rpc_method_handler, unary_unary_rpc_method_handler
 
-from .backtest_pb import CreateBacktestRequest, CreateBacktestResponse, CreateSessionRequest, CreateSessionResponse, DeleteBacktestRequest, DeleteBacktestResponse, GetBacktestRequest, GetBacktestResponse, GetExecutionRequest, GetExecutionResponse, GetSessionRequest, GetSessionResponse, ListBacktestsRequest, ListBacktestsResponse, ListExecutionsRequest, ListExecutionsResponse
+from .backtest_pb import CreateBacktestRequest, CreateBacktestResponse, CreateSessionRequest, CreateSessionResponse, DeleteBacktestRequest, DeleteBacktestResponse, GetBacktestRequest, GetBacktestResponse, GetExecutionRequest, GetExecutionResponse, GetExecutionResultRequest, GetExecutionResultResponse, GetSessionRequest, GetSessionResponse, ListBacktestsRequest, ListBacktestsResponse, ListExecutionsRequest, ListExecutionsResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
@@ -59,6 +59,16 @@ class BacktestServicerService:
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
+    def get_execution_result(self, request: GetExecutionResultRequest, context: aio.ServicerContext) -> AsyncIterator[GetExecutionResultResponse]:
+        """
+        GetExecutionResult streams the stored result for one execution.
+        The caller must be allowed to read that execution. The stream is the
+        result bytes, not a storage URL or a credential.
+        """
+        context.set_code(StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
     def add_to_server(self, server: aio.Server) -> None:
         """Register this service's RPC handlers with a grpc server."""
         rpc_method_handlers = {
@@ -101,6 +111,11 @@ class BacktestServicerService:
                 self.get_execution,
                 request_deserializer=GetExecutionRequest.from_binary,
                 response_serializer=GetExecutionResponse.to_binary,
+            ),
+            "GetExecutionResult": unary_stream_rpc_method_handler(
+                self.get_execution_result,
+                request_deserializer=GetExecutionResultRequest.from_binary,
+                response_serializer=GetExecutionResultResponse.to_binary,
             ),
         }
         generic_handler = method_handlers_generic_handler(
@@ -151,6 +166,11 @@ class BacktestServicerClient:
             "/foreverbull.backtest.service.v1.BacktestServicer/GetExecution",
             request_serializer=GetExecutionRequest.to_binary,
             response_deserializer=GetExecutionResponse.from_binary,
+        )
+        self._get_execution_result = channel.unary_stream(
+            "/foreverbull.backtest.service.v1.BacktestServicer/GetExecutionResult",
+            request_serializer=GetExecutionResultRequest.to_binary,
+            response_deserializer=GetExecutionResultResponse.from_binary,
         )
 
     def list_backtests(
@@ -249,6 +269,23 @@ class BacktestServicerClient:
     ) -> aio.UnaryUnaryCall[GetExecutionRequest, GetExecutionResponse]:
         return self._get_execution(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
 
+    def get_execution_result(
+        self,
+        request: GetExecutionResultRequest,
+        *,
+        timeout: float | None = None,
+        metadata: aio.Metadata | Sequence[tuple[str, str | bytes]] | None = None,
+        credentials: CallCredentials | None = None,
+        wait_for_ready: bool | None = None,
+        compression: Compression | None = None,
+    ) -> aio.UnaryStreamCall[GetExecutionResultRequest, GetExecutionResultResponse]:
+        """
+        GetExecutionResult streams the stored result for one execution.
+        The caller must be allowed to read that execution. The stream is the
+        result bytes, not a storage URL or a credential.
+        """
+        return self._get_execution_result(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
+
 
 class BacktestServicerServiceSync:
     def list_backtests(self, request: ListBacktestsRequest, context: ServicerContext) -> ListBacktestsResponse:
@@ -287,6 +324,16 @@ class BacktestServicerServiceSync:
         raise NotImplementedError("Method not implemented!")
 
     def get_execution(self, request: GetExecutionRequest, context: ServicerContext) -> GetExecutionResponse:
+        context.set_code(StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def get_execution_result(self, request: GetExecutionResultRequest, context: ServicerContext) -> Iterator[GetExecutionResultResponse]:
+        """
+        GetExecutionResult streams the stored result for one execution.
+        The caller must be allowed to read that execution. The stream is the
+        result bytes, not a storage URL or a credential.
+        """
         context.set_code(StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
@@ -333,6 +380,11 @@ class BacktestServicerServiceSync:
                 self.get_execution,
                 request_deserializer=GetExecutionRequest.from_binary,
                 response_serializer=GetExecutionResponse.to_binary,
+            ),
+            "GetExecutionResult": unary_stream_rpc_method_handler(
+                self.get_execution_result,
+                request_deserializer=GetExecutionResultRequest.from_binary,
+                response_serializer=GetExecutionResultResponse.to_binary,
             ),
         }
         generic_handler = method_handlers_generic_handler(
@@ -383,6 +435,11 @@ class BacktestServicerClientSync:
             "/foreverbull.backtest.service.v1.BacktestServicer/GetExecution",
             request_serializer=GetExecutionRequest.to_binary,
             response_deserializer=GetExecutionResponse.from_binary,
+        )
+        self._get_execution_result = channel.unary_stream(
+            "/foreverbull.backtest.service.v1.BacktestServicer/GetExecutionResult",
+            request_serializer=GetExecutionResultRequest.to_binary,
+            response_deserializer=GetExecutionResultResponse.from_binary,
         )
 
     def list_backtests(
@@ -480,3 +537,20 @@ class BacktestServicerClientSync:
         compression: Compression | None = None,
     ) -> GetExecutionResponse:
         return self._get_execution(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
+
+    def get_execution_result(
+        self,
+        request: GetExecutionResultRequest,
+        *,
+        timeout: float | None = None,
+        metadata: tuple[tuple[str, str | bytes], ...] | None = None,
+        credentials: CallCredentials | None = None,
+        wait_for_ready: bool | None = None,
+        compression: Compression | None = None,
+    ) -> _CallIterator[GetExecutionResultResponse]:
+        """
+        GetExecutionResult streams the stored result for one execution.
+        The caller must be allowed to read that execution. The stream is the
+        result bytes, not a storage URL or a credential.
+        """
+        return self._get_execution_result(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)

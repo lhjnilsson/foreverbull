@@ -21,9 +21,13 @@ auth stays a separate change.
 | Positions / portfolio outside a worker | None for paper session | `TradingServicer.GetPortfolio` |
 | Positions on a finished period | None | `Period.positions` on `BacktestServicer.GetExecution` |
 | Execution results (PNL, returns, equity curve, …) | None for Grafana/CLI | `BacktestServicer.GetExecution` (execution + periods) |
+| Zipline result dataframe | MinIO from the laptop | `BacktestServicer.GetExecutionResult` streams the stored bytes. No storage URL or credential |
 
-Positions and results already go through the broker. The only new RPC is
-stored-bar OHLC read. Download from Yahoo/Stooq/Alpaca stays
+Period results already go through `GetExecution`. The stored Zipline result
+goes through `GetExecutionResult`: the broker reads it and streams the bytes
+for an execution the caller may read. The response has no storage address
+and no credential. A caller who may not read the execution gets the same
+refusal as `GetExecution`. Download from Yahoo/Stooq/Alpaca stays
 `DownloadHistoricalData`; that path writes bars, it does not serve them to
 algorithms.
 

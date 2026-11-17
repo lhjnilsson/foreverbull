@@ -91,6 +91,8 @@ func TestReadScopeAllowsOnlyReadRPCs(t *testing.T) {
 	require.NoError(t, roleAllowsMethod(session, create))
 	require.Equal(t, codes.PermissionDenied, status.Code(roleAllowsMethod(viewer, create)))
 	require.NoError(t, roleAllowsMethod(viewer, get))
+	require.NoError(t, roleAllowsMethod(viewer, "/foreverbull.backtest.service.v1.BacktestServicer/GetExecutionResult"))
+	require.NoError(t, roleAllowsMethod(read, "/foreverbull.backtest.service.v1.BacktestServicer/GetExecutionResult"))
 }
 
 // GetIndex fans out one provider lookup per index member, so a viewer or a

@@ -7,6 +7,7 @@ from protobuf import Oneof
 
 from foreverbull.broker.config import resolve_broker_address
 from foreverbull.broker.credentials import broker_channel
+from foreverbull.exceptions import ResultError
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb as backtest_service_pb
 from foreverbull.pb.foreverbull.backtest.service.v1 import backtest_pb_grpc as backtest_service_pb_grpc
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
@@ -111,3 +112,34 @@ def get_execution(
         list(rsp.functions),
         rsp.provider,
     )
+
+
+# Same cap as storage.ResultMaxBytes. A larger stream is refused before it is kept.
+RESULT_MAX_BYTES = 128 * 1024 * 1024
+
+
+def _join_result(execution_id: str, chunks) -> bytes:
+    parts: list[bytes] = []
+    total = 0
+    for chunk in chunks:
+        piece = bytes(chunk or b"")
+        total += len(piece)
+        if total > RESULT_MAX_BYTES:
+            raise ResultError(
+                f"Couldn't read the result for execution {execution_id}. "
+                "The stored result for this execution is too large to return."
+            )
+        if piece:
+            parts.append(piece)
+    if total == 0:
+        raise ResultError(
+            f"Couldn't read the result for execution {execution_id}. The broker returned an empty result."
+        )
+    return b"".join(parts)
+
+
+@backtest_servicer
+def get_execution_result(servicer: backtest_service_pb_grpc.BacktestServicerClientSync, execution_id: str) -> bytes:
+    """Return the stored result for one execution. The bytes are the result, not a storage address."""
+    messages = servicer.get_execution_result(backtest_service_pb.GetExecutionResultRequest(execution_id=execution_id))
+    return _join_result(execution_id, (message.data for message in messages))
