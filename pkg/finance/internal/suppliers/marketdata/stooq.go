@@ -96,8 +96,57 @@ var errStooqInvalidTicker = &stooqRefusal{
 var stooqTicker = regexp.MustCompile(`^[A-Z0-9^=_-]{1,32}\.[A-Z]{1,8}$`)
 
 // ErrStooqExchange is returned by GetOHLC for a symbol whose exchange suffix
-// has no known Stooq code.
+// has no known Stooq code. The sentence a person reads is a stooqRefusal,
+// which unwraps to this sentinel.
 var ErrStooqExchange = errors.New("stooq has no code for this exchange")
+
+// stooqExchangeStep is the end of the GetOHLC sentence. Create replaces it
+// with its own next step.
+const stooqExchangeStep = "Try another provider with --provider."
+
+// stooqExchangeLead is the refusal without that step. symbol is the asked
+// ticker, suffix included, already in the form the sentence prints.
+func stooqExchangeLead(symbol, suffix string) string {
+	return fmt.Sprintf(
+		"stooq doesn't support the .%s exchange (%s). Supported suffixes: %s.",
+		strings.ToUpper(suffix), strings.ToUpper(symbol), stooqSupportedSuffixes())
+}
+
+// stooqExchangeRefusal is the sentence a person sees for a suffix Stooq has
+// no code for. Ingest shows it as written.
+func stooqExchangeRefusal(symbol, suffix string) string {
+	return stooqExchangeLead(symbol, suffix) + " " + stooqExchangeStep
+}
+
+// StooqExchangeLead is that refusal for symbol, without the provider step.
+// ok is false when symbol has no exchange suffix. symbol may be any case.
+func StooqExchangeLead(symbol string) (string, bool) {
+	upper, suffix, ok := stooqExchangeParts(symbol)
+	if !ok {
+		return "", false
+	}
+	return stooqExchangeLead(upper, suffix), true
+}
+
+// IsStooqExchangeRefusal reports whether text is the full GetOHLC sentence
+// for symbol, step included. symbol may be any case. Create matches this,
+// then uses StooqExchangeLead for its own message.
+func IsStooqExchangeRefusal(text, symbol string) bool {
+	upper, suffix, ok := stooqExchangeParts(symbol)
+	if !ok {
+		return false
+	}
+	return text == stooqExchangeRefusal(upper, suffix)
+}
+
+func stooqExchangeParts(symbol string) (upper, suffix string, ok bool) {
+	upper = strings.ToUpper(strings.TrimSpace(symbol))
+	dot := strings.LastIndexByte(upper, '.')
+	if dot <= 0 || dot == len(upper)-1 {
+		return "", "", false
+	}
+	return upper, upper[dot+1:], true
+}
 
 var _ supplier.Marketdata = (*StooqClient)(nil)
 
@@ -323,9 +372,7 @@ func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
 	}
 	stooqSuffix, ok := stooqSuffixFor(suffix)
 	if !ok {
-		return "", "", &stooqRefusal{msg: fmt.Sprintf(
-			"stooq doesn't support the .%s exchange (%s). Supported suffixes: %s. Try another provider with --provider.",
-			strings.ToUpper(suffix), upper, stooqSupportedSuffixes())}
+		return "", "", &stooqRefusal{msg: stooqExchangeRefusal(upper, strings.ToUpper(suffix))}
 	}
 	code = strings.ToLower(ticker) + "." + stooqSuffix
 	if stooqSuffix == "us" {
