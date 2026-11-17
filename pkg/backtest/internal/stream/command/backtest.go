@@ -63,6 +63,13 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 	if err := tooManySymbols(b.GetName(), fileBacktestSymbols(&b)); err != nil {
 		return err
 	}
+	// Before the row, the price download, and ingest. A start before the
+	// calendar's first session never becomes a stored backtest.
+	if start, ok := earliestPeriodStart(b.GetPeriods()); ok {
+		if err := refuseStartBeforeFirstSession(ctx, msg, b.GetName(), start); err != nil {
+			return err
+		}
+	}
 
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
@@ -105,6 +112,11 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		return err
 	}
 	if err := missingProvider(command.Provider); err != nil {
+		return err
+	}
+	// Before the holdings download and the row. A start before the
+	// calendar's first session never becomes a stored backtest.
+	if err := refuseStartBeforeFirstSession(ctx, msg, command.BacktestName, start); err != nil {
 		return err
 	}
 

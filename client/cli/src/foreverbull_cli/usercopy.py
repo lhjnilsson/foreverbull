@@ -5,6 +5,8 @@ words its own failures there, and the CLI words here what it builds from
 stored fields.
 """
 
+import re
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -45,6 +47,49 @@ def later_tickers_hidden_line(hidden: int) -> str:
     if hidden == 1:
         return "Plus 1 more symbol whose prices come from a later ticker."
     return f"Plus {hidden} more symbols whose prices come from a later ticker."
+
+
+# The broker's sentence for a start before the calendar. The last date has to
+# be the first session named in the parentheses. The CLI replaces the tail.
+_BROKER_START_BEFORE_CALENDAR = re.compile(
+    r"This backtest starts on (\d{4}-\d{2}-\d{2}), before the first trading day in "
+    r"foreverbull's market calendar \((\d{4}-\d{2}-\d{2})\), so it can't be created\. "
+    r"Set the start to \2 or later, then create the backtest again\."
+)
+
+
+def backtest_starts_before_calendar_flag(start: str, first_session: str) -> str:
+    """The line when create was given --start."""
+    return (
+        f"This backtest starts on {start}, before the first trading day in "
+        f"foreverbull's market calendar ({first_session}), so it can't be created. "
+        f"Run `fbull backtest create` again with --start {first_session} or later."
+    )
+
+
+def backtest_starts_before_calendar_file(start: str, first_session: str) -> str:
+    """The line when the start came from a backtest file."""
+    return (
+        f"This backtest starts on {start}, before the first trading day in "
+        f"foreverbull's market calendar ({first_session}), so it can't be created. "
+        f"Set start to {first_session} or later in the backtest file, then run "
+        f"`fbull backtest create` again."
+    )
+
+
+def backtest_starts_before_calendar(message: str, *, start_flag: bool) -> str:
+    """Rewrite the broker's start-before-calendar sentence for this invocation.
+
+    --start and a backtest file name different next steps. Any other message
+    is returned unchanged.
+    """
+    match = _BROKER_START_BEFORE_CALENDAR.fullmatch(message.strip())
+    if match is None:
+        return message
+    start, first_session = match.group(1), match.group(2)
+    if start_flag:
+        return backtest_starts_before_calendar_flag(start, first_session)
+    return backtest_starts_before_calendar_file(start, first_session)
 
 
 def later_ticker_lines(resolutions: Sequence[LaterTicker]) -> list[str]:

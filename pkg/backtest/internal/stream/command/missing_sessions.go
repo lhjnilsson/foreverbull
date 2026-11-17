@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/stream/dependency"
@@ -625,6 +626,44 @@ func ziplineFrom(ctx context.Context, msg stream.Message) (engine.Engine, error)
 		return nil, errors.New("error casting zipline engine")
 	}
 	return ziplineEngine, nil
+}
+
+// earliestPeriodStart is the earliest period start, the day create asks the
+// calendar about. A backtest with no start date has nothing to check.
+func earliestPeriodStart(periods []*backtest.Backtest_Period) (time.Time, bool) {
+	var start time.Time
+	found := false
+	for _, period := range periods {
+		if period.GetStartDate() == nil {
+			continue
+		}
+		day := pb.DateToTime(period.GetStartDate())
+		if !found || day.Before(start) {
+			start = day
+			found = true
+		}
+	}
+	return start, found
+}
+
+// refuseStartBeforeFirstSession stops create before anything is stored when
+// the start is before the calendar's first session. Any other calendar
+// answer, including a start past the last session, is left to the download
+// step, which already says what is wrong. A calendar that cannot be read is
+// left there too: this check only refuses the start it can name.
+func refuseStartBeforeFirstSession(ctx context.Context, msg stream.Message, name string, start time.Time) error {
+	ziplineEngine, err := ziplineFrom(ctx, msg)
+	if err != nil {
+		return nil
+	}
+	_, err = ziplineEngine.Sessions(ctx, start, start)
+	var early *engine.CalendarStartError
+	if !errors.As(err, &early) {
+		return nil
+	}
+	log.Warn().Err(early).Str("backtest", name).Str("start", start.Format(time.DateOnly)).
+		Msg("backtest starts before the engine's calendar")
+	return plainSentence(usercopy.BacktestStartsBeforeCalendar(early.Start, early.FirstSession))
 }
 
 // readClosedPeriod reads the period's sessions up to the last completed one

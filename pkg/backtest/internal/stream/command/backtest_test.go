@@ -167,6 +167,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
 		payload.Backtest = bytes
 	})
 	message.On("MustGet", stream.DBDep).Return(test.db)
+	allowCalendar(message)
 
 	err := command.CreateBacktestFromBacktest(context.TODO(), message)
 	test.Require().NoError(err)
@@ -175,6 +176,86 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktest() {
 	backtest, err := backtests.Get(context.TODO(), "test-backtest-from_backtest")
 	test.Require().NoError(err)
 	test.Require().NotNil(backtest)
+}
+
+// A file whose start is before the calendar's first session is refused
+// before the backtest row is stored and before any download or ingest.
+func (test *BacktestCommandTest) TestCreateFromFileRefusesAStartBeforeTheFirstSession() {
+	const sentence = "This backtest starts on 1989-12-31, before the first trading day in foreverbull's market calendar (1990-01-02), so it can't be created. Set the start to 1990-01-02 or later, then create the backtest again."
+	start := time.Date(1989, 12, 31, 0, 0, 0, 0, time.UTC)
+	first := time.Date(1990, 1, 2, 0, 0, 0, 0, time.UTC)
+	test.Equal(sentence, usercopy.BacktestStartsBeforeCalendar(start, first))
+
+	eng := new(engine.MockEngine)
+	eng.On("Sessions", mock.Anything, start, start).Return(nil, &engine.CalendarStartError{
+		Calendar: "XNYS", Start: start, FirstSession: first,
+	})
+	message := new(stream.MockMessage)
+	message.On("ParsePayload", &bs.CreateBacktestFromBacktestCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromBacktestCommand)
+		bytes, err := proto.Marshal(&backtest.Backtest{
+			Name:      "early-start",
+			Benchmark: "SPY",
+			Provider:  "yahoo",
+			Periods: []*backtest.Backtest_Period{{
+				StartDate: &pb.Date{Year: 1989, Month: 12, Day: 31},
+				EndDate:   &pb.Date{Year: 1990, Month: 6, Day: 29},
+				Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "AAPL", Enabled: true}},
+			}},
+		})
+		test.Require().NoError(err)
+		payload.Backtest = bytes
+	})
+	message.On("Call", mock.Anything, dependency.GetEngineKey).Return(eng, nil)
+
+	err := command.CreateBacktestFromBacktest(context.TODO(), message)
+	test.Require().EqualError(err, sentence)
+	test.requireNotStored("early-start")
+	message.AssertNotCalled(test.T(), "MustGet", stream.DBDep)
+	eng.AssertNotCalled(test.T(), "Ingest", mock.Anything, mock.Anything, mock.Anything)
+	eng.AssertNotCalled(test.T(), "DownloadIngestion", mock.Anything, mock.Anything)
+}
+
+// An ETF create whose start the calendar refuses stores no backtest, writes
+// no instrument rows, and does not download holdings or ingest.
+func (test *BacktestCommandTest) TestCreateFromETFRefusesAStartBeforeTheFirstSession() {
+	const sentence = "This backtest starts on 2024-01-02, before the first trading day in foreverbull's market calendar (2024-06-28), so it can't be created. Set the start to 2024-06-28 or later, then create the backtest again."
+	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	first := time.Date(2024, 6, 28, 0, 0, 0, 0, time.UTC)
+	test.Equal(sentence, usercopy.BacktestStartsBeforeCalendar(start, first))
+
+	var instruments, aliases int
+	test.Require().NoError(test.db.QueryRow(context.TODO(), `SELECT count(*) FROM instrument`).Scan(&instruments))
+	test.Require().NoError(test.db.QueryRow(context.TODO(), `SELECT count(*) FROM asset_symbol`).Scan(&aliases))
+
+	eng := new(engine.MockEngine)
+	eng.On("Sessions", mock.Anything, start, start).Return(nil, &engine.CalendarStartError{
+		Calendar: "XNYS", Start: start, FirstSession: first,
+	})
+	message := new(stream.MockMessage)
+	message.On("ParsePayload", &bs.CreateBacktestFromETFCommand{}).Return(nil).Run(func(args mock.Arguments) {
+		payload := args.Get(0).(*bs.CreateBacktestFromETFCommand)
+		payload.BacktestName = "early-etf"
+		payload.ETFName = "iShares S&P 100"
+		payload.StartDate = "2024-01-02"
+		payload.EndDate = "2024-06-28"
+		payload.Provider = "yahoo"
+	})
+	message.On("Call", mock.Anything, dependency.GetEngineKey).Return(eng, nil)
+
+	err := command.CreateBacktestFromETF(context.TODO(), message)
+	test.Require().EqualError(err, sentence)
+	test.requireNotStored("early-etf")
+	var instrumentsAfter, aliasesAfter int
+	test.Require().NoError(test.db.QueryRow(context.TODO(), `SELECT count(*) FROM instrument`).Scan(&instrumentsAfter))
+	test.Require().NoError(test.db.QueryRow(context.TODO(), `SELECT count(*) FROM asset_symbol`).Scan(&aliasesAfter))
+	test.Equal(instruments, instrumentsAfter)
+	test.Equal(aliases, aliasesAfter)
+	message.AssertNotCalled(test.T(), "MustGet", stream.DBDep)
+	message.AssertNotCalled(test.T(), "MustGet", dependency.GetETFScraper)
+	message.AssertNotCalled(test.T(), "MustGet", dependency.GetMarketdataClient)
+	eng.AssertNotCalled(test.T(), "Ingest", mock.Anything, mock.Anything, mock.Anything)
+	eng.AssertNotCalled(test.T(), "DownloadIngestion", mock.Anything, mock.Anything)
 }
 
 // Two universe files that spell Berkshire class B differently are the same
@@ -196,6 +277,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 			payload.Backtest = bytes
 		})
 		message.On("MustGet", stream.DBDep).Return(test.db)
+		allowCalendar(message)
 		return command.CreateBacktestFromBacktest(context.TODO(), message)
 	}
 	backtests := repository.Backtest{Conn: test.db}
@@ -283,6 +365,7 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.GetMarketdataClient).Return(test.mdclient)
 	message.On("MustGet", dependency.GetETFScraper).Return(test.etfscraper)
+	allowCalendar(message)
 
 	s0 := test.date("2022-12-31")
 	s1 := test.date("2023-01-31")
@@ -625,6 +708,7 @@ func (test *BacktestCommandTest) createETFBacktestWith(ctx context.Context, mdcl
 	message.On("MustGet", stream.DBDep).Return(test.db)
 	message.On("MustGet", dependency.GetMarketdataClient).Return(mdclient)
 	message.On("MustGet", dependency.GetETFScraper).Return(scraper)
+	allowCalendar(message)
 	return command.CreateBacktestFromETF(ctx, message)
 }
 
@@ -805,6 +889,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataStopsOnBlockedProvider
 		payload.Backtest = bytes
 	})
 	retry.On("MustGet", stream.DBDep).Return(test.db)
+	allowCalendar(retry)
 	test.Require().NoError(command.CreateBacktestFromBacktest(context.TODO(), retry))
 
 	b, err := backtests.Get(context.TODO(), "test-backtest")
@@ -833,7 +918,17 @@ func (test *BacktestCommandTest) createAgain() {
 		payload.Backtest = bytes
 	})
 	retry.On("MustGet", stream.DBDep).Return(test.db)
+	allowCalendar(retry)
 	test.Require().NoError(command.CreateBacktestFromBacktest(context.TODO(), retry))
+}
+
+// allowCalendar makes a create's calendar read succeed, so the start check
+// does not refuse a date inside the calendar.
+func allowCalendar(msg *stream.MockMessage) {
+	eng := new(engine.MockEngine)
+	eng.On("Sessions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]time.Time{time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC)}, nil)
+	msg.On("Call", mock.Anything, dependency.GetEngineKey).Return(eng, nil)
 }
 
 func (test *BacktestCommandTest) TestDownloadFinancialDataStreamErrorRemovesBacktest() {
@@ -1377,6 +1472,7 @@ func etfCreateMessage(t *testing.T, name, etf, start, end string) *stream.MockMe
 		payload.EndDate = end
 		payload.Provider = "yahoo"
 	})
+	allowCalendar(message)
 	return message
 }
 

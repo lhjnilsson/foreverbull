@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
@@ -252,6 +253,24 @@ func TestHTTP(t *testing.T) {
 
 		require.Equal(t, http.StatusInternalServerError, rec.Code)
 		require.NotContains(t, rec.Body.String(), "secret")
+	})
+
+	t.Run("create before the calendar's first session", func(t *testing.T) {
+		const sentence = "This backtest starts on 1989-12-31, before the first trading day in foreverbull's market calendar (1990-01-02), so it can't be created. Set the start to 1990-01-02 or later, then create the backtest again."
+		fake := &fakeBacktests{create: &servicePb.CreateBacktestResponse{
+			CREATING: &pb.Step{State: pb.State_STATE_FAILED, Message: sentence},
+		}}
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, fake)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", `{"name":"spy","start":"1989-12-31","end":"1990-06-28","provider":"yahoo"}`))
+
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.JSONEq(t, `{"error":"`+sentence+`"}`, rec.Body.String())
+		require.Equal(t, sentence, usercopy.BacktestStartsBeforeCalendar(
+			time.Date(1989, 12, 31, 0, 0, 0, 0, time.UTC),
+			time.Date(1990, 1, 2, 0, 0, 0, 0, time.UTC),
+		))
 	})
 
 	t.Run("list executions", func(t *testing.T) {

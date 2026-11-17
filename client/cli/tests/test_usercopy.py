@@ -1,4 +1,7 @@
 from foreverbull_cli.usercopy import LaterTicker
+from foreverbull_cli.usercopy import backtest_starts_before_calendar
+from foreverbull_cli.usercopy import backtest_starts_before_calendar_file
+from foreverbull_cli.usercopy import backtest_starts_before_calendar_flag
 from foreverbull_cli.usercopy import later_ticker_lines
 from foreverbull_cli.usercopy import later_tickers
 
@@ -20,6 +23,34 @@ def _many(count: int) -> list[LaterTicker]:
 
 
 FIRST_FIVE = [f"Prices for S{i} come from T{i}, the company's later ticker." for i in range(5)]
+
+
+_BROKER_START = (
+    "This backtest starts on 1989-12-31, before the first trading day in "
+    "foreverbull's market calendar (1990-01-02), so it can't be created. "
+    "Set the start to 1990-01-02 or later, then create the backtest again."
+)
+_FLAG_START = (
+    "This backtest starts on 1989-12-31, before the first trading day in "
+    "foreverbull's market calendar (1990-01-02), so it can't be created. "
+    "Run `fbull backtest create` again with --start 1990-01-02 or later."
+)
+_FILE_START = (
+    "This backtest starts on 1989-12-31, before the first trading day in "
+    "foreverbull's market calendar (1990-01-02), so it can't be created. "
+    "Set start to 1990-01-02 or later in the backtest file, then run "
+    "`fbull backtest create` again."
+)
+
+
+def test_start_before_calendar_with_start_flag_is_the_flag_sentence():
+    assert backtest_starts_before_calendar_flag("1989-12-31", "1990-01-02") == _FLAG_START
+    assert backtest_starts_before_calendar(_BROKER_START, start_flag=True) == _FLAG_START
+
+
+def test_start_before_calendar_from_a_file_is_the_file_sentence():
+    assert backtest_starts_before_calendar_file("1989-12-31", "1990-01-02") == _FILE_START
+    assert backtest_starts_before_calendar(_BROKER_START, start_flag=False) == _FILE_START
 
 
 def test_no_later_ticker_prints_nothing():
