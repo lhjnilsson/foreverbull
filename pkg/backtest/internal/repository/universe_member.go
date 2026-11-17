@@ -295,6 +295,21 @@ func (db *UniverseMember) LastBarsByID(ctx context.Context, backtestID, provider
 	return db.lastBars(ctx, lastBarsQueryByID, backtestID, provider, end)
 }
 
+// PeriodLastBars is LastBars for a symbol-list backtest, which has no
+// universe_member rows. Each enabled period asset is one alias. A symbol
+// with an asset_symbol row takes its ISIN's last bar under any ticker, so a
+// rename is not read as a delisting. A symbol with no ISIN takes its own
+// bars. Disabled assets and the benchmark are not included. provider and
+// end bound the read the same way as LastBars.
+func (db *UniverseMember) PeriodLastBars(ctx context.Context, backtestName, provider string, end time.Time) ([]AliasLastBar, error) {
+	return db.lastBars(ctx, periodLastBarsQueryByName, backtestName, provider, end)
+}
+
+// PeriodLastBarsByID is PeriodLastBars for one backtest id.
+func (db *UniverseMember) PeriodLastBarsByID(ctx context.Context, backtestID, provider string, end time.Time) ([]AliasLastBar, error) {
+	return db.lastBars(ctx, periodLastBarsQueryByID, backtestID, provider, end)
+}
+
 const (
 	// Fixed queries, so no caller can put its own text into the SQL.
 	lastBarsQueryByName = `
@@ -323,6 +338,84 @@ const (
 			   AND o.time < $3::date
 		  ) last ON true
 		 ORDER BY s.symbol, s.from_date`
+	// periodLastBarsQueryByName reads enabled period assets. The first
+	// SELECT is every ticker of an asset's ISIN, with that ISIN's last bar.
+	// The second is an asset with no ISIN, open over every session, on its
+	// own bars. A disabled asset is not a member of the run.
+	periodLastBarsQueryByName = `
+		WITH listed AS (
+			SELECT DISTINCT symbol
+			  FROM backtest_period_asset
+			 WHERE backtest_name = $1
+			   AND enabled
+			   AND symbol <> ''
+		)
+		SELECT s.symbol, s.from_date, s.to_date, last.bar
+		  FROM asset_symbol s
+		  JOIN (
+			SELECT DISTINCT a.isin
+			  FROM asset_symbol a
+			  JOIN listed l ON l.symbol = a.symbol
+		  ) m ON m.isin = s.isin
+		  LEFT JOIN LATERAL (
+			SELECT max(o.time) AS bar
+			  FROM asset_symbol a
+			  JOIN ohlc o ON o.symbol = a.symbol
+			 WHERE a.isin = s.isin
+			   AND o.provider = $2
+			   AND o.time < $3::date
+		  ) last ON true
+		UNION ALL
+		SELECT l.symbol, DATE '0001-01-01', NULL::date, own.bar
+		  FROM listed l
+		  LEFT JOIN LATERAL (
+			SELECT max(o.time) AS bar
+			  FROM ohlc o
+			 WHERE o.symbol = l.symbol
+			   AND o.provider = $2
+			   AND o.time < $3::date
+		  ) own ON true
+		 WHERE NOT EXISTS (
+			SELECT 1 FROM asset_symbol a WHERE a.symbol = l.symbol
+		 )
+		 ORDER BY 1, 2`
+	periodLastBarsQueryByID = `
+		WITH listed AS (
+			SELECT DISTINCT symbol
+			  FROM backtest_period_asset
+			 WHERE backtest_id = $1
+			   AND enabled
+			   AND symbol <> ''
+		)
+		SELECT s.symbol, s.from_date, s.to_date, last.bar
+		  FROM asset_symbol s
+		  JOIN (
+			SELECT DISTINCT a.isin
+			  FROM asset_symbol a
+			  JOIN listed l ON l.symbol = a.symbol
+		  ) m ON m.isin = s.isin
+		  LEFT JOIN LATERAL (
+			SELECT max(o.time) AS bar
+			  FROM asset_symbol a
+			  JOIN ohlc o ON o.symbol = a.symbol
+			 WHERE a.isin = s.isin
+			   AND o.provider = $2
+			   AND o.time < $3::date
+		  ) last ON true
+		UNION ALL
+		SELECT l.symbol, DATE '0001-01-01', NULL::date, own.bar
+		  FROM listed l
+		  LEFT JOIN LATERAL (
+			SELECT max(o.time) AS bar
+			  FROM ohlc o
+			 WHERE o.symbol = l.symbol
+			   AND o.provider = $2
+			   AND o.time < $3::date
+		  ) own ON true
+		 WHERE NOT EXISTS (
+			SELECT 1 FROM asset_symbol a WHERE a.symbol = l.symbol
+		 )
+		 ORDER BY 1, 2`
 )
 
 func (db *UniverseMember) lastBars(ctx context.Context, query, key, provider string, end time.Time) ([]AliasLastBar, error) {

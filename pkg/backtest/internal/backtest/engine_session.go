@@ -82,8 +82,10 @@ func ListingLine(symbol string, on time.Time) string {
 	return fmt.Sprintf("%s was listed on %s and has no prices before then.", symbol, on.UTC().Format(time.DateOnly))
 }
 
-// coverageNotices adds each confirmed listing, and a delisting the left-out
-// record does not already name (a symbol-list run does not filter members).
+// coverageNotices adds each confirmed listing, and a delisting the filter
+// did not already decide. A symbol the filter left out is named from that
+// record, held sentence included. A symbol whose last bar is the newest
+// stored bar is end of data: it is kept, and it is not named here.
 func coverageNotices(events []repository.SymbolEvent, left *leftOut) []string {
 	lines := make([]string, 0)
 	for _, event := range events {
@@ -92,6 +94,9 @@ func coverageNotices(events []repository.SymbolEvent, left *leftOut) []string {
 		}
 		if left != nil {
 			if _, named := left.lastBar[event.Symbol]; named {
+				continue
+			}
+			if left.kept[event.Symbol] {
 				continue
 			}
 		}
@@ -274,9 +279,11 @@ func (z *ZipelineSession) lookups(ctx context.Context) (MemberSymbols, BacktestR
 // are its universe. Without that fallback every bar got no symbols and the
 // algorithm could not place an order.
 //
-// An ETF member whose prices ended before t (a delisting the next month-end
-// list has not dropped yet) is left out of Process and recorded in left, so
-// the run summary names it instead of the algorithm reading a stale price.
+// A confirmed delisting whose last bar is before t, and before the newest
+// bar any symbol in the run has, is left out of Process and recorded in
+// left. That is the same rule for an ETF member and for a symbol-list
+// asset, so the run summary names it instead of the algorithm reading a
+// stale price.
 func runPlan(ctx context.Context, backtests BacktestReader, members MemberSymbols, execution *pb.Execution, left *leftOut) (*pb.Backtest, sessionSymbols, []repository.SymbolEvent, error) {
 	if execution == nil {
 		return nil, sessionSymbols{}, nil, errors.New("execution has no backtest")
@@ -307,21 +314,42 @@ func runPlanNamed(ctx context.Context, backtests BacktestReader, members MemberS
 		source := symbolSource(func(ctx context.Context, t time.Time) ([]string, error) {
 			return memberSymbolsAt(ctx, members, backtestName, t)
 		})
-		plan := sessionSymbols{members: source, process: source, autoClose: autoCloseOnUniverseDrop(stored)}
-		reader, ok := members.(lastBarsByName)
-		if !ok {
-			return stored, plan, events, nil
+		process := source
+		if reader, ok := members.(lastBarsByName); ok {
+			var err error
+			process, err = attachEndedPrices(func() ([]repository.AliasLastBar, error) {
+				return reader.LastBars(ctx, backtestName, barsProvider(stored), barsEnd(stored))
+			}, source, left, events, backtestName)
+			if err != nil {
+				return nil, sessionSymbols{}, nil, err
+			}
 		}
-		aliases, err := reader.LastBars(ctx, backtestName, barsProvider(stored), barsEnd(stored))
-		if err != nil {
-			return nil, sessionSymbols{}, nil, fmt.Errorf("error reading last prices of %s: %w", backtestName, err)
-		}
-		plan.process = withoutEndedPrices(source, aliases, left, confirmedDelistings(events))
-		return stored, plan, events, nil
+		return stored, sessionSymbols{members: source, process: process, autoClose: autoCloseOnUniverseDrop(stored)}, events, nil
 	}
-	return stored, sessionSymbols{process: func(_ context.Context, t time.Time) ([]string, error) {
+	source := symbolSource(func(_ context.Context, t time.Time) ([]string, error) {
 		return periodSymbolsAt(stored.GetPeriods(), t), nil
-	}}, events, nil
+	})
+	process := source
+	if reader, ok := members.(periodLastBarsByName); ok {
+		var err error
+		process, err = attachEndedPrices(func() ([]repository.AliasLastBar, error) {
+			return reader.PeriodLastBars(ctx, backtestName, barsProvider(stored), barsEnd(stored))
+		}, source, left, events, backtestName)
+		if err != nil {
+			return nil, sessionSymbols{}, nil, err
+		}
+	}
+	return stored, sessionSymbols{process: process}, events, nil
+}
+
+// attachEndedPrices leaves a confirmed delisting out of source once its last
+// bar is before the session. A failed read fails the run before Zipline starts.
+func attachEndedPrices(read func() ([]repository.AliasLastBar, error), source symbolSource, left *leftOut, events []repository.SymbolEvent, label string) (symbolSource, error) {
+	aliases, err := read()
+	if err != nil {
+		return nil, fmt.Errorf("error reading last prices of %s: %w", label, err)
+	}
+	return withoutEndedPrices(source, aliases, left, confirmedDelistings(events)), nil
 }
 
 type symbolEventLister interface {
@@ -393,21 +421,32 @@ func runPlanOwned(ctx context.Context, backtests BacktestReader, members MemberS
 			}
 			return symbols, nil
 		})
-		plan := sessionSymbols{members: source, process: source, autoClose: autoCloseOnUniverseDrop(stored)}
-		reader, ok := members.(lastBarsByID)
-		if !ok {
-			return stored, plan, events, nil
+		process := source
+		if reader, ok := members.(lastBarsByID); ok {
+			var err error
+			process, err = attachEndedPrices(func() ([]repository.AliasLastBar, error) {
+				return reader.LastBarsByID(ctx, backtestID, barsProvider(stored), barsEnd(stored))
+			}, source, left, events, backtestID)
+			if err != nil {
+				return nil, sessionSymbols{}, nil, err
+			}
 		}
-		aliases, err := reader.LastBarsByID(ctx, backtestID, barsProvider(stored), barsEnd(stored))
-		if err != nil {
-			return nil, sessionSymbols{}, nil, fmt.Errorf("error reading last prices of %s: %w", backtestID, err)
-		}
-		plan.process = withoutEndedPrices(source, aliases, left, confirmedDelistings(events))
-		return stored, plan, events, nil
+		return stored, sessionSymbols{members: source, process: process, autoClose: autoCloseOnUniverseDrop(stored)}, events, nil
 	}
-	return stored, sessionSymbols{process: func(_ context.Context, t time.Time) ([]string, error) {
+	source := symbolSource(func(_ context.Context, t time.Time) ([]string, error) {
 		return periodSymbolsAt(stored.GetPeriods(), t), nil
-	}}, events, nil
+	})
+	process := source
+	if reader, ok := members.(periodLastBarsByID); ok {
+		var err error
+		process, err = attachEndedPrices(func() ([]repository.AliasLastBar, error) {
+			return reader.PeriodLastBarsByID(ctx, backtestID, barsProvider(stored), barsEnd(stored))
+		}, source, left, events, backtestID)
+		if err != nil {
+			return nil, sessionSymbols{}, nil, err
+		}
+	}
+	return stored, sessionSymbols{process: process}, events, nil
 }
 
 // periodSymbolsAt returns the enabled assets of every period whose
