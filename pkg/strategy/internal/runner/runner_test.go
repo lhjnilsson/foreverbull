@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -101,6 +102,7 @@ func (test *RunnerTest) TestProcessSessionPersistsOrdersWithoutPlaceOrder() {
 
 	test.Equal(1, test.processor.CallCount())
 	test.Equal(1, test.trading.PortfolioCalls())
+	test.InDelta(1000, test.processor.Portfolio().GetCash(), 1e-9)
 	test.Equal(0, test.trading.PlaceCalls())
 
 	runs, err := test.store.ListRuns(ctx, "", "dep-1")
@@ -352,6 +354,104 @@ func (test *RunnerTest) TestStartRecoversRunningDeployment() {
 		return test.processor.CallCount() == 1
 	}, time.Second, 10*time.Millisecond)
 	test.Equal(0, test.trading.PlaceCalls())
+}
+
+// downTrading is a profile whose portfolio read fails.
+type downTrading struct {
+	calls atomic.Int32
+	cause error
+}
+
+func (d *downTrading) GetPortfolio(context.Context) (*financepb.Portfolio, error) {
+	d.calls.Add(1)
+	if d.cause != nil {
+		return nil, d.cause
+	}
+	return nil, errors.New("connection refused")
+}
+
+func (d *downTrading) PlaceOrder(context.Context, *financepb.Order) (*financepb.Order, error) {
+	d.calls.Add(1)
+	return nil, errors.New("connection refused")
+}
+
+func (d *downTrading) GetOrders(context.Context) ([]*financepb.Order, error) {
+	d.calls.Add(1)
+	return nil, errors.New("connection refused")
+}
+
+func (test *RunnerTest) TestDryRunFailsWhenPortfolioCannotBeRead() {
+	cause := errors.New("connection refused")
+	down := &downTrading{cause: cause}
+	test.runner = New(test.store, test.clock, profileRegistry{"alpaca-paper": down}, test.processor)
+	d := test.deployment()
+	d.DryRun = true
+	d.Backend = "alpaca-paper"
+	d.StrategyName = "mean-rev"
+	test.store.Put(d)
+
+	err := test.runner.ProcessSession(context.Background(), "dep-1", test.mon)
+	test.Require().ErrorIs(err, ErrDryRunPortfolio)
+	test.Require().ErrorIs(err, cause)
+	sentence := usercopy.DryRunPortfolioUnreadable("mean-rev", "alpaca-paper")
+	test.Equal(sentence, err.Error())
+	test.NotContains(err.Error(), "connection refused")
+	test.Equal(int32(1), down.calls.Load())
+	test.Equal(0, test.processor.CallCount())
+	test.Equal(0, test.trading.PlaceCalls())
+
+	got, err := test.store.GetDeployment(context.Background(), "dep-1")
+	test.Require().NoError(err)
+	test.Equal(pb.Deployment_ERROR, got.Status)
+	test.Equal(sentence, got.GetError())
+	test.Nil(got.LastSessionDate)
+
+	runs, err := test.store.ListRuns(context.Background(), "", "dep-1")
+	test.Require().NoError(err)
+	test.Empty(runs)
+}
+
+func (test *RunnerTest) TestDryRunFailsWhenProfileIsUnknown() {
+	test.runner = New(test.store, test.clock, profileRegistry{}, test.processor)
+	d := test.deployment()
+	d.DryRun = true
+	d.Backend = "missing-profile"
+	d.StrategyName = ""
+	test.store.Put(d)
+
+	err := test.runner.ProcessSession(context.Background(), "dep-1", test.mon)
+	test.Require().ErrorIs(err, ErrDryRunPortfolio)
+	test.Equal(usercopy.DryRunPortfolioUnreadable("", "missing-profile"), err.Error())
+	test.Equal(0, test.processor.CallCount())
+
+	got, err := test.store.GetDeployment(context.Background(), "dep-1")
+	test.Require().NoError(err)
+	test.Equal(pb.Deployment_ERROR, got.Status)
+	test.Equal(usercopy.DryRunPortfolioUnreadable("", "missing-profile"), got.GetError())
+}
+
+func (test *RunnerTest) TestDryRunUsesEmptyPortfolioWhenNoBackend() {
+	test.runner = New(test.store, test.clock, profileRegistry{"alpaca-paper": test.trading}, test.processor)
+	d := test.deployment()
+	d.DryRun = true
+	d.Backend = ""
+	test.store.Put(d)
+
+	err := test.runner.ProcessSession(context.Background(), "dep-1", test.mon)
+	test.Require().NoError(err)
+	test.Equal(0, test.trading.PortfolioCalls())
+	test.Equal(0, test.trading.PlaceCalls())
+	test.Equal(1, test.processor.CallCount())
+	got := test.processor.Portfolio()
+	test.Require().NotNil(got)
+	test.Zero(got.GetCash())
+	test.Empty(got.GetPositions())
+
+	runs, err := test.store.ListRuns(context.Background(), "", "dep-1")
+	test.Require().NoError(err)
+	test.Require().Len(runs, 1)
+	test.Nil(runs[0].Error)
+	test.Require().Len(runs[0].Orders, 1)
 }
 
 func TestProcessSessionNilTrading(t *testing.T) {

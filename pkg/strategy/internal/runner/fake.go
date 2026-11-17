@@ -170,20 +170,28 @@ type FakeProcessor struct {
 	Calls         int
 	LastTimestamp time.Time
 	LastSymbols   []string
+	lastPortfolio *financepb.Portfolio
 }
 
 var _ Processor = (*FakeProcessor)(nil)
 
-func (f *FakeProcessor) Process(_ context.Context, timestamp time.Time, symbols []string, _ *financepb.Portfolio) ([]*financepb.Order, error) {
+func (f *FakeProcessor) Process(_ context.Context, timestamp time.Time, symbols []string, portfolio *financepb.Portfolio) ([]*financepb.Order, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Calls++
 	f.LastTimestamp = timestamp
 	f.LastSymbols = append([]string(nil), symbols...)
+	f.lastPortfolio = portfolio
 	if f.Err != nil {
 		return nil, f.Err
 	}
 	return f.Orders, nil
+}
+
+func (f *FakeProcessor) Portfolio() *financepb.Portfolio {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastPortfolio
 }
 
 func (f *FakeProcessor) CallCount() int {

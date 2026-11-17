@@ -22,6 +22,31 @@ func TestExperimentRunFailed(t *testing.T) {
 			[]string{usercopy.CauseRunFailed, usercopy.CauseFailureNotStored, usercopy.CauseNotSent}))
 }
 
+func TestDryRunRecorded(t *testing.T) {
+	require.Equal(t,
+		"Dry run: orders were worked out from the portfolio for trading profile 'alpaca-paper' and recorded only, and none were sent.",
+		usercopy.DryRunRecorded("alpaca-paper"))
+}
+
+func TestDryRunEmptyPortfolio(t *testing.T) {
+	require.Equal(t,
+		"Dry run: foreverbull didn't read your trading account. Orders were worked out from an empty portfolio and recorded only, and none were sent.",
+		usercopy.DryRunEmptyPortfolio)
+}
+
+func TestDryRunPortfolioUnreadable(t *testing.T) {
+	require.Equal(t,
+		"Dry run for deployment 'mean-rev' couldn't read the portfolio for trading profile 'alpaca-paper', so it didn't trade that session and stopped with an error. "+
+			"Check that the account for 'alpaca-paper' is reachable and its keys are right, "+
+			"then run `fbull strategy deploy mean-rev` again with the same options.",
+		usercopy.DryRunPortfolioUnreadable("mean-rev", "alpaca-paper"))
+	require.Equal(t,
+		"A dry-run deployment couldn't read the portfolio for trading profile 'alpaca-paper', so it didn't trade that session and stopped with an error. "+
+			"Check that the account for 'alpaca-paper' is reachable and its keys are right, "+
+			"then run `fbull strategy deploy` again with the same options.",
+		usercopy.DryRunPortfolioUnreadable("  ", "alpaca-paper"))
+}
+
 func TestMissedSessionClose(t *testing.T) {
 	require.Equal(t,
 		"Deployment 'mean-rev' missed the close on 2024-03-04, so it didn't trade that session and stopped with an error. "+

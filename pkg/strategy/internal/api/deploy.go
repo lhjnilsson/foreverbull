@@ -41,6 +41,11 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 		skipMissed = *req.SkipMissed
 	}
 	backend := strings.TrimSpace(req.GetBackend())
+	if dryRun && backend != "" {
+		if err := s.knownProfile(backend); err != nil {
+			return nil, err
+		}
+	}
 	if !dryRun {
 		if !req.GetConfirm() {
 			return nil, status.Error(codes.FailedPrecondition,
@@ -100,6 +105,19 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 	}
 
 	return &servicePb.DeployResponse{Deployment: deployment}, nil
+}
+
+// knownProfile refuses a trading profile name that is not in the registry.
+// A nil registry and an unknown name are different sentences. Both are
+// FailedPrecondition and neither starts a deployment.
+func (s *StrategyServer) knownProfile(name string) error {
+	if s.profiles == nil {
+		return status.Error(codes.FailedPrecondition, usercopy.NoTradingProfiles(name))
+	}
+	if _, ok := s.profiles.Get(name); !ok {
+		return status.Error(codes.FailedPrecondition, usercopy.UnknownTradingProfile(name))
+	}
+	return nil
 }
 
 func (s *StrategyServer) StopDeployment(ctx context.Context, req *servicePb.StopDeploymentRequest) (*servicePb.StopDeploymentResponse, error) {
