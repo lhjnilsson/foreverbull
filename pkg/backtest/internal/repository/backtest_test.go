@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,7 +72,7 @@ func (test *BacktestTest) TestCreateAndGet() {
 		backtests := &repository.Backtest{Conn: test.conn}
 		no_periods := proto.Clone(test.backtest).(*backtest.Backtest)
 		no_periods.Name = "no_periods"
-		_, err := backtests.Create(ctx, no_periods)
+		_, _, err := backtests.Create(ctx, no_periods)
 		test.Require().NoError(err)
 
 		stored, err := backtests.Get(ctx, no_periods.Name)
@@ -96,7 +97,7 @@ func (test *BacktestTest) TestCreateAndGet() {
 			},
 		}
 
-		_, err := backtests.Create(ctx, with_periods)
+		_, _, err := backtests.Create(ctx, with_periods)
 		test.Require().NoError(err)
 
 		stored, err := backtests.Get(ctx, with_periods.Name)
@@ -131,7 +132,7 @@ func (test *BacktestTest) TestCreateAndGet() {
 				},
 			},
 		}
-		_, err := backtests.Create(ctx, with_periods_and_assets)
+		_, _, err := backtests.Create(ctx, with_periods_and_assets)
 		test.Require().NoError(err)
 
 		stored, err := backtests.Get(ctx, with_periods_and_assets.Name)
@@ -156,7 +157,7 @@ func (test *BacktestTest) TestUpdateBenchmark() {
 	ctx := context.Background()
 
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, test.backtest)
+	_, _, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
 	_, err = backtests.UpdateBenchmark(ctx, test.backtest.Name, "new_benchmark")
@@ -179,7 +180,7 @@ func (test *BacktestTest) TestUpdatePeriod() {
 		},
 	}
 
-	_, err := backtests.Create(ctx, test.backtest)
+	_, _, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 	period := &backtest.Backtest_Period{
 		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
@@ -219,7 +220,7 @@ func (test *BacktestTest) TestUpdatePeriodAsset() {
 		},
 	}
 
-	_, err := backtests.Create(ctx, test.backtest)
+	_, _, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
 	period := &backtest.Backtest_Period{
@@ -290,7 +291,7 @@ func (test *BacktestTest) TestList() {
 	}
 
 	for _, b := range []*backtest.Backtest{b1, b2, b3} {
-		_, err := backtests.Create(ctx, b)
+		_, _, err := backtests.Create(ctx, b)
 		test.Require().NoError(err)
 	}
 
@@ -366,7 +367,7 @@ func (test *BacktestTest) TestCreateRefusesAMissingProvider() {
 		item := proto.Clone(test.backtest).(*backtest.Backtest)
 		item.Name = "missing-provider"
 		item.Provider = provider
-		_, err := test.uut.Create(ctx, item)
+		_, _, err := test.uut.Create(ctx, item)
 		test.Require().ErrorIs(err, repository.ErrProviderMissing)
 		test.Require().EqualError(err, usercopy.BacktestProviderMissing)
 
@@ -377,7 +378,7 @@ func (test *BacktestTest) TestCreateRefusesAMissingProvider() {
 	item := proto.Clone(test.backtest).(*backtest.Backtest)
 	item.Name = "explicit-yahoo"
 	item.Provider = "yahoo"
-	stored, err := test.uut.Create(ctx, item)
+	_, stored, err := test.uut.Create(ctx, item)
 	test.Require().NoError(err)
 	test.Equal("explicit-yahoo", stored.Name)
 	test.Equal("yahoo", stored.Provider)
@@ -421,7 +422,7 @@ func (test *BacktestTest) TestCreateRollsBackAFailedPeriodAsset() {
 			},
 		}},
 	}
-	_, err := backtests.Create(ctx, partial)
+	_, _, err := backtests.Create(ctx, partial)
 	test.Require().Error(err)
 	test.Require().ErrorContains(err, "period asset")
 
@@ -432,7 +433,7 @@ func (test *BacktestTest) TestCreateRollsBackAFailedPeriodAsset() {
 	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM backtest_period_asset WHERE backtest_name=$1`, partial.Name))
 
 	partial.Periods[0].Assets = []*backtest.Backtest_Period_Asset{{Symbol: "AAPL", Enabled: true}}
-	stored, err := backtests.Create(ctx, partial)
+	_, stored, err := backtests.Create(ctx, partial)
 	test.Require().NoError(err)
 	test.Equal(partial.Name, stored.Name)
 	test.Equal("yahoo", stored.Provider)
@@ -453,7 +454,7 @@ func (test *BacktestTest) TestDelete() {
 	ctx := context.Background()
 
 	backtests := &repository.Backtest{Conn: test.conn}
-	_, err := backtests.Create(ctx, test.backtest)
+	_, _, err := backtests.Create(ctx, test.backtest)
 	test.Require().NoError(err)
 
 	err = backtests.Delete(ctx, test.backtest.Name)
@@ -495,7 +496,7 @@ func TestCreateOwnedWithMembersRollsBackAFailedMember(t *testing.T) {
 		{ISIN: aaplISIN, FromDate: later},
 	}
 	backtests := repository.Backtest{Conn: pool}
-	_, err := backtests.CreateOwnedWithMembers(ctx, admin, item, overlap)
+	_, _, err := backtests.CreateOwnedWithMembers(ctx, admin, item, overlap)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "universe_member")
 	require.Equal(t, 0, countBacktestRows(t, pool, `SELECT COUNT(*) FROM backtest WHERE name=$1`, item.Name))
@@ -508,17 +509,121 @@ func TestCreateOwnedWithMembersRollsBackAFailedMember(t *testing.T) {
 		JOIN backtest AS b ON b.id = m.backtest_id
 		WHERE b.name=$1`, item.Name))
 
-	stored, err := backtests.CreateOwnedWithMembers(ctx, admin, item, overlap[:1])
+	id, stored, err := backtests.CreateOwnedWithMembers(ctx, admin, item, overlap[:1])
 	require.NoError(t, err)
+	require.NotEmpty(t, id)
 	require.Equal(t, item.Name, stored.Name)
 	require.Len(t, stored.Periods, 1)
 	require.Len(t, stored.Periods[0].Assets, 1)
 	require.Equal(t, "AAPL", stored.Periods[0].Assets[0].Symbol)
 	require.True(t, stored.Periods[0].Assets[0].Enabled)
 
-	id, err := backtests.IDByOwnerAndName(ctx, admin, item.Name)
-	require.NoError(t, err)
 	listed, err := (&repository.UniverseMember{Conn: pool}).ListByID(ctx, id)
 	require.NoError(t, err)
 	require.Equal(t, []repository.MemberInterval{{ISIN: aaplISIN, FromDate: from}}, listed)
+}
+
+type createOutcome struct {
+	id   string
+	item *backtest.Backtest
+	err  error
+}
+
+// twoCreates starts both creates together. One stores a row and returns its
+// id. The other fails with ErrBacktestNameTaken and does not return that row.
+func twoCreates(t *testing.T, create func() (string, *backtest.Backtest, error)) (string, *backtest.Backtest) {
+	t.Helper()
+	start := make(chan struct{})
+	ready := sync.WaitGroup{}
+	ready.Add(2)
+	out := make(chan createOutcome, 2)
+	for range 2 {
+		go func() {
+			ready.Done()
+			<-start
+			id, item, err := create()
+			out <- createOutcome{id: id, item: item, err: err}
+		}()
+	}
+	ready.Wait()
+	close(start)
+
+	var (
+		wonID   string
+		wonItem *backtest.Backtest
+		failed  int
+	)
+	for range 2 {
+		got := <-out
+		if got.err != nil {
+			failed++
+			require.ErrorIs(t, got.err, repository.ErrBacktestNameTaken)
+			require.Empty(t, got.id)
+			require.Nil(t, got.item)
+			continue
+		}
+		require.NotEmpty(t, got.id)
+		require.NotNil(t, got.item)
+		wonID = got.id
+		wonItem = got.item
+	}
+	require.Equal(t, 1, failed)
+	require.NotEmpty(t, wonID)
+	return wonID, wonItem
+}
+
+func TestConcurrentCreateSameName(t *testing.T) {
+	pool := newBacktestPool(t)
+	ctx := context.Background()
+
+	t.Run("auth off", func(t *testing.T) {
+		resetBacktests(t, pool)
+		backtests := repository.Backtest{Conn: pool}
+		id, item := twoCreates(t, func() (string, *backtest.Backtest, error) {
+			return backtests.Create(ctx, &backtest.Backtest{
+				Name: "race", Benchmark: "SPY", Provider: "yahoo",
+			})
+		})
+		require.Equal(t, "race", item.GetName())
+		var stored string
+		require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM backtest WHERE name = 'race'`).Scan(&stored))
+		require.Equal(t, id, stored)
+		require.Equal(t, 1, countBacktestRows(t, pool, `SELECT COUNT(*) FROM backtest WHERE name = 'race'`))
+
+		again, againItem, err := backtests.Create(ctx, &backtest.Backtest{
+			Name: "race", Benchmark: "SPY", Provider: "yahoo",
+		})
+		require.ErrorIs(t, err, repository.ErrBacktestNameTaken)
+		require.Empty(t, again)
+		require.Nil(t, againItem)
+		require.Equal(t, 1, countBacktestRows(t, pool, `SELECT COUNT(*) FROM backtest WHERE name = 'race'`))
+	})
+
+	t.Run("auth on", func(t *testing.T) {
+		t.Setenv(environment.AuthEnabled, "true")
+		resetBacktests(t, pool)
+		admin := insertBacktestAccount(t, pool, auth.RoleAdmin)
+		require.NoError(t, repository.MigrateBacktestOwner(ctx, pool, admin, &memIngest{keys: map[string]bool{}}))
+		backtests := repository.Backtest{Conn: pool}
+		id, item := twoCreates(t, func() (string, *backtest.Backtest, error) {
+			return backtests.CreateOwned(ctx, admin, &backtest.Backtest{
+				Name: "race", Benchmark: "SPY", Provider: "yahoo",
+			})
+		})
+		require.Equal(t, "race", item.GetName())
+		var stored string
+		require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM backtest WHERE owner_id = $1 AND name = 'race'`, admin).Scan(&stored))
+		require.Equal(t, id, stored)
+		require.Equal(t, 1, countBacktestRows(t, pool, `SELECT COUNT(*) FROM backtest WHERE name = 'race'`))
+
+		other := insertBacktestAccount(t, pool, auth.RoleEditor)
+		otherID, otherItem, err := backtests.CreateOwned(ctx, other, &backtest.Backtest{
+			Name: "race", Benchmark: "QQQ", Provider: "stooq",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, otherID)
+		require.NotEqual(t, id, otherID)
+		require.Equal(t, "race", otherItem.GetName())
+		require.Equal(t, 2, countBacktestRows(t, pool, `SELECT COUNT(*) FROM backtest WHERE name = 'race'`))
+	})
 }

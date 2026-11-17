@@ -1,6 +1,7 @@
 package stream_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/stream"
@@ -18,6 +19,10 @@ func TestCreateBacktestFromETFOrchestration(t *testing.T) {
 	require.Equal(t, int32(1), o.Steps[0].Num)
 	require.Equal(t, int32(2), o.Steps[1].Num)
 	require.Equal(t, int32(3), o.Steps[2].Num)
+	var creating stream.CreateBacktestFromETFCommand
+	require.NoError(t, json.Unmarshal(o.Steps[0].Messages[0].GetPayload(), &creating))
+	require.NotEmpty(t, creating.CreateMessageID)
+	require.Equal(t, o.Steps[0].Messages[0].GetId(), creating.CreateMessageID)
 }
 
 func TestCreateBacktestFromBacktestOrchestration(t *testing.T) {
@@ -44,4 +49,8 @@ func TestCreateBacktestFromBacktestOrchestration(t *testing.T) {
 	require.Equal(t, int32(1), o.Steps[0].Num)
 	require.Equal(t, int32(2), o.Steps[1].Num)
 	require.Equal(t, int32(3), o.Steps[2].Num)
+	var creating stream.CreateBacktestFromBacktestCommand
+	require.NoError(t, json.Unmarshal(o.Steps[0].Messages[0].GetPayload(), &creating))
+	require.NotEmpty(t, creating.CreateMessageID)
+	require.Equal(t, o.Steps[0].Messages[0].GetId(), creating.CreateMessageID)
 }

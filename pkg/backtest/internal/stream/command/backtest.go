@@ -73,12 +73,15 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	backtests := repository.Backtest{Conn: db}
-	if err = createStoredBacktest(ctx, backtests, command.OwnerID, &b); err != nil {
+	if err = createStoredBacktest(repository.WithCreateMessage(ctx, command.CreateMessageID), backtests, command.OwnerID, &b); err != nil {
 		if errors.Is(err, repository.ErrProviderMissing) {
 			return err
 		}
 		if errors.Is(err, repository.ErrCloseOnUniverseDropFixed) {
 			return plainSentence(err.Error())
+		}
+		if errors.Is(err, repository.ErrBacktestNameTaken) {
+			return err
 		}
 		return fmt.Errorf("error creating backtest: %w", err)
 	}
@@ -179,12 +182,15 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 		return err
 	}
 	backtests := repository.Backtest{Conn: db}
-	if err = createStoredBacktestWithMembers(ctx, backtests, command.OwnerID, &b, memberIntervals(result)); err != nil {
+	if err = createStoredBacktestWithMembers(repository.WithCreateMessage(ctx, command.CreateMessageID), backtests, command.OwnerID, &b, memberIntervals(result)); err != nil {
 		if errors.Is(err, repository.ErrProviderMissing) {
 			return err
 		}
 		if errors.Is(err, repository.ErrCloseOnUniverseDropFixed) {
 			return plainSentence(err.Error())
+		}
+		if errors.Is(err, repository.ErrBacktestNameTaken) {
+			return err
 		}
 		return fmt.Errorf("error creating backtest: %w", err)
 	}

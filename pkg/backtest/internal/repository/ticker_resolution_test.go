@@ -29,7 +29,7 @@ func TestTickerResolutionsByName(t *testing.T) {
 	ctx := context.Background()
 	resetBacktests(t, pool)
 	backtests := repository.Backtest{Conn: pool}
-	_, err := backtests.Create(ctx, &backtest.Backtest{Name: "oef", Benchmark: "SPY", Provider: "yahoo"})
+	_, _, err := backtests.Create(ctx, &backtest.Backtest{Name: "oef", Benchmark: "SPY", Provider: "yahoo"})
 	require.NoError(t, err)
 
 	stored, err := backtests.Get(ctx, "oef")
@@ -72,7 +72,7 @@ func TestTickerResolutionsRefuseIncompleteOnes(t *testing.T) {
 	ctx := context.Background()
 	resetBacktests(t, pool)
 	backtests := repository.Backtest{Conn: pool}
-	_, err := backtests.Create(ctx, &backtest.Backtest{Name: "oef", Benchmark: "SPY", Provider: "yahoo"})
+	_, _, err := backtests.Create(ctx, &backtest.Backtest{Name: "oef", Benchmark: "SPY", Provider: "yahoo"})
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -107,7 +107,7 @@ func TestTickerResolutionsFailTheReadOfABadRow(t *testing.T) {
 	ctx := context.Background()
 	resetBacktests(t, pool)
 	backtests := repository.Backtest{Conn: pool}
-	_, err := backtests.Create(ctx, &backtest.Backtest{Name: "oef", Benchmark: "SPY", Provider: "yahoo"})
+	_, _, err := backtests.Create(ctx, &backtest.Backtest{Name: "oef", Benchmark: "SPY", Provider: "yahoo"})
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `UPDATE backtest SET ticker_resolutions = '[{"symbol":"FB","read_as":"FB"}]'`)

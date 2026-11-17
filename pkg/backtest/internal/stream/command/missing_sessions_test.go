@@ -165,7 +165,7 @@ func (test *BacktestCommandTest) createPeriod(start, end time.Time, symbols ...s
 		assets = append(assets, &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
 	}
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.TODO(), &backtest.Backtest{
+	_, _, err := backtests.Create(context.TODO(), &backtest.Backtest{
 		Name:      quarterBacktest,
 		Benchmark: "OEF",
 		Provider:  "yahoo",

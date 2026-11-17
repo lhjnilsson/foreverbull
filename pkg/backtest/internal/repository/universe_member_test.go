@@ -89,7 +89,7 @@ func (test *UniverseMemberTest) TestCreateWithMembersRollsBackAFailedMember() {
 		{ISIN: aaplISIN, FromDate: from},
 		{ISIN: aaplISIN, FromDate: later},
 	}
-	_, err := test.backtests.CreateWithMembers(ctx, item, overlap)
+	_, _, err := test.backtests.CreateWithMembers(ctx, item, overlap)
 	test.Require().Error(err)
 	test.Require().ErrorContains(err, "universe_member")
 
@@ -99,7 +99,7 @@ func (test *UniverseMemberTest) TestCreateWithMembersRollsBackAFailedMember() {
 	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM backtest_period WHERE backtest_name=$1`, item.Name))
 	test.Equal(0, test.countRows(`SELECT COUNT(*) FROM universe_member WHERE backtest_name=$1`, item.Name))
 
-	stored, err := test.backtests.CreateWithMembers(ctx, item, overlap[:1])
+	_, stored, err := test.backtests.CreateWithMembers(ctx, item, overlap[:1])
 	test.Require().NoError(err)
 	test.Equal(item.Name, stored.Name)
 	test.Require().Len(stored.Periods, 1)
@@ -120,7 +120,7 @@ func (test *UniverseMemberTest) countRows(query string, args ...any) int {
 }
 
 func (test *UniverseMemberTest) createBacktest(name string) {
-	_, err := test.backtests.Create(context.Background(), &backtest.Backtest{
+	_, _, err := test.backtests.Create(context.Background(), &backtest.Backtest{
 		Name:      name,
 		Benchmark: "OEF",
 		Provider:  "yahoo",

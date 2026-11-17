@@ -245,6 +245,16 @@ func TestHTTP(t *testing.T) {
 		require.Nil(t, fake.createReq)
 	})
 
+	t.Run("create reports a duplicate name as a conflict", func(t *testing.T) {
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, &fakeBacktests{createErr: status.Error(codes.AlreadyExists, "already exists")})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", `{"name":"spy","start":"2024-01-02","end":"2024-06-28","provider":"yahoo"}`))
+
+		require.Equal(t, http.StatusConflict, rec.Code)
+		require.JSONEq(t, `{"error":"already exists"}`, rec.Body.String())
+	})
+
 	t.Run("create failure hides the cause", func(t *testing.T) {
 		mux := http.NewServeMux()
 		api.RegisterHTTP(mux, &fakeBacktests{createErr: fmt.Errorf("postgres password=secret")})

@@ -18,9 +18,10 @@ import (
 // task queue. It runs on a context that outlives a client that left.
 const queueFullCleanupTimeout = 10 * time.Second
 
-// createdBacktest is the backtest a create stores, found by name, or by
-// owner and name when auth is on. exists answers whether it is stored, and
-// remove deletes it, returning pgx.ErrNoRows when it isn't.
+// createdBacktest is the backtest a create stores. exists is by name, or by
+// owner and name when auth is on, and answers whether that name was stored
+// before this create ran. remove deletes the row this create stored and
+// returns pgx.ErrNoRows when that row is not there.
 type createdBacktest struct {
 	name   string
 	exists func(context.Context) (bool, error)
@@ -34,13 +35,10 @@ type createdBacktest struct {
 // only then is it removed. The failed step's message becomes the whole
 // sentence, which the client prints as the error.
 //
-// The backtest is removed by name: the create never learns the id the
-// worker stored, and the steps don't carry it. That leaves one race. Two
-// creates of the same name start together, both before either stored it;
-// one stores it, and the other's CREATING is refused by a full queue before
-// it ran. That one then removes the first one's backtest. It needs a full
-// queue and two creates of one name at once, and the first create's later
-// steps then fail on the missing backtest rather than leave a wrong one.
+// The backtest is removed by the id this create stored, recorded under the
+// CREATING task's message id. A second create of the same name fails with
+// repository.ErrBacktestNameTaken and stores nothing, so it has no row to
+// remove. A CREATING task the queue refused before it ran also stored nothing.
 type queueFullCreate struct {
 	backtest      createdBacktest
 	existedBefore bool
@@ -87,7 +85,8 @@ func (q *queueFullCreate) removeOwn(ctx context.Context) bool {
 }
 
 // namedBacktest is the created backtest by name, with auth off.
-func namedBacktest(backtests repository.Backtest, name string) createdBacktest {
+// remove deletes the row this create's task stored, not the name.
+func namedBacktest(backtests repository.Backtest, name, messageID string) createdBacktest {
 	return createdBacktest{
 		name: name,
 		exists: func(ctx context.Context) (bool, error) {
@@ -97,12 +96,13 @@ func namedBacktest(backtests repository.Backtest, name string) createdBacktest {
 			}
 			return err == nil, err
 		},
-		remove: func(ctx context.Context) error { return backtests.Delete(ctx, name) },
+		remove: removeStoredBacktest(backtests, messageID),
 	}
 }
 
 // ownedBacktest is the created backtest by owner and name, with auth on.
-func ownedBacktest(backtests repository.Backtest, ownerID, name string) createdBacktest {
+// remove deletes the row this create's task stored, not the name.
+func ownedBacktest(backtests repository.Backtest, ownerID, name, messageID string) createdBacktest {
 	return createdBacktest{
 		name: name,
 		exists: func(ctx context.Context) (bool, error) {
@@ -112,12 +112,16 @@ func ownedBacktest(backtests repository.Backtest, ownerID, name string) createdB
 			}
 			return err == nil, err
 		},
-		remove: func(ctx context.Context) error {
-			id, err := backtests.IDByOwnerAndName(ctx, ownerID, name)
-			if err != nil {
-				return err
-			}
-			return backtests.DeleteByID(ctx, id)
-		},
+		remove: removeStoredBacktest(backtests, messageID),
+	}
+}
+
+func removeStoredBacktest(backtests repository.Backtest, messageID string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		id, err := backtests.IDByCreateMessage(ctx, messageID)
+		if err != nil {
+			return err
+		}
+		return backtests.DeleteByID(ctx, id)
 	}
 }

@@ -50,7 +50,7 @@ func (test *BacktestCommandTest) createPriced(provider string, end time.Time, sy
 		assets = append(assets, &backtestpb.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
 	}
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.Background(), &backtestpb.Backtest{
+	_, _, err := backtests.Create(context.Background(), &backtestpb.Backtest{
 		Name:      quarterBacktest,
 		Benchmark: "OEF",
 		Provider:  provider,

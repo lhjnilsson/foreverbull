@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -80,11 +78,6 @@ func deleteStoredBacktest(ctx context.Context, backtests repository.Backtest, na
 	return backtests.Delete(ctx, name)
 }
 
-func uniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
-}
-
 func createStoredBacktest(ctx context.Context, backtests repository.Backtest, ownerID string, item *backtest.Backtest) error {
 	return storeBacktest(ctx, backtests, ownerID, item, nil, false)
 }
@@ -93,27 +86,33 @@ func createStoredBacktestWithMembers(ctx context.Context, backtests repository.B
 	return storeBacktest(ctx, backtests, ownerID, item, members, true)
 }
 
+// storeBacktest inserts the backtest and keeps the id the insert returned.
+// A second create of the same name is ErrBacktestNameTaken. The stored row
+// is not loaded again by name.
 func storeBacktest(ctx context.Context, backtests repository.Backtest, ownerID string, item *backtest.Backtest, members []repository.MemberInterval, writeMembers bool) error {
+	var (
+		id  string
+		err error
+	)
 	if environment.GetAuthEnabled() {
 		if strings.TrimSpace(ownerID) == "" {
 			return errors.New("owner id is empty")
 		}
-		var err error
 		if writeMembers {
-			_, err = backtests.CreateOwnedWithMembers(ctx, ownerID, item, members)
+			id, _, err = backtests.CreateOwnedWithMembers(ctx, ownerID, item, members)
 		} else {
-			_, err = backtests.CreateOwned(ctx, ownerID, item)
+			id, _, err = backtests.CreateOwned(ctx, ownerID, item)
 		}
-		if uniqueViolation(err) {
-			return fmt.Errorf("error creating backtest: %w", auth.ErrAlreadyExists)
-		}
+	} else if writeMembers {
+		id, _, err = backtests.CreateWithMembers(ctx, item, members)
+	} else {
+		id, _, err = backtests.Create(ctx, item)
+	}
+	if err != nil {
 		return err
 	}
-	var err error
-	if writeMembers {
-		_, err = backtests.CreateWithMembers(ctx, item, members)
-	} else {
-		_, err = backtests.Create(ctx, item)
+	if strings.TrimSpace(id) == "" {
+		return errors.New("backtest id is empty")
 	}
-	return err
+	return nil
 }
