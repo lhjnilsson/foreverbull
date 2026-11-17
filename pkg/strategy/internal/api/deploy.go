@@ -214,6 +214,23 @@ func (s *StrategyServer) ListDeploymentRuns(ctx context.Context, req *servicePb.
 	return &servicePb.ListDeploymentRunsResponse{Runs: list}, nil
 }
 
+// ListDeployments returns every deployment of the named strategy, oldest
+// started_at first. It is not filtered by a deployment id.
+func (s *StrategyServer) ListDeployments(ctx context.Context, req *servicePb.ListDeploymentsRequest) (*servicePb.ListDeploymentsResponse, error) {
+	if s.pgx == nil {
+		return nil, status.Error(codes.Internal, "strategy storage is not configured")
+	}
+	if environment.GetAuthEnabled() {
+		return s.listDeploymentsAuthed(ctx, req)
+	}
+	store := repository.Deployment{Conn: s.pgx}
+	deployments, err := store.List(ctx, req.GetStrategyName())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list deployments: %v", err)
+	}
+	return &servicePb.ListDeploymentsResponse{Deployments: deployments}, nil
+}
+
 func (s *StrategyServer) requireCompletedExperiment(ctx context.Context, version *pb.Version) error {
 	experiments := repository.Experiment{Conn: s.pgx}
 	list, err := experiments.List(ctx, version.StrategyName, version.Id, "")

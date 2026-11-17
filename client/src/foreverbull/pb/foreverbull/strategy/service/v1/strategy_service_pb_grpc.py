@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from grpc import StatusCode, method_handlers_generic_handler, unary_stream_rpc_method_handler, unary_unary_rpc_method_handler
 
-from .strategy_service_pb import CreateExperimentRequest, CreateExperimentResponse, CreateStrategyRequest, CreateStrategyResponse, CreateVersionRequest, CreateVersionResponse, DeleteStrategyRequest, DeleteStrategyResponse, DeployRequest, DeployResponse, GetExperimentRequest, GetExperimentResponse, GetStrategyRequest, GetStrategyResponse, ListDeploymentRunsRequest, ListDeploymentRunsResponse, ListExperimentsRequest, ListExperimentsResponse, ListStrategiesRequest, ListStrategiesResponse, StopDeploymentRequest, StopDeploymentResponse
+from .strategy_service_pb import CreateExperimentRequest, CreateExperimentResponse, CreateStrategyRequest, CreateStrategyResponse, CreateVersionRequest, CreateVersionResponse, DeleteStrategyRequest, DeleteStrategyResponse, DeployRequest, DeployResponse, GetExperimentRequest, GetExperimentResponse, GetStrategyRequest, GetStrategyResponse, ListDeploymentRunsRequest, ListDeploymentRunsResponse, ListDeploymentsRequest, ListDeploymentsResponse, ListExperimentsRequest, ListExperimentsResponse, ListStrategiesRequest, ListStrategiesResponse, StopDeploymentRequest, StopDeploymentResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
@@ -74,6 +74,11 @@ class StrategyServicerService:
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
+    async def list_deployments(self, request: ListDeploymentsRequest, context: aio.ServicerContext) -> ListDeploymentsResponse:
+        context.set_code(StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
     def add_to_server(self, server: aio.Server) -> None:
         """Register this service's RPC handlers with a grpc server."""
         rpc_method_handlers = {
@@ -131,6 +136,11 @@ class StrategyServicerService:
                 self.list_deployment_runs,
                 request_deserializer=ListDeploymentRunsRequest.from_binary,
                 response_serializer=ListDeploymentRunsResponse.to_binary,
+            ),
+            "ListDeployments": unary_unary_rpc_method_handler(
+                self.list_deployments,
+                request_deserializer=ListDeploymentsRequest.from_binary,
+                response_serializer=ListDeploymentsResponse.to_binary,
             ),
         }
         generic_handler = method_handlers_generic_handler(
@@ -196,6 +206,11 @@ class StrategyServicerClient:
             "/foreverbull.strategy.service.v1.StrategyServicer/ListDeploymentRuns",
             request_serializer=ListDeploymentRunsRequest.to_binary,
             response_deserializer=ListDeploymentRunsResponse.from_binary,
+        )
+        self._list_deployments = channel.unary_unary(
+            "/foreverbull.strategy.service.v1.StrategyServicer/ListDeployments",
+            request_serializer=ListDeploymentsRequest.to_binary,
+            response_deserializer=ListDeploymentsResponse.from_binary,
         )
 
     def create_strategy(
@@ -330,6 +345,18 @@ class StrategyServicerClient:
     ) -> aio.UnaryUnaryCall[ListDeploymentRunsRequest, ListDeploymentRunsResponse]:
         return self._list_deployment_runs(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
 
+    def list_deployments(
+        self,
+        request: ListDeploymentsRequest,
+        *,
+        timeout: float | None = None,
+        metadata: aio.Metadata | Sequence[tuple[str, str | bytes]] | None = None,
+        credentials: CallCredentials | None = None,
+        wait_for_ready: bool | None = None,
+        compression: Compression | None = None,
+    ) -> aio.UnaryUnaryCall[ListDeploymentsRequest, ListDeploymentsResponse]:
+        return self._list_deployments(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
+
 
 class StrategyServicerServiceSync:
     def create_strategy(self, request: CreateStrategyRequest, context: ServicerContext) -> CreateStrategyResponse:
@@ -383,6 +410,11 @@ class StrategyServicerServiceSync:
         raise NotImplementedError("Method not implemented!")
 
     def list_deployment_runs(self, request: ListDeploymentRunsRequest, context: ServicerContext) -> ListDeploymentRunsResponse:
+        context.set_code(StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def list_deployments(self, request: ListDeploymentsRequest, context: ServicerContext) -> ListDeploymentsResponse:
         context.set_code(StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
@@ -444,6 +476,11 @@ class StrategyServicerServiceSync:
                 self.list_deployment_runs,
                 request_deserializer=ListDeploymentRunsRequest.from_binary,
                 response_serializer=ListDeploymentRunsResponse.to_binary,
+            ),
+            "ListDeployments": unary_unary_rpc_method_handler(
+                self.list_deployments,
+                request_deserializer=ListDeploymentsRequest.from_binary,
+                response_serializer=ListDeploymentsResponse.to_binary,
             ),
         }
         generic_handler = method_handlers_generic_handler(
@@ -509,6 +546,11 @@ class StrategyServicerClientSync:
             "/foreverbull.strategy.service.v1.StrategyServicer/ListDeploymentRuns",
             request_serializer=ListDeploymentRunsRequest.to_binary,
             response_deserializer=ListDeploymentRunsResponse.from_binary,
+        )
+        self._list_deployments = channel.unary_unary(
+            "/foreverbull.strategy.service.v1.StrategyServicer/ListDeployments",
+            request_serializer=ListDeploymentsRequest.to_binary,
+            response_deserializer=ListDeploymentsResponse.from_binary,
         )
 
     def create_strategy(
@@ -642,3 +684,15 @@ class StrategyServicerClientSync:
         compression: Compression | None = None,
     ) -> ListDeploymentRunsResponse:
         return self._list_deployment_runs(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)
+
+    def list_deployments(
+        self,
+        request: ListDeploymentsRequest,
+        *,
+        timeout: float | None = None,
+        metadata: tuple[tuple[str, str | bytes], ...] | None = None,
+        credentials: CallCredentials | None = None,
+        wait_for_ready: bool | None = None,
+        compression: Compression | None = None,
+    ) -> ListDeploymentsResponse:
+        return self._list_deployments(request, timeout=timeout, metadata=metadata, credentials=credentials, wait_for_ready=wait_for_ready, compression=compression)

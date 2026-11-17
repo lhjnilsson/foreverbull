@@ -30,6 +30,7 @@ const (
 	StrategyServicer_Deploy_FullMethodName             = "/foreverbull.strategy.service.v1.StrategyServicer/Deploy"
 	StrategyServicer_StopDeployment_FullMethodName     = "/foreverbull.strategy.service.v1.StrategyServicer/StopDeployment"
 	StrategyServicer_ListDeploymentRuns_FullMethodName = "/foreverbull.strategy.service.v1.StrategyServicer/ListDeploymentRuns"
+	StrategyServicer_ListDeployments_FullMethodName    = "/foreverbull.strategy.service.v1.StrategyServicer/ListDeployments"
 )
 
 // StrategyServicerClient is the client API for StrategyServicer service.
@@ -47,6 +48,7 @@ type StrategyServicerClient interface {
 	Deploy(ctx context.Context, in *DeployRequest, opts ...grpc.CallOption) (*DeployResponse, error)
 	StopDeployment(ctx context.Context, in *StopDeploymentRequest, opts ...grpc.CallOption) (*StopDeploymentResponse, error)
 	ListDeploymentRuns(ctx context.Context, in *ListDeploymentRunsRequest, opts ...grpc.CallOption) (*ListDeploymentRunsResponse, error)
+	ListDeployments(ctx context.Context, in *ListDeploymentsRequest, opts ...grpc.CallOption) (*ListDeploymentsResponse, error)
 }
 
 type strategyServicerClient struct {
@@ -176,6 +178,16 @@ func (c *strategyServicerClient) ListDeploymentRuns(ctx context.Context, in *Lis
 	return out, nil
 }
 
+func (c *strategyServicerClient) ListDeployments(ctx context.Context, in *ListDeploymentsRequest, opts ...grpc.CallOption) (*ListDeploymentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDeploymentsResponse)
+	err := c.cc.Invoke(ctx, StrategyServicer_ListDeployments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StrategyServicerServer is the server API for StrategyServicer service.
 // All implementations must embed UnimplementedStrategyServicerServer
 // for forward compatibility.
@@ -191,6 +203,7 @@ type StrategyServicerServer interface {
 	Deploy(context.Context, *DeployRequest) (*DeployResponse, error)
 	StopDeployment(context.Context, *StopDeploymentRequest) (*StopDeploymentResponse, error)
 	ListDeploymentRuns(context.Context, *ListDeploymentRunsRequest) (*ListDeploymentRunsResponse, error)
+	ListDeployments(context.Context, *ListDeploymentsRequest) (*ListDeploymentsResponse, error)
 	mustEmbedUnimplementedStrategyServicerServer()
 }
 
@@ -233,6 +246,9 @@ func (UnimplementedStrategyServicerServer) StopDeployment(context.Context, *Stop
 }
 func (UnimplementedStrategyServicerServer) ListDeploymentRuns(context.Context, *ListDeploymentRunsRequest) (*ListDeploymentRunsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListDeploymentRuns not implemented")
+}
+func (UnimplementedStrategyServicerServer) ListDeployments(context.Context, *ListDeploymentsRequest) (*ListDeploymentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListDeployments not implemented")
 }
 func (UnimplementedStrategyServicerServer) mustEmbedUnimplementedStrategyServicerServer() {}
 func (UnimplementedStrategyServicerServer) testEmbeddedByValue()                          {}
@@ -446,6 +462,24 @@ func _StrategyServicer_ListDeploymentRuns_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StrategyServicer_ListDeployments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDeploymentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StrategyServicerServer).ListDeployments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StrategyServicer_ListDeployments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StrategyServicerServer).ListDeployments(ctx, req.(*ListDeploymentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StrategyServicer_ServiceDesc is the grpc.ServiceDesc for StrategyServicer service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -492,6 +526,10 @@ var StrategyServicer_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListDeploymentRuns",
 			Handler:    _StrategyServicer_ListDeploymentRuns_Handler,
+		},
+		{
+			MethodName: "ListDeployments",
+			Handler:    _StrategyServicer_ListDeployments_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

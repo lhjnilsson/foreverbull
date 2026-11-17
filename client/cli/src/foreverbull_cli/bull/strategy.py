@@ -18,6 +18,7 @@ from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
 from foreverbull_cli.output import format_date_field
 from foreverbull_cli.output import format_optional_float
+from foreverbull_cli.usercopy import deployment_error_lines
 from foreverbull_cli.usercopy import deployment_run_error
 
 
@@ -382,3 +383,6 @@ def status(
     _print_strategy(entity)
     _print_experiments(broker.strategy.list_experiments(strategy_name=name))
     _print_deployment_runs(broker.strategy.list_deployment_runs(strategy_name=name))
+    # Every deployment of the strategy, not one deployment id.
+    for line in deployment_error_lines(broker.strategy.list_deployments(strategy_name=name)):
+        console.print(line, markup=False, highlight=False, soft_wrap=True)

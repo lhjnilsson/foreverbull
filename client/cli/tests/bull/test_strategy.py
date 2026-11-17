@@ -724,6 +724,7 @@ def test_strategy_status(runner):
         patch("foreverbull.broker.strategy.get_strategy") as mock_get,
         patch("foreverbull.broker.strategy.list_experiments") as mock_experiments,
         patch("foreverbull.broker.strategy.list_deployment_runs") as mock_runs,
+        patch("foreverbull.broker.strategy.list_deployments", return_value=[]),
     ):
         mock_get.return_value = _sample_strategy()
         mock_experiments.return_value = [
@@ -767,6 +768,7 @@ def test_strategy_status_maps_only_skipped_missed_close(runner):
         patch("foreverbull.broker.strategy.get_strategy") as mock_get,
         patch("foreverbull.broker.strategy.list_experiments") as mock_experiments,
         patch("foreverbull.broker.strategy.list_deployment_runs") as mock_runs,
+        patch("foreverbull.broker.strategy.list_deployments", return_value=[]),
     ):
         mock_get.return_value = _sample_strategy()
         mock_experiments.return_value = []
@@ -781,3 +783,45 @@ def test_strategy_status_maps_only_skipped_missed_close(runner):
     assert "broker down" in shown
     assert "yes" in shown
     assert "no" in shown
+
+
+def test_strategy_status_prints_stored_deployment_errors(runner):
+    missed = (
+        "Deployment 'mean-rev' missed the close on 2024-03-04, so it didn't trade that session "
+        "and stopped with an error. Run `fbull strategy deploy mean-rev` again with the same options plus "
+        "--skip-missed to skip missed closes and keep trading."
+    )
+    dry = (
+        "Dry run for deployment 'mean-rev' couldn't read the portfolio for trading profile 'alpaca-paper', "
+        "so it didn't trade that session and stopped with an error. Check that the account for 'alpaca-paper' "
+        "is reachable and its keys are right, then run `fbull strategy deploy mean-rev` again with the same options."
+    )
+    blank = (
+        "A deployment missed the close on 2024-03-05, so it didn't trade that session and stopped with an error. "
+        "Run `fbull strategy deploy` again with the same options plus --skip-missed to skip missed closes and keep trading."
+    )
+    empty = strategy_pb.Deployment(id="42", status=strategy_pb.Deployment.Status.ERROR)
+    failed = [
+        strategy_pb.Deployment(id="7", status=strategy_pb.Deployment.Status.ERROR, error=missed),
+        strategy_pb.Deployment(id="8", status=strategy_pb.Deployment.Status.ERROR, error=dry),
+        empty,
+        strategy_pb.Deployment(id="9", status=strategy_pb.Deployment.Status.ERROR, error=blank),
+    ]
+    with (
+        patch("foreverbull.broker.strategy.get_strategy") as mock_get,
+        patch("foreverbull.broker.strategy.list_experiments", return_value=[]),
+        patch("foreverbull.broker.strategy.list_deployment_runs", return_value=[]),
+        patch("foreverbull.broker.strategy.list_deployments", return_value=failed),
+    ):
+        mock_get.return_value = _sample_strategy()
+        result = runner(strategy, ["status", "mean-rev"])
+
+    assert result.exit_code == 0
+    shown = " ".join(result.stdout.replace("│", " ").split())
+    assert f"⚠ {missed}" in shown
+    assert f"⚠ {dry}" in shown
+    assert (
+        "⚠ Deployment 42 stopped with an error, but foreverbull didn't save why. "
+        "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+    ) in shown
+    assert f"⚠ Deployment 9: a{blank[1:]}" in shown
