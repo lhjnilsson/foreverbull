@@ -109,6 +109,37 @@ class TestCalendarService:
         response = stub.list_calendar_dates(req)
         assert pb_utils.from_proto_date_to_pydate(response.dates[-1].date) == last
 
+    def test_list_calendar_dates_one_day_before_the_first_session_is_out_of_range(
+        self, stub: calendar_service_pb_grpc.CalendarClientSync
+    ):
+        # One day before the first session is OUT_OF_RANGE and names both
+        # dates. The library's DateOutOfBounds text is not sent.
+        first = get_calendar("XNYS").first_session.date()
+        start = first - timedelta(days=1)
+        req = calendar_service_pb.ListCalendarDatesRequest(
+            code="XNYS",
+            start=pb_utils.from_pydate_to_proto_date(start),
+            end=pb_utils.from_pydate_to_proto_date(first),
+        )
+        with pytest.raises(grpc.RpcError) as raised:
+            stub.list_calendar_dates(req)
+        assert raised.value.code() == grpc.StatusCode.OUT_OF_RANGE
+        assert (
+            raised.value.details()
+            == f"{start.isoformat()} is before the XNYS calendar's first session {first.isoformat()}"
+        )
+
+    def test_list_calendar_dates_on_the_first_session(self, stub: calendar_service_pb_grpc.CalendarClientSync):
+        first = get_calendar("XNYS").first_session.date()
+        req = calendar_service_pb.ListCalendarDatesRequest(
+            code="XNYS",
+            start=pb_utils.from_pydate_to_proto_date(first),
+            end=pb_utils.from_pydate_to_proto_date(first),
+        )
+        response = stub.list_calendar_dates(req)
+        days = [pb_utils.from_proto_date_to_pydate(day.date) for day in response.dates]
+        assert days == [first]
+
 
 class TestBacktestService:
     @pytest.fixture

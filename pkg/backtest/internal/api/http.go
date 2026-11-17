@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/internal/web"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -104,6 +105,10 @@ func (h backtestRoutes) create(w http.ResponseWriter, r *http.Request) {
 	}
 	stream := &createBacktestStream{ctx: r.Context()}
 	if err := h.api.CreateBacktest(req, stream); err != nil {
+		if sentence, ok := startBeforeCalendarSentence(err.Error()); ok {
+			web.BadRequestSentence(w, sentence)
+			return
+		}
 		web.WriteError(w, err)
 		return
 	}
@@ -111,7 +116,36 @@ func (h backtestRoutes) create(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, errors.New("create backtest returned nothing"))
 		return
 	}
+	if sentence, ok := failedStartBeforeCalendar(stream.last); ok {
+		web.BadRequestSentence(w, sentence)
+		return
+	}
 	web.WriteMessage(w, stream.last)
+}
+
+// startBeforeCalendarSentence is the create refusal when it is that sentence.
+func startBeforeCalendarSentence(message string) (string, bool) {
+	if usercopy.IsBacktestStartsBeforeCalendar(message) {
+		return message, true
+	}
+	return "", false
+}
+
+// failedStartBeforeCalendar is that sentence on a failed create step. The
+// stream keeps the refusal on the step, and the page reads a 400 body.
+func failedStartBeforeCalendar(rsp *servicePb.CreateBacktestResponse) (string, bool) {
+	if rsp == nil {
+		return "", false
+	}
+	for _, step := range []*pb.Step{rsp.GetCREATING(), rsp.GetDOWNLOADING(), rsp.GetINGESTING(), rsp.GetSTORING()} {
+		if step.GetState() != pb.State_STATE_FAILED {
+			continue
+		}
+		if sentence, ok := startBeforeCalendarSentence(step.GetMessage()); ok {
+			return sentence, true
+		}
+	}
+	return "", false
 }
 
 func (h backtestRoutes) executions(w http.ResponseWriter, r *http.Request) {

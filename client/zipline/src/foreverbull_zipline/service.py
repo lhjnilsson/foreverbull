@@ -97,6 +97,15 @@ def calendar_end_reason(code: str, last_session: datetime.date) -> str:
     return f"the {code} calendar ends on {last_session.isoformat()}"
 
 
+def calendar_start_reason(code: str, start: datetime.date, first_session: datetime.date) -> str:
+    """The OUT_OF_RANGE status text for a read before the calendar's first session.
+
+    The broker reads both dates from it, so the shape is fixed:
+    "1989-12-31 is before the XNYS calendar's first session 1990-01-02".
+    """
+    return f"{start.isoformat()} is before the {code} calendar's first session {first_session.isoformat()}"
+
+
 class CalendarService(calendar_service_pb_grpc.CalendarServiceSync):
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -108,7 +117,20 @@ class CalendarService(calendar_service_pb_grpc.CalendarServiceSync):
         calendar = get_calendar(request.code)
         start = pb_utils.from_proto_date_to_pydate(request.start)
         end = pb_utils.from_proto_date_to_pydate(request.end)
+        first = calendar.first_session.date()
         last = calendar.last_session.date()
+        if start < first:
+            # exchange_calendars raises DateOutOfBounds for a start before
+            # the first session. Answer with that session under its own
+            # code, before the library is asked, so the broker can name it.
+            self.logger.warning(
+                "%s sessions from %s to %s are before the calendar's first session %s",
+                request.code,
+                start,
+                end,
+                first,
+            )
+            context.abort(grpc.StatusCode.OUT_OF_RANGE, calendar_start_reason(request.code, start, first))
         if start > last or end > last:
             # The calendar is loaded about a year ahead. A read past its last
             # session is answered with that session under its own code, so

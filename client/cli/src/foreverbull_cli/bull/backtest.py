@@ -43,6 +43,7 @@ from foreverbull_cli.output import execution_link
 from foreverbull_cli.output import format_date_field
 from foreverbull_cli.output import format_optional_float
 from foreverbull_cli.output import format_proto_date
+from foreverbull_cli.usercopy import backtest_starts_before_calendar
 from foreverbull_cli.usercopy import later_ticker_lines
 from foreverbull_cli.usercopy import later_tickers
 
@@ -535,6 +536,14 @@ def create(
             help=_CLOSE_ON_DROP_HELP,
         ),
     ] = None,
+    start_flag: Annotated[
+        str | None,
+        typer.Option(
+            "--start",
+            show_default=False,
+            help="Start date (YYYY-MM-DD). Overrides start_date in the backtest file.",
+        ),
+    ] = None,
 ):
     """Create a backtest from a YAML file or a known iShares ETF.
 
@@ -543,6 +552,18 @@ def create(
     Optional YAML field `profile` is sent on the create request.
     `--provider` overrides `provider` in the file. An omitted provider is refused.
     """
+    # --start overrides a file. Without a file it is refused before a prompt
+    # or a broker call, so the ETF path's own start date is never this flag.
+    if start_flag is not None and file is None:
+        _fail(
+            "--start only applies to a backtest file. Remove --start, or run "
+            "`fbull backtest create --file <file> --start <date>`."
+        )
+    start_override: date | None = None
+    if start_flag is not None:
+        if not _ISO_DATE.match(start_flag):
+            _fail(f"--start {start_flag!r} isn't a date. Use YYYY-MM-DD, for example 2024-01-31.")
+        start_override = date.fromisoformat(start_flag)
     flag_provider: str | None = None
     if provider is not None:
         flag_provider = _normalize_provider(provider)
@@ -578,6 +599,12 @@ def create(
         if chosen is None:
             raise typer.Exit(code=1)
         close_on_drop = _close_choice(close_on_universe_drop, data.get("auto_close_on_universe_drop"))
+        if start_override is not None:
+            for period in data["periods"]:
+                end = date.fromisoformat(period["end_date"])
+                if start_override > end:
+                    _fail(f"End date {end.isoformat()} is before start date {start_override.isoformat()}.")
+                period["start_date"] = start_override.isoformat()
         entity = backtest_service_pb.CreateBacktestRequest.CreateFromBacktest(
             backtest=backtest_pb.Backtest(
                 name=data["name"],
@@ -658,6 +685,10 @@ def create(
             progress.transient = True
 
     if failure is not None:
+        # The broker's sentence names no command. A file create replaces the
+        # tail; the ETF prompt keeps the sentence, because it has no --start.
+        if file is not None:
+            failure = backtest_starts_before_calendar(failure, start_flag=start_flag is not None)
         _fail(failure)
     if created is None:
         _fail(_backtest_create_ended(_entity_name(entity), stored=stored))

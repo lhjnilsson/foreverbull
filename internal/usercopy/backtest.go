@@ -1,6 +1,10 @@
 package usercopy
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"time"
+)
 
 // CloseOnUniverseDropFixed is the refusal when a create would change the
 // option on a backtest that already exists. The setting is chosen once.
@@ -54,4 +58,23 @@ func BacktestDeleteThenCreate(name string) string {
 func BacktestCleanupInternal(name, pricesKept string) string {
 	return fmt.Sprintf("Couldn't load data for backtest '%s': %s %s %s %s",
 		name, BacktestCleanupInternalCause, pricesKept, BacktestDeleteThenCreate(name), ReportIt)
+}
+
+// BacktestStartsBeforeCalendar is the refusal when create's start is before
+// the market calendar's first session. It names no command: the page and the
+// HTTP response show it as written, and the CLI replaces the last sentence.
+func BacktestStartsBeforeCalendar(start, firstSession time.Time) string {
+	first := firstSession.Format(time.DateOnly)
+	return fmt.Sprintf("This backtest starts on %s, before the first trading day in foreverbull's market calendar (%s), so it can't be created. Set the start to %s or later, then create the backtest again.",
+		start.Format(time.DateOnly), first, first)
+}
+
+// backtestStartsBeforeCalendar matches BacktestStartsBeforeCalendar, and
+// only when the date in the last sentence is the first session.
+var backtestStartsBeforeCalendar = regexp.MustCompile(`^This backtest starts on \d{4}-\d{2}-\d{2}, before the first trading day in foreverbull's market calendar \((\d{4}-\d{2}-\d{2})\), so it can't be created\. Set the start to (\d{4}-\d{2}-\d{2}) or later, then create the backtest again\.$`)
+
+// IsBacktestStartsBeforeCalendar reports whether message is that sentence.
+func IsBacktestStartsBeforeCalendar(message string) bool {
+	match := backtestStartsBeforeCalendar.FindStringSubmatch(message)
+	return match != nil && match[1] == match[2]
 }

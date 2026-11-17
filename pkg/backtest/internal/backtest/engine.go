@@ -99,6 +99,30 @@ func (z *Zipline) Ingest(ctx context.Context, backtest *pb.Backtest, object *sto
 // sessionCalendar is the exchange the bundle is written for.
 const sessionCalendar = "XNYS"
 
+// calendarStartStatus is the Zipline calendar service's OUT_OF_RANGE text
+// for a read before its first session (calendar_start_reason in service.py):
+// "1989-12-31 is before the XNYS calendar's first session 1990-01-02".
+var calendarStartStatus = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}) is before the ([A-Z0-9]+) calendar's first session (\d{4}-\d{2}-\d{2})$`)
+
+// calendarStartError reads that status into an engine.CalendarStartError.
+// It is false for any other error, and for OUT_OF_RANGE with other text.
+func calendarStartError(err error) (*engine.CalendarStartError, bool) {
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.OutOfRange {
+		return nil, false
+	}
+	match := calendarStartStatus.FindStringSubmatch(st.Message())
+	if match == nil {
+		return nil, false
+	}
+	start, startErr := time.Parse(time.DateOnly, match[1])
+	first, firstErr := time.Parse(time.DateOnly, match[3])
+	if startErr != nil || firstErr != nil {
+		return nil, false
+	}
+	return &engine.CalendarStartError{Calendar: match[2], Start: start, FirstSession: first}, true
+}
+
 // calendarEndStatus is the Zipline calendar service's OUT_OF_RANGE text for
 // a read past its last session: "the XNYS calendar ends on 2027-11-02"
 // (calendar_end_reason in service.py).
@@ -132,6 +156,9 @@ func (z *Zipline) Sessions(ctx context.Context, start, end time.Time) ([]time.Ti
 		End:   commonPb.GoTimeToDate(end),
 	})
 	if err != nil {
+		if calendarStart, ok := calendarStartError(err); ok {
+			return nil, calendarStart
+		}
 		if calendarEnd, ok := calendarEndError(err); ok {
 			return nil, calendarEnd
 		}

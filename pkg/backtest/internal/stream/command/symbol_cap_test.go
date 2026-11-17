@@ -57,6 +57,7 @@ func (test *BacktestCommandTest) createFromFile(name string, assets []*backtest.
 		payload.Backtest = bytes
 	})
 	message.On("MustGet", stream.DBDep).Return(test.db).Maybe()
+	allowCalendar(message)
 	return command.CreateBacktestFromBacktest(context.TODO(), message)
 }
 

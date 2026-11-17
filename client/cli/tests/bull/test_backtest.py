@@ -602,6 +602,88 @@ def _download_failed_stream(message: str):
     return stream
 
 
+_START_BEFORE_CALENDAR = (
+    "This backtest starts on 1989-12-31, before the first trading day in "
+    "foreverbull's market calendar (1990-01-02), so it can't be created. "
+    "Set the start to 1990-01-02 or later, then create the backtest again."
+)
+_START_BEFORE_CALENDAR_FLAG = (
+    "This backtest starts on 1989-12-31, before the first trading day in "
+    "foreverbull's market calendar (1990-01-02), so it can't be created. "
+    "Run `fbull backtest create` again with --start 1990-01-02 or later."
+)
+_START_BEFORE_CALENDAR_FILE = (
+    "This backtest starts on 1989-12-31, before the first trading day in "
+    "foreverbull's market calendar (1990-01-02), so it can't be created. "
+    "Set start to 1990-01-02 or later in the backtest file, then run `fbull backtest create` again."
+)
+
+
+def test_backtest_create_from_file_refuses_a_start_before_the_calendar(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_START_BEFORE_CALENDAR)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_START_BEFORE_CALENDAR_FILE}\n"
+
+
+_START_WITHOUT_FILE = (
+    "--start only applies to a backtest file. Remove --start, or run "
+    "`fbull backtest create --file <file> --start <date>`."
+)
+
+
+def test_backtest_create_refuses_start_without_a_file():
+    with patch("foreverbull.broker.backtest.create") as mock_create:
+        result = CliRunner().invoke(backtest, ["create", "--provider", "yahoo", "--start", "1990-01-02"])
+
+    mock_create.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"✖ {_START_WITHOUT_FILE}\n"
+
+
+def test_backtest_create_etf_keeps_the_broker_sentence(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_START_BEFORE_CALENDAR)):
+        result = CliRunner().invoke(
+            backtest,
+            ["create", "--provider", "yahoo"],
+            input="early\niShares S&P 100\n2020-01-01\n2020-12-31\n",
+        )
+
+    assert result.exit_code == 1
+    assert result.output.endswith(f"✖ {_START_BEFORE_CALENDAR}\n")
+    assert _START_BEFORE_CALENDAR_FLAG not in result.output
+    assert _START_BEFORE_CALENDAR_FILE not in result.output
+
+
+def test_backtest_create_with_start_refuses_a_start_before_the_calendar(monkeypatch):
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(_START_BEFORE_CALENDAR)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+        tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cfg_file,
+    ):
+        yaml.safe_dump(_file_payload(), cfg_file)
+        cfg_file.flush()
+        result = CliRunner().invoke(
+            backtest, ["create", "--file", cfg_file.name, "--provider", "yahoo", "--start", "1989-12-31"]
+        )
+    Path(cfg_file.name).unlink(missing_ok=True)
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_START_BEFORE_CALENDAR_FLAG}\n"
+
+
 def test_backtest_create_no_price_data_prints_exact_copy_and_exits_1(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
