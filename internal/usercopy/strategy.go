@@ -47,6 +47,54 @@ func DeploymentStartFailed(strategy string, notStored bool) string {
 	return fmt.Sprintf("Couldn't start deployment '%s'. %s", strategy, RetryStep("fbull strategy deploy "+strategy))
 }
 
+// DryRunRecorded is the broker log line when a dry run read the portfolio of
+// the deployment's trading profile. provider is that profile name, the value
+// stored as backend, such as alpaca-paper.
+func DryRunRecorded(provider string) string {
+	return "Dry run: orders were worked out from the portfolio for trading profile '" + provider +
+		"' and recorded only, and none were sent."
+}
+
+// DryRunEmptyPortfolio is the broker log line when a dry run has no trading
+// profile, so the book is empty.
+const DryRunEmptyPortfolio = "Dry run: foreverbull didn't read your trading account. Orders were worked out from an empty portfolio and recorded only, and none were sent."
+
+// DryRunPortfolioUnreadable is the sentence stored on a dry-run deployment
+// whose trading profile could not be read. strategy is the strategy name.
+// provider is the profile name. An empty name is not quoted. The provider's
+// own error is not included.
+func DryRunPortfolioUnreadable(strategy, provider string) string {
+	name := strings.TrimSpace(strategy)
+	if name == "" {
+		return fmt.Sprintf(
+			"A dry-run deployment couldn't read the portfolio for trading profile '%s', so it didn't trade that session and stopped with an error. "+
+				"Check that the account for '%s' is reachable and its keys are right, "+
+				"then run `fbull strategy deploy` again with the same options.",
+			provider, provider,
+		)
+	}
+	return fmt.Sprintf(
+		"Dry run for deployment '%s' couldn't read the portfolio for trading profile '%s', so it didn't trade that session and stopped with an error. "+
+			"Check that the account for '%s' is reachable and its keys are right, "+
+			"then run `fbull strategy deploy %s` again with the same options.",
+		name, provider, provider, name,
+	)
+}
+
+// UnknownTradingProfile is the deploy refusal when the name is not in the
+// trading-profile registry.
+func UnknownTradingProfile(name string) string {
+	return fmt.Sprintf("There's no trading profile named '%s', so the deployment wasn't started. "+
+		"Check the name against the trading profiles set up for foreverbull, then deploy again.", name)
+}
+
+// NoTradingProfiles is the deploy refusal when the broker has no registry,
+// so a named profile cannot be used.
+func NoTradingProfiles(name string) string {
+	return fmt.Sprintf("This broker has no trading profiles set up, so it can't use '%s' and the deployment wasn't started. "+
+		"Deploy without a trading profile to dry-run from an empty portfolio, or set up the profile, then deploy again.", name)
+}
+
 // MissedSessionClose is the sentence stored on a deployment that was down
 // across one or more session closes when skip-missed is off. strategy is the
 // strategy name. dates are the missed session dates, YYYY-MM-DD, oldest

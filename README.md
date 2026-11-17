@@ -270,7 +270,7 @@ uv run fbull strategy status mean-rev
 uv run fbull strategy stop mean-rev
 ```
 
-Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. Paper PlaceOrder needs `--mode paper --no-dry-run --backend <profile> --yes` (or `--confirm`) and `TRADING_ENABLED=true`. `--backend` is a profile name, not a key. `--mode live` is refused. A missed close fails the deployment. Run `fbull strategy deploy <name>` again with the same options plus `--skip-missed` to skip missed closes and keep trading. With the flag, each skipped close is recorded and the deployment continues.
+Default `deploy` is paper + `--dry-run` (Process, no PlaceOrder). Dry-run may omit `--backend`. A name that is not a trading profile is refused at deploy (`There's no trading profile named '<name>', so the deployment wasn't started. Check the name against the trading profiles set up for foreverbull, then deploy again.`). With no profiles configured, the refusal names that. With a profile it reads that portfolio and records orders. The log is `Dry run: orders were worked out from the portfolio for trading profile '<profile>' and recorded only, and none were sent.` A failed read says to run `fbull strategy deploy <name>` again with the same options. With none it uses an empty portfolio. It does not send orders. Paper PlaceOrder needs `--mode paper --no-dry-run --backend <profile> --yes` (or `--confirm`) and `TRADING_ENABLED=true`. `--backend` is a profile name, not a key. `--mode live` is refused. A missed close fails the deployment. Run `fbull strategy deploy <name>` again with the same options plus `--skip-missed` to skip missed closes and keep trading. With the flag, each skipped close is recorded and the deployment continues.
 
 ### Trading profiles
 

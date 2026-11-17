@@ -48,6 +48,37 @@ func missedClose(strategy string, dates []string) error {
 	return &missedCloseError{sentence: sentence}
 }
 
+// ErrDryRunPortfolio is a dry run whose trading profile could not be read.
+// The deployment is marked ERROR. The stored text is the user sentence.
+// Unwrap also carries the provider error, which is logged and not stored.
+var ErrDryRunPortfolio = errors.New("dry_run_portfolio")
+
+type dryRunPortfolioError struct {
+	sentence string
+	cause    error
+}
+
+func (e *dryRunPortfolioError) Error() string {
+	if e == nil {
+		return ErrDryRunPortfolio.Error()
+	}
+	return e.sentence
+}
+
+func (e *dryRunPortfolioError) Unwrap() []error {
+	if e == nil || e.cause == nil {
+		return []error{ErrDryRunPortfolio}
+	}
+	return []error{ErrDryRunPortfolio, e.cause}
+}
+
+func dryRunPortfolio(strategy, provider string, cause error) error {
+	return &dryRunPortfolioError{
+		sentence: usercopy.DryRunPortfolioUnreadable(strategy, provider),
+		cause:    cause,
+	}
+}
+
 const defaultPollInterval = time.Minute
 
 // Processor turns a session close into orders. Matches worker.Pool.Process.
@@ -57,8 +88,10 @@ type Processor interface {
 }
 
 // InProcess runs one goroutine per running deployment.
-// Each session resolves supplier.Trading from deployment.backend.
+// A session with dry_run false resolves supplier.Trading from deployment.backend.
 // PlaceOrder is called only when the deployment is paper with dry_run=false.
+// A dry run reads that portfolio when a profile is set, and uses an empty
+// portfolio when it is not. It never calls PlaceOrder.
 type InProcess struct {
 	store     Store
 	clock     Clock
@@ -321,8 +354,11 @@ func (r *InProcess) SkipMissed(ctx context.Context, deploymentID string, session
 	return r.store.SetLastSessionDate(ctx, deploymentID, session.Date)
 }
 
-// ProcessSession runs GetPortfolio + Process and persists strategy_deployment_run.
-// When dry_run is false it calls Trading.PlaceOrder for each order. Duplicate ticks no-op.
+// ProcessSession runs Process and persists strategy_deployment_run.
+// A dry run with a trading profile reads GetPortfolio and does not call
+// PlaceOrder. A dry run with no profile uses an empty portfolio. When
+// dry_run is false it calls GetPortfolio and then Trading.PlaceOrder.
+// Duplicate ticks no-op.
 func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, session SessionClose) error {
 	d, err := r.store.GetDeployment(ctx, deploymentID)
 	if err != nil {
@@ -333,15 +369,36 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	}
 
 	var runErr error
-	client, err := r.clientFor(d)
-	if err != nil {
-		runErr = err
-	}
+	var client supplier.Trading
 	var portfolio *financepb.Portfolio
-	if runErr == nil && client != nil {
-		portfolio, err = client.GetPortfolio(ctx)
+	var dryNote string
+	profile := strings.TrimSpace(d.GetBackend())
+	if d.DryRun && profile == "" {
+		portfolio = &financepb.Portfolio{}
+		dryNote = usercopy.DryRunEmptyPortfolio
+	} else if d.DryRun {
+		client, err = r.tradingClient(d)
+		if err == nil {
+			portfolio, err = client.GetPortfolio(ctx)
+		}
 		if err != nil {
-			runErr = fmt.Errorf("get portfolio: %w", err)
+			log.Error().Err(err).Str("deployment", deploymentID).Str("backend", profile).
+				Msg("dry run could not read the portfolio")
+			failed := dryRunPortfolio(d.GetStrategyName(), profile, err)
+			r.fail(ctx, deploymentID, failed)
+			return failed
+		}
+		dryNote = usercopy.DryRunRecorded(profile)
+	} else {
+		client, err = r.clientFor(d)
+		if err != nil {
+			runErr = err
+		}
+		if runErr == nil && client != nil {
+			portfolio, err = client.GetPortfolio(ctx)
+			if err != nil {
+				runErr = fmt.Errorf("get portfolio: %w", err)
+			}
 		}
 	}
 
@@ -371,7 +428,25 @@ func (r *InProcess) ProcessSession(ctx context.Context, deploymentID string, ses
 	if runErr != nil && !d.DryRun {
 		return runErr
 	}
+	if dryNote != "" && runErr == nil {
+		log.Info().Str("deployment", deploymentID).Str("backend", profile).Msg(dryNote)
+	}
 	return nil
+}
+
+// tradingClient resolves a deployment that names a trading profile.
+// An empty registry or an unknown name is an error. A deployment with no
+// profile does not call this.
+func (r *InProcess) tradingClient(d *pb.Deployment) (supplier.Trading, error) {
+	name := strings.TrimSpace(d.GetBackend())
+	if name == "" || r.clients == nil {
+		return nil, fmt.Errorf("unknown trading profile %q", name)
+	}
+	client, ok := r.clients.Get(name)
+	if !ok || client == nil {
+		return nil, fmt.Errorf("unknown trading profile %q", name)
+	}
+	return client, nil
 }
 
 func (r *InProcess) clientFor(d *pb.Deployment) (supplier.Trading, error) {

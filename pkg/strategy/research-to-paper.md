@@ -224,6 +224,7 @@ Refuse with FailedPrecondition (or CLI red error, no RPC) when:
 - `dry_run=false` and `confirm` is false
 - `dry_run=false` and `TRADING_ENABLED` is false or the profile is missing or unknown
 - `dry_run=false` and `backend` is empty
+- `dry_run=true` and `backend` is set but not a known profile name (`There's no trading profile named '<name>', so the deployment wasn't started. Check the name against the trading profiles set up for foreverbull, then deploy again.`)
 - live URL switches — **out of scope**; do not add a live URL switch
 
 Default new deployments stay `paper` + `dry_run=true`.
@@ -239,7 +240,7 @@ fbull strategy deploy mean-rev --mode paper --no-dry-run --backend alpaca-paper 
 
 ### 6.3 Runner
 
-When `deployment.dry_run` is true: today’s behavior (Process, persist `strategy_deployment_run`, no `PlaceOrder`).
+When `deployment.dry_run` is true: if a trading profile is set, `GetPortfolio` then Process and persist `strategy_deployment_run`, with no `PlaceOrder`. Deploy refuses an unknown profile name before the deployment is stored (`There's no trading profile named '<name>', so the deployment wasn't started. Check the name against the trading profiles set up for foreverbull, then deploy again.`). A failed read stops the deployment. The stored sentence says to run `fbull strategy deploy <name>` again with the same options. The success log is `Dry run: orders were worked out from the portfolio for trading profile '<profile>' and recorded only, and none were sent.` With no profile, Process uses an empty portfolio.
 
 When `dry_run` is false (paper only):
 

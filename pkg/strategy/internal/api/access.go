@@ -399,7 +399,10 @@ func (s *StrategyServer) deployAuthed(ctx context.Context, req *servicePb.Deploy
 
 func (s *StrategyServer) paperReady(backend string, dryRun, confirm bool) error {
 	if dryRun {
-		return nil
+		if backend == "" {
+			return nil
+		}
+		return s.knownProfile(backend)
 	}
 	if !confirm {
 		return status.Error(codes.FailedPrecondition, "confirm is required when dry_run=false")

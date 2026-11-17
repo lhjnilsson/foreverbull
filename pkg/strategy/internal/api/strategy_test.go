@@ -698,6 +698,44 @@ func (test *StrategyServerTest) TestDeploy() {
 		test.Empty(test.runner.added)
 	})
 
+	test.Run("rejects dry run with unknown backend", func() {
+		test.startServer(paperProfiles())
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := true
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Backend:      "alpaca-papr",
+			DryRun:       &dry,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Equal("There's no trading profile named 'alpaca-papr', so the deployment wasn't started. "+
+			"Check the name against the trading profiles set up for foreverbull, then deploy again.", st.Message())
+		test.Empty(test.runner.added)
+	})
+
+	test.Run("rejects dry run when the broker has no profiles", func() {
+		test.startServer(nil)
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		dry := true
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Backend:      "alpaca-papr",
+			DryRun:       &dry,
+		})
+		test.Require().Error(err)
+		st, ok := status.FromError(err)
+		test.True(ok)
+		test.Equal(codes.FailedPrecondition, st.Code())
+		test.Equal("This broker has no trading profiles set up, so it can't use 'alpaca-papr' and the deployment wasn't started. "+
+			"Deploy without a trading profile to dry-run from an empty portfolio, or set up the profile, then deploy again.", st.Message())
+		test.Empty(test.runner.added)
+	})
+
 	test.Run("rejects dry_run false with unknown backend", func() {
 		test.T().Setenv(environment.TradingEnabled, "true")
 		test.startServer(paperProfiles())

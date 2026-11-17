@@ -17,6 +17,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	service "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
@@ -183,6 +184,13 @@ func TestCreateExperimentAuthedRunningNotSent(t *testing.T) {
 // failingRunner can't start a deployment loop.
 type failingRunner struct{}
 
+type nameRegistry map[string]supplier.Trading
+
+func (n nameRegistry) Get(name string) (supplier.Trading, bool) {
+	client, ok := n[name]
+	return client, ok
+}
+
 func (failingRunner) Add(context.Context, *pb.Deployment) error { return errors.New("loop table full") }
 func (failingRunner) Remove(context.Context, string) error      { return nil }
 
@@ -215,4 +223,55 @@ func TestDeployAuthedErrorNotStored(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT status FROM strategy_deployment WHERE version_id = $1`, version.GetId()).Scan(&state))
 	require.Equal(t, int(pb.Deployment_RUNNING), state)
+}
+
+func completedAuthedDeploy(t *testing.T) (*pgxpool.Pool, context.Context, *pb.Version) {
+	t.Helper()
+	pool, account, version := authedStrategy(t)
+	ctx := auth.WithAccount(context.Background(), account)
+	experiments := repository.Experiment{Conn: pool}
+	created, err := experiments.CreateForBacktest(ctx, version.GetId(), "bt-spy")
+	require.NoError(t, err)
+	require.NoError(t, experiments.UpdateStatus(ctx, created.GetId(), pb.Experiment_COMPLETED, nil))
+	return pool, ctx, version
+}
+
+func TestDeployAuthedRefusesUnknownProfile(t *testing.T) {
+	pool, ctx, version := completedAuthedDeploy(t)
+	dry := true
+	server := (&StrategyServer{pgx: pool}).WithProfiles(nameRegistry{"alpaca-paper": nil})
+	_, err := server.deployAuthed(ctx, &servicePb.DeployRequest{
+		StrategyName: "mean-rev",
+		VersionId:    version.GetId(),
+		Backend:      "alpaca-papr",
+		DryRun:       &dry,
+	})
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Equal(t, "There's no trading profile named 'alpaca-papr', so the deployment wasn't started. "+
+		"Check the name against the trading profiles set up for foreverbull, then deploy again.", st.Message())
+	var n int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM strategy_deployment`).Scan(&n))
+	require.Equal(t, 0, n)
+}
+
+func TestDeployAuthedRefusesWhenProfilesAreUnset(t *testing.T) {
+	pool, ctx, version := completedAuthedDeploy(t)
+	dry := true
+	server := &StrategyServer{pgx: pool}
+	_, err := server.deployAuthed(ctx, &servicePb.DeployRequest{
+		StrategyName: "mean-rev",
+		VersionId:    version.GetId(),
+		Backend:      "alpaca-papr",
+		DryRun:       &dry,
+	})
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Equal(t, "This broker has no trading profiles set up, so it can't use 'alpaca-papr' and the deployment wasn't started. "+
+		"Deploy without a trading profile to dry-run from an empty portfolio, or set up the profile, then deploy again.", st.Message())
+	var n int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM strategy_deployment`).Scan(&n))
+	require.Equal(t, 0, n)
 }
