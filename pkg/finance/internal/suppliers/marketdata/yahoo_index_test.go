@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,16 +98,67 @@ func TestYahooGetIndexFailsAndNamesTheFailingMember(t *testing.T) {
 	require.EqualError(t, err, "error getting assets: component M007: lookup of M007 broke")
 }
 
-// Every failing member is named, not only the first.
-func TestYahooGetIndexNamesEveryFailingMember(t *testing.T) {
+// The first lookup error cancels the rest. In-flight lookups never exceed
+// indexLookupWorkers, and GetIndex returns no assets.
+func TestYahooGetIndexFirstErrorCancelsTheRest(t *testing.T) {
 	t.Parallel()
-	members := indexMembers(30)
-	client, _ := indexServer(t, indexBody(t, members), map[string]bool{"M003": true, "M021": true})
+	const members = 40
+	var (
+		inFlight    atomic.Int32
+		maxInFlight atomic.Int32
+		lookups     atomic.Int32
+	)
+	started := make(chan struct{})
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		symbol, err := url.PathUnescape(strings.TrimPrefix(r.URL.EscapedPath(), "/"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Query().Get("modules"), "components") {
+			names := make([]string, members)
+			for i := range names {
+				names[i] = fmt.Sprintf("%q", fmt.Sprintf("M%03d", i))
+			}
+			_, _ = io.WriteString(w, `{"quoteSummary":{"result":[{"components":{"components":[`+strings.Join(names, ",")+`]}}]}}`)
+			return
+		}
+		n := inFlight.Add(1)
+		for {
+			old := maxInFlight.Load()
+			if n <= old || maxInFlight.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		lookups.Add(1)
+		defer inFlight.Add(-1)
+		if symbol == "M000" {
+			once.Do(func() { close(started) })
+			_, _ = io.WriteString(w, `{"quoteSummary":{"result":null,"error":{"code":"Internal","description":"lookup of M000 broke"}}}`)
+			return
+		}
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(5 * time.Second):
+			t.Errorf("lookup of %s was not cancelled", symbol)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	client := &YahooClient{crumb: "test", quoteURL: srv.URL + "/"}
 
 	assets, err := client.GetIndex(context.Background(), "^OEF")
 	require.Nil(t, assets)
-	require.EqualError(t, err,
-		"error getting assets: component M003: lookup of M003 broke\ncomponent M021: lookup of M021 broke")
+	require.EqualError(t, err, "error getting assets: component M000: lookup of M000 broke")
+	require.LessOrEqual(t, maxInFlight.Load(), int32(indexLookupWorkers))
+	require.Positive(t, lookups.Load())
+	select {
+	case <-started:
+	default:
+		t.Fatal("the failing lookup did not run")
+	}
 }
 
 // An index answer with no result is an error, not a panic.

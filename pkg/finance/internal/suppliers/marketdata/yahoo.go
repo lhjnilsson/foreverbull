@@ -10,12 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -486,8 +486,8 @@ type IndexResponse struct {
 const indexLookupWorkers = 4
 
 // GetIndex returns the index's member assets followed by the index asset.
-// Every member is looked up; if any lookup fails the index fails, and the
-// error names each member that failed.
+// At most indexLookupWorkers lookups run at once. The first lookup error
+// cancels the rest, and GetIndex returns that error with no assets.
 func (y *YahooClient) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset, error) {
 	quoteURL := y.quoteURL
 	if quoteURL == "" {
@@ -514,39 +514,32 @@ func (y *YahooClient) GetIndex(ctx context.Context, symbol string) ([]*pb.Asset,
 	}
 
 	components := result.Summary.Result[0].Components.Components
-	// Each lookup writes only its own slot, so all results are in once
-	// Wait returns and no slot is shared between goroutines. At most
-	// indexLookupWorkers lookups run at once: they share the Yahoo limiter
-	// with every download, and a large index must not start hundreds of
-	// goroutines.
+	// Each lookup writes only its own slot. The group limit is the cap on
+	// goroutines, and its context cancels the ones still running.
 	assets := make([]*pb.Asset, len(components)+1)
-	errs := make([]error, len(components)+1)
-	slots := make(chan struct{}, indexLookupWorkers)
-	var wg sync.WaitGroup
-	lookup := func(i int, name, kind string) {
-		defer wg.Done()
-		defer func() { <-slots }()
-		a, err := y.GetAsset(ctx, name)
-		if err == nil && a == nil {
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(indexLookupWorkers)
+	lookup := func(i int, name, kind string) error {
+		asset, err := y.GetAsset(groupCtx, name)
+		if err == nil && asset == nil {
 			err = errors.New("no asset returned")
 		}
 		if err != nil {
-			errs[i] = fmt.Errorf("%s %s: %w", kind, name, err)
-			return
+			return fmt.Errorf("%s %s: %w", kind, name, err)
 		}
-		assets[i] = a
+		assets[i] = asset
+		return nil
 	}
 	for i, component := range components {
-		slots <- struct{}{}
-		wg.Add(1)
-		go lookup(i, component, "component")
+		index, name := i, component
+		group.Go(func() error {
+			return lookup(index, name, "component")
+		})
 	}
-	slots <- struct{}{}
-	wg.Add(1)
-	go lookup(len(components), symbol, "index")
-	wg.Wait()
-
-	if err := errors.Join(errs...); err != nil {
+	group.Go(func() error {
+		return lookup(len(components), symbol, "index")
+	})
+	if err := group.Wait(); err != nil {
 		return nil, fmt.Errorf("error getting assets: %w", err)
 	}
 	return assets, nil
