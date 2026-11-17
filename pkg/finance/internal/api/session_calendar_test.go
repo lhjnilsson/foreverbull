@@ -133,7 +133,11 @@ func TestConfigureRefusesAMissingCalendar(t *testing.T) {
 	}()
 	t.Cleanup(func() {
 		server.Stop()
-		<-serveErr
+		// Serve returns nil once Stop has closed the listener. A real
+		// accept failure is the only error left on the channel.
+		if err := <-serveErr; err != nil {
+			t.Errorf("calendar server: %v", err)
+		}
 		_ = listener.Close()
 	})
 
