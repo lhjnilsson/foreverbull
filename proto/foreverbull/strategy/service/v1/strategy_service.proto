@@ -193,6 +193,25 @@ message ListDeploymentRunsRequest {
 
 message ListDeploymentRunsResponse {
   repeated foreverbull.strategy.v1.DeploymentRun runs = 1;
+  // Field 2 was a deployment list. Do not reuse it.
+  reserved 2;
+}
+
+// ListDeployments returns every deployment of the named strategy, oldest
+// started_at first. It is not filtered by a deployment id.
+message ListDeploymentsRequest {
+  string strategy_name = 1 [(buf.validate.field) = {
+    required: true
+    cel: {
+      id: "required"
+      expression: "this != ''"
+    }
+  }];
+  string owner = 2;
+}
+
+message ListDeploymentsResponse {
+  repeated foreverbull.strategy.v1.Deployment deployments = 1;
 }
 
 service StrategyServicer {
@@ -207,4 +226,5 @@ service StrategyServicer {
   rpc Deploy(DeployRequest) returns (DeployResponse) {}
   rpc StopDeployment(StopDeploymentRequest) returns (StopDeploymentResponse) {}
   rpc ListDeploymentRuns(ListDeploymentRunsRequest) returns (ListDeploymentRunsResponse) {}
+  rpc ListDeployments(ListDeploymentsRequest) returns (ListDeploymentsResponse) {}
 }

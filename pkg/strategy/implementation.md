@@ -265,6 +265,7 @@ Suggested RPCs (names can move; the verbs should not):
 | `Deploy` | Create+start a deployment (`paper` default, `dry_run` default true) |
 | `StopDeployment` | Idempotent |
 | `ListDeploymentRuns` | Per-session log: timestamp, order count, errors, skipped |
+| `ListDeployments` | Every deployment of the strategy, oldest first. Not filtered by a deployment id |
 
 CLI (later, not all in PoC):
 

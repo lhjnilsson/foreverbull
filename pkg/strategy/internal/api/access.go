@@ -572,3 +572,22 @@ func (s *StrategyServer) listDeploymentRunsAuthed(ctx context.Context, req *serv
 	}
 	return &servicePb.ListDeploymentRunsResponse{Runs: all}, nil
 }
+
+// listDeploymentsAuthed returns every deployment of the named strategy.
+// It is not filtered by a deployment id.
+func (s *StrategyServer) listDeploymentsAuthed(ctx context.Context, req *servicePb.ListDeploymentsRequest) (*servicePb.ListDeploymentsResponse, error) {
+	account, err := accountFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	strategyID, err := auth.Resolve(ctx, s.pgx, account, auth.DomainStrategy, req.GetStrategyName(), req.GetOwner(), auth.ActionRead)
+	if err != nil {
+		return nil, auth.GRPCStatus(err)
+	}
+	store := repository.Deployment{Conn: s.pgx}
+	listed, err := store.ListByStrategyID(ctx, strategyID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list deployments: %v", err)
+	}
+	return &servicePb.ListDeploymentsResponse{Deployments: listed}, nil
+}

@@ -295,7 +295,7 @@ func roleAllowsMethod(account auth.Account, fullMethod string) error {
 func viewerMayCall(fullMethod string) bool {
 	switch methodName(fullMethod) {
 	case "ListBacktests", "GetBacktest", "GetSession", "ListExecutions", "GetExecution",
-		"GetStrategy", "ListStrategies", "GetExperiment", "ListExperiments", "ListDeploymentRuns",
+		"GetStrategy", "ListStrategies", "GetExperiment", "ListExperiments", "ListDeploymentRuns", "ListDeployments",
 		"GetAsset":
 		return true
 	default:

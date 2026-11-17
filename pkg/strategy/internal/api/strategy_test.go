@@ -824,6 +824,13 @@ func (test *StrategyServerTest) TestStopAndListDeploymentRuns() {
 		test.Len(listed.Runs, 1)
 		test.Equal(deployed.Deployment.Id, listed.Runs[0].DeploymentId)
 		test.False(listed.Runs[0].Skipped)
+
+		deps, err := test.client.ListDeployments(context.Background(), &servicePb.ListDeploymentsRequest{
+			StrategyName: "mean-rev",
+		})
+		test.Require().NoError(err)
+		test.Require().Len(deps.Deployments, 1)
+		test.Equal(deployed.Deployment.Id, deps.Deployments[0].GetId())
 	})
 }
 

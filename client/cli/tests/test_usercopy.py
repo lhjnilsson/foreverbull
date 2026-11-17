@@ -3,11 +3,13 @@ from foreverbull_cli.usercopy import LaterTicker
 from foreverbull_cli.usercopy import backtest_starts_before_calendar
 from foreverbull_cli.usercopy import backtest_starts_before_calendar_file
 from foreverbull_cli.usercopy import backtest_starts_before_calendar_flag
+from foreverbull_cli.usercopy import deployment_error_lines
 from foreverbull_cli.usercopy import deployment_run_error
 from foreverbull_cli.usercopy import later_ticker_lines
 from foreverbull_cli.usercopy import later_tickers
 
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
 
 
 # The exact lines, one place to update when the wording changes.
@@ -58,6 +60,60 @@ def test_start_before_calendar_from_a_file_is_the_file_sentence():
 def test_skipped_missed_close_is_the_status_sentence():
     assert deployment_run_error("skipped_missed_close") == SKIPPED_MISSED_CLOSE_STATUS
     assert SKIPPED_MISSED_CLOSE_STATUS == "Missed the close. Skipped because of --skip-missed."
+
+
+_MISSED = (
+    "Deployment 'mean-rev' missed the close on 2024-03-04, so it didn't trade that session and stopped with an error. "
+    "Run `fbull strategy deploy mean-rev` again with the same options plus --skip-missed to skip missed closes and keep trading."
+)
+_DRY = (
+    "Dry run for deployment 'mean-rev' couldn't read the portfolio for trading profile 'alpaca-paper', "
+    "so it didn't trade that session and stopped with an error. "
+    "Check that the account for 'alpaca-paper' is reachable and its keys are right, "
+    "then run `fbull strategy deploy mean-rev` again with the same options."
+)
+_BLANK = (
+    "A deployment missed the close on 2024-03-04, so it didn't trade that session and stopped with an error. "
+    "Run `fbull strategy deploy` again with the same options plus --skip-missed to skip missed closes and keep trading."
+)
+_EMPTY = (
+    "⚠ Deployment 42 stopped with an error, but foreverbull didn't save why. "
+    "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+)
+
+
+def _failed(deployment_id: str, error: str | None) -> strategy_pb.Deployment:
+    if error is None:
+        return strategy_pb.Deployment(id=deployment_id, status=strategy_pb.Deployment.Status.ERROR)
+    return strategy_pb.Deployment(id=deployment_id, status=strategy_pb.Deployment.Status.ERROR, error=error)
+
+
+def test_status_prints_one_missed_close_and_one_dry_run():
+    assert deployment_error_lines([_failed("7", _MISSED)]) == [f"⚠ {_MISSED}"]
+    assert deployment_error_lines([_failed("8", _DRY)]) == [f"⚠ {_DRY}"]
+
+
+def test_status_prints_the_empty_error_fallback():
+    assert deployment_error_lines([_failed("42", None)]) == [_EMPTY]
+
+
+_BLANK_DRY = (
+    "A dry-run deployment couldn't read the portfolio for trading profile 'alpaca-paper', "
+    "so it didn't trade that session and stopped with an error. "
+    "Check that the account for 'alpaca-paper' is reachable and its keys are right, "
+    "then run `fbull strategy deploy` again with the same options."
+)
+
+
+def test_status_prefixes_a_blank_name_when_several_deployments_failed():
+    assert deployment_error_lines([_failed("42", _BLANK), _failed("9", _MISSED)]) == [
+        f"⚠ Deployment 42: a{_BLANK[1:]}",
+        f"⚠ {_MISSED}",
+    ]
+    assert deployment_error_lines([_failed("42", _BLANK_DRY), _failed("9", _DRY)]) == [
+        f"⚠ Deployment 42: a{_BLANK_DRY[1:]}",
+        f"⚠ {_DRY}",
+    ]
 
 
 def test_other_deployment_run_errors_pass_through():

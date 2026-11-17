@@ -148,4 +148,17 @@ def list_deployment_runs(
     req = strategy_service_pb.ListDeploymentRunsRequest(strategy_name=strategy_name)
     if deployment_id:
         req.deployment_id = deployment_id
-    return servicer.list_deployment_runs(req).runs
+    return list(servicer.list_deployment_runs(req).runs)
+
+
+@strategy_servicer
+def list_deployments(
+    servicer: strategy_service_pb_grpc.StrategyServicerClientSync,
+    strategy_name: str,
+) -> list[strategy_pb.Deployment]:
+    """Every deployment of the strategy, oldest started_at first.
+
+    Not filtered by a deployment id. ListDeploymentRuns is unchanged.
+    """
+    req = strategy_service_pb.ListDeploymentsRequest(strategy_name=strategy_name)
+    return list(servicer.list_deployments(req).deployments)

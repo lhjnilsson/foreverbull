@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from foreverbull.pb.foreverbull.backtest.v1 import backtest_pb
+from foreverbull.pb.foreverbull.strategy.v1 import strategy_pb
 
 
 # One block names at most this many later-ticker resolutions, then one line for the rest.
@@ -19,6 +20,35 @@ LATER_TICKERS_SHOWN = 5
 # The API and the broker log keep this code. The status table shows the sentence.
 SKIPPED_MISSED_CLOSE = "skipped_missed_close"
 SKIPPED_MISSED_CLOSE_STATUS = "Missed the close. Skipped because of --skip-missed."
+
+
+def deployment_error_line(deployment_id: str, stored: str, *, many: bool) -> str:
+    """One plain line under `fbull strategy status` for a deployment in ERROR.
+
+    many is true when the strategy has more than one ERROR deployment. A
+    blank-name sentence then names the deployment id and lowercases its
+    leading A. An empty stored error is the report sentence.
+    """
+    text = stored.strip()
+    if text == "":
+        return (
+            f"⚠ Deployment {deployment_id} stopped with an error, but foreverbull didn't save why. "
+            "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+        )
+    if many and text.startswith(("A deployment", "A dry-run deployment")):
+        return f"⚠ Deployment {deployment_id}: a{text[1:]}"
+    return f"⚠ {text}"
+
+
+def deployment_error_lines(deployments: Sequence[strategy_pb.Deployment]) -> list[str]:
+    """ERROR deployments in the order given, which the broker returns oldest first."""
+    failed = [item for item in deployments if item.status == strategy_pb.Deployment.Status.ERROR]
+    many = len(failed) > 1
+    lines = []
+    for item in failed:
+        stored = item.error if item.has_field("error") else ""
+        lines.append(deployment_error_line(item.id, stored, many=many))
+    return lines
 
 
 def deployment_run_error(stored: str) -> str:
