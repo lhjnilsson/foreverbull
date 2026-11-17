@@ -1,7 +1,9 @@
+from foreverbull_cli.usercopy import SKIPPED_MISSED_CLOSE_STATUS
 from foreverbull_cli.usercopy import LaterTicker
 from foreverbull_cli.usercopy import backtest_starts_before_calendar
 from foreverbull_cli.usercopy import backtest_starts_before_calendar_file
 from foreverbull_cli.usercopy import backtest_starts_before_calendar_flag
+from foreverbull_cli.usercopy import deployment_run_error
 from foreverbull_cli.usercopy import later_ticker_lines
 from foreverbull_cli.usercopy import later_tickers
 
@@ -51,6 +53,17 @@ def test_start_before_calendar_with_start_flag_is_the_flag_sentence():
 def test_start_before_calendar_from_a_file_is_the_file_sentence():
     assert backtest_starts_before_calendar_file("1989-12-31", "1990-01-02") == _FILE_START
     assert backtest_starts_before_calendar(_BROKER_START, start_flag=False) == _FILE_START
+
+
+def test_skipped_missed_close_is_the_status_sentence():
+    assert deployment_run_error("skipped_missed_close") == SKIPPED_MISSED_CLOSE_STATUS
+    assert SKIPPED_MISSED_CLOSE_STATUS == "Missed the close. Skipped because of --skip-missed."
+
+
+def test_other_deployment_run_errors_pass_through():
+    assert deployment_run_error("broker down") == "broker down"
+    assert deployment_run_error("") == ""
+    assert deployment_run_error("skipped_missed_close ") == "skipped_missed_close "
 
 
 def test_no_later_ticker_prints_nothing():

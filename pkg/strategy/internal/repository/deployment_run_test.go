@@ -49,7 +49,7 @@ func (test *DeploymentRunTest) createDeployment(ctx context.Context) *pb.Deploym
 	deployments := repository.Deployment{Conn: test.conn}
 	deployment, err := deployments.Create(
 		ctx, version.Id, "default", "XNYS",
-		pb.Deployment_PAPER, []string{"AAPL"}, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, []string{"AAPL"}, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 
@@ -124,12 +124,12 @@ func (test *DeploymentRunTest) TestListFilters() {
 	deployments := repository.Deployment{Conn: test.conn}
 	d1, err := deployments.Create(
 		ctx, meanRev.Id, "default", "XNYS",
-		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 	d2, err := deployments.Create(
 		ctx, other.Id, "default", "XNYS",
-		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true,
+		pb.Deployment_PAPER, nil, pb.Deployment_SESSION_CLOSE, true, false,
 	)
 	test.Require().NoError(err)
 

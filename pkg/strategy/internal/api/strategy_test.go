@@ -561,6 +561,7 @@ func (test *StrategyServerTest) TestDeploy() {
 		d := rsp.GetDeployment()
 		test.Equal(pb.Deployment_PAPER, d.GetMode())
 		test.True(d.GetDryRun())
+		test.False(d.GetSkipMissed())
 		test.Empty(d.GetBackend())
 		test.Equal("XNYS", d.GetCalendarCode())
 		test.Equal(pb.Deployment_SESSION_CLOSE, d.GetScheduleKind())
@@ -568,6 +569,20 @@ func (test *StrategyServerTest) TestDeploy() {
 		test.Equal([]string{"AAPL"}, d.GetSymbols())
 		test.Require().Len(test.runner.added, 1)
 		test.Equal(d.Id, test.runner.added[0].Id)
+	})
+
+	test.Run("stores skip_missed when set", func() {
+		version := test.seedDeployableVersion("skip-missed", "algo:local")
+		on := true
+		rsp, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "skip-missed",
+			VersionId:    version.Id,
+			SkipMissed:   &on,
+		})
+		test.Require().NoError(err)
+		test.True(rsp.GetDeployment().GetSkipMissed())
+		test.Require().Len(test.runner.added, 1)
+		test.True(test.runner.added[0].GetSkipMissed())
 	})
 
 	test.Run("rejects live", func() {

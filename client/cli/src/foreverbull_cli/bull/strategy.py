@@ -18,6 +18,7 @@ from foreverbull_cli.output import console
 from foreverbull_cli.output import execution_link
 from foreverbull_cli.output import format_date_field
 from foreverbull_cli.output import format_optional_float
+from foreverbull_cli.usercopy import deployment_run_error
 
 
 strategy = typer.Typer()
@@ -197,7 +198,7 @@ def _print_deployment_runs(runs: list[strategy_pb.DeploymentRun]) -> None:
     table.add_column("Session")
     table.add_column("Orders")
     table.add_column("Skipped")
-    table.add_column("Error")
+    table.add_column("Error", overflow="fold")
     for run in runs:
         table.add_row(
             run.id,
@@ -205,7 +206,7 @@ def _print_deployment_runs(runs: list[strategy_pb.DeploymentRun]) -> None:
             format_date_field(run, "session_date"),
             str(len(run.orders)),
             "yes" if run.skipped else "no",
-            _optional_text(run, "error"),
+            deployment_run_error(_optional_text(run, "error")),
         )
     console.print(table)
 
@@ -307,6 +308,16 @@ def deploy(
         bool,
         typer.Option("--yes", "--confirm", help="confirm paper PlaceOrder (required with --no-dry-run)"),
     ] = False,
+    skip_missed: Annotated[
+        bool,
+        typer.Option(
+            "--skip-missed",
+            help=(
+                "Skip missed closes and keep trading. Each skipped close is listed in `fbull strategy status`. "
+                "Off by default, so a missed close stops the deployment with an error."
+            ),
+        ),
+    ] = False,
     rev: Annotated[int | None, typer.Option("--rev", help="strategy version revision")] = None,
     version: Annotated[str | None, typer.Option("--version", help="strategy version id")] = None,
     backend: Annotated[
@@ -346,6 +357,7 @@ def deploy(
         version_rev=rev,
         dry_run=dry_run,
         confirm=yes,
+        skip_missed=skip_missed,
         backend=profile or None,
         calendar_code=calendar,
         symbols=_parse_symbols(symbols),

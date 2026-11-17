@@ -36,6 +36,10 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 	if req.DryRun != nil {
 		dryRun = *req.DryRun
 	}
+	skipMissed := false
+	if req.SkipMissed != nil {
+		skipMissed = *req.SkipMissed
+	}
 	backend := strings.TrimSpace(req.GetBackend())
 	if !dryRun {
 		if !req.GetConfirm() {
@@ -75,7 +79,7 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 	deployments := repository.Deployment{Conn: s.pgx}
 	deployment, err := deployments.Create(
 		ctx, version.Id, backend, calendar,
-		pb.Deployment_PAPER, req.GetSymbols(), pb.Deployment_SESSION_CLOSE, dryRun,
+		pb.Deployment_PAPER, req.GetSymbols(), pb.Deployment_SESSION_CLOSE, dryRun, skipMissed,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {

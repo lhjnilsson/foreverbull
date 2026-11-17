@@ -153,5 +153,9 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		}
 	}
 
+	if _, err := conn.Exec(ctx, `ALTER TABLE strategy_deployment ADD COLUMN IF NOT EXISTS skip_missed boolean NOT NULL DEFAULT false`); err != nil {
+		return fmt.Errorf("strategy_deployment skip_missed: %w", err)
+	}
+
 	return MigrateExperimentBacktest(ctx, conn)
 }

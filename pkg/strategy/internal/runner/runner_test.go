@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonpb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -202,9 +203,106 @@ func (test *RunnerTest) TestLoopTickThenDuplicateNoop() {
 	test.Equal(1, test.processor.CallCount())
 }
 
+func (test *RunnerTest) TestLoopMissedCloseFailsWhenSkipMissedIsOff() {
+	ctx := context.Background()
+	d := test.deployment()
+	d.LastSessionDate = &commonpb.Date{Year: 2024, Month: 3, Day: 1}
+	d.SkipMissed = false
+	test.store.Put(d)
+
+	test.clock.Advance(test.tue.Close.Add(time.Hour))
+	test.Require().NoError(test.runner.Add(ctx, d))
+
+	sentence, err := usercopy.MissedSessionClose("mean-rev", []string{"2024-03-04", "2024-03-05"})
+	test.Require().NoError(err)
+	test.Eventually(func() bool {
+		got, err := test.store.GetDeployment(ctx, "dep-1")
+		return err == nil && got.Status == pb.Deployment_ERROR && got.GetError() == sentence
+	}, time.Second, 10*time.Millisecond)
+
+	test.Equal(0, test.processor.CallCount())
+	test.Equal(0, test.trading.PlaceCalls())
+
+	runs, err := test.store.ListRuns(ctx, "", "dep-1")
+	test.Require().NoError(err)
+	test.Empty(runs)
+
+	got, err := test.store.GetDeployment(ctx, "dep-1")
+	test.Require().NoError(err)
+	test.Equal(int32(1), got.LastSessionDate.Day)
+	test.Equal(pb.Deployment_ERROR, got.Status)
+	test.Require().ErrorIs(missedClose("mean-rev", []string{"2024-03-04", "2024-03-05"}), ErrMissedClose)
+
+	test.clock.Advance(test.wed.Close.Add(time.Hour))
+	time.Sleep(40 * time.Millisecond)
+	test.Equal(0, test.processor.CallCount())
+	got, err = test.store.GetDeployment(ctx, "dep-1")
+	test.Require().NoError(err)
+	test.Equal(pb.Deployment_ERROR, got.Status)
+}
+
+func (test *RunnerTest) TestLoopOneMissedCloseNamesThatSession() {
+	ctx := context.Background()
+	d := test.deployment()
+	d.LastSessionDate = &commonpb.Date{Year: 2024, Month: 3, Day: 1}
+	test.store.Put(d)
+
+	test.clock.Advance(test.mon.Close.Add(time.Hour))
+	test.Require().NoError(test.runner.Add(ctx, d))
+
+	sentence, err := usercopy.MissedSessionClose("mean-rev", []string{"2024-03-04"})
+	test.Require().NoError(err)
+	test.Eventually(func() bool {
+		got, err := test.store.GetDeployment(ctx, "dep-1")
+		return err == nil && got.Status == pb.Deployment_ERROR && got.GetError() == sentence
+	}, time.Second, 10*time.Millisecond)
+	test.Equal(0, test.processor.CallCount())
+}
+
+func TestLoopFiveMissedClosesNameTheSpan(t *testing.T) {
+	t.Parallel()
+	sessions := make([]SessionClose, 5)
+	for i := range sessions {
+		day := 4 + i
+		sessions[i] = SessionClose{
+			Date:  &commonpb.Date{Year: 2024, Month: 3, Day: int32(day)},
+			Close: time.Date(2024, 3, day, 16, 0, 0, 0, time.UTC),
+		}
+	}
+	store := NewMemoryStore()
+	processor := &FakeProcessor{}
+	clock := NewFakeClock(sessions[0].Close.Add(-time.Hour), sessions...)
+	runner := New(store, clock, nil, processor)
+	deployment := &pb.Deployment{
+		Id:              "dep-1",
+		StrategyName:    "mean-rev",
+		Status:          pb.Deployment_RUNNING,
+		CalendarCode:    "XNYS",
+		DryRun:          true,
+		LastSessionDate: &commonpb.Date{Year: 2024, Month: 3, Day: 1},
+	}
+	store.Put(deployment)
+	clock.Advance(sessions[4].Close.Add(time.Hour))
+	require.NoError(t, runner.Add(context.Background(), deployment))
+
+	sentence, err := usercopy.MissedSessionClose("mean-rev", []string{
+		"2024-03-04", "2024-03-05", "2024-03-06", "2024-03-07", "2024-03-08",
+	})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		got, err := store.GetDeployment(context.Background(), "dep-1")
+		return err == nil && got.GetError() == sentence && got.Status == pb.Deployment_ERROR
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, 0, processor.CallCount())
+	runs, err := store.ListRuns(context.Background(), "", "dep-1")
+	require.NoError(t, err)
+	require.Empty(t, runs)
+}
+
 func (test *RunnerTest) TestLoopSkipsMissedCloses() {
 	ctx := context.Background()
 	d := test.deployment()
+	d.SkipMissed = true
 	d.LastSessionDate = &commonpb.Date{Year: 2024, Month: 3, Day: 1}
 	test.store.Put(d)
 
@@ -224,6 +322,16 @@ func (test *RunnerTest) TestLoopSkipsMissedCloses() {
 		}
 		return skipped == 2
 	}, time.Second, 10*time.Millisecond)
+
+	runs, err := test.store.ListRuns(ctx, "", "dep-1")
+	test.Require().NoError(err)
+	test.Require().Len(runs, 2)
+	for _, run := range runs {
+		test.True(run.GetSkipped())
+		test.Equal(ErrSkippedMissedClose.Error(), run.GetError())
+	}
+	test.Equal(int32(4), runs[0].GetSessionDate().GetDay())
+	test.Equal(int32(5), runs[1].GetSessionDate().GetDay())
 
 	test.Equal(0, test.processor.CallCount())
 	test.Equal(0, test.trading.PlaceCalls())

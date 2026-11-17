@@ -564,6 +564,7 @@ def test_strategy_deploy_dry_run(runner):
         version_rev=1,
         dry_run=True,
         confirm=False,
+        skip_missed=False,
         backend=None,
         calendar_code="XNYS",
         symbols=["SPY", "QQQ"],
@@ -573,6 +574,25 @@ def test_strategy_deploy_dry_run(runner):
     assert "true" in result.stdout
     assert "RUNNING" in result.stdout
     assert "XNYS" in result.stdout
+
+
+def test_strategy_deploy_skip_missed_is_opt_in(runner):
+    with patch("foreverbull.broker.strategy.deploy") as mock_deploy:
+        mock_deploy.return_value = _sample_deployment()
+        result = runner(strategy, ["deploy", "mean-rev", "--skip-missed"])
+
+    assert result.exit_code == 0
+    mock_deploy.assert_called_once_with(
+        strategy_name="mean-rev",
+        version_id=None,
+        version_rev=None,
+        dry_run=True,
+        confirm=False,
+        skip_missed=True,
+        backend=None,
+        calendar_code=None,
+        symbols=[],
+    )
 
 
 def test_strategy_deploy_refuses_live(monkeypatch):
@@ -621,6 +641,7 @@ def test_strategy_deploy_paper_place_order_yes(runner):
         version_rev=None,
         dry_run=False,
         confirm=True,
+        skip_missed=False,
         backend="alpaca-paper",
         calendar_code=None,
         symbols=[],
@@ -642,6 +663,7 @@ def test_strategy_deploy_paper_place_order_confirm(runner):
         version_rev=None,
         dry_run=False,
         confirm=True,
+        skip_missed=False,
         backend="alpaca-paper",
         calendar_code=None,
         symbols=[],
@@ -680,6 +702,10 @@ def test_strategy_deploy_help_refuses_live(runner):
     assert "live is not supported" in help_text
     assert "--backend" in help_text
     assert "Required with --no-dry-run" in help_text
+    assert (
+        "Skip missed closes and keep trading. Each skipped close is listed in `fbull strategy status`. "
+        "Off by default, so a missed close stops the deployment with an error."
+    ) in help_text
 
 
 def test_strategy_stop(runner):
@@ -717,3 +743,41 @@ def test_strategy_status(runner):
     assert "run-1" in result.stdout
     assert "2024-03-04" in result.stdout
     assert f"Link: {execution_link('exec-1')}" in result.stdout
+
+
+def test_strategy_status_maps_only_skipped_missed_close(runner):
+    skipped = strategy_pb.DeploymentRun(
+        id="run-1",
+        deployment_id="dep-1",
+        session_date=from_pydate_to_proto_date(date(2024, 3, 4)),
+        started_at=_timestamp(),
+        orders=[marketdata_pb.Order(symbol="SPY", amount=1)],
+        skipped=True,
+        error="skipped_missed_close",
+    )
+    other = strategy_pb.DeploymentRun(
+        id="run-2",
+        deployment_id="dep-1",
+        session_date=from_pydate_to_proto_date(date(2024, 3, 5)),
+        started_at=_timestamp(),
+        skipped=False,
+        error="broker down",
+    )
+    with (
+        patch("foreverbull.broker.strategy.get_strategy") as mock_get,
+        patch("foreverbull.broker.strategy.list_experiments") as mock_experiments,
+        patch("foreverbull.broker.strategy.list_deployment_runs") as mock_runs,
+    ):
+        mock_get.return_value = _sample_strategy()
+        mock_experiments.return_value = []
+        mock_runs.return_value = [skipped, other]
+        result = runner(strategy, ["status", "mean-rev"])
+
+    assert result.exit_code == 0
+    # A folded cell keeps the sentence; the table rules are not part of it.
+    shown = " ".join(result.stdout.replace("│", " ").split())
+    assert "Missed the close. Skipped because of --skip-missed." in shown
+    assert "skipped_missed_close" not in shown
+    assert "broker down" in shown
+    assert "yes" in shown
+    assert "no" in shown

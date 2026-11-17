@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonpb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -16,8 +17,36 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ErrSkippedMissedClose is stored on a run when the process was down across a close.
+// ErrSkippedMissedClose is stored on a run when skip-missed is on and the
+// process was down across a close.
 var ErrSkippedMissedClose = errors.New("skipped_missed_close")
+
+// ErrMissedClose is a session whose close passed while the deployment was
+// down and skip-missed is off. The deployment is marked ERROR. The session
+// is not stored as skipped, and last_session_date does not move.
+var ErrMissedClose = errors.New("missed_session_close")
+
+// missedCloseError is ErrMissedClose with the sentence stored on the deployment.
+type missedCloseError struct {
+	sentence string
+}
+
+func (e *missedCloseError) Error() string {
+	if e == nil {
+		return ErrMissedClose.Error()
+	}
+	return e.sentence
+}
+
+func (e *missedCloseError) Unwrap() error { return ErrMissedClose }
+
+func missedClose(strategy string, dates []string) error {
+	sentence, err := usercopy.MissedSessionClose(strategy, dates)
+	if err != nil {
+		return err
+	}
+	return &missedCloseError{sentence: sentence}
+}
 
 const defaultPollInterval = time.Minute
 
@@ -188,6 +217,19 @@ func (r *InProcess) loop(ctx context.Context, deploymentID string) {
 		}
 
 		if r.clock.Now().After(session.Close) {
+			// Skip-missed is off unless the deployment opted in. Every past
+			// close is then named in one error and the loop ends. Nothing is
+			// stored as skipped. With the flag, each close is recorded and
+			// the loop walks on to the next one.
+			if !d.GetSkipMissed() {
+				missed, err := r.missedSoFar(ctx, d.CalendarCode, *session)
+				if err != nil {
+					r.fail(ctx, deploymentID, fmt.Errorf("missed closes: %w", err))
+					return
+				}
+				r.fail(ctx, deploymentID, missedClose(d.GetStrategyName(), sessionDates(missed)))
+				return
+			}
 			if err := r.SkipMissed(ctx, deploymentID, *session); err != nil {
 				r.fail(ctx, deploymentID, fmt.Errorf("skip missed close: %w", err))
 				return
@@ -223,6 +265,36 @@ func (r *InProcess) fail(ctx context.Context, deploymentID string, cause error) 
 		log.Error().Err(err).AnErr("cause", cause).Str("deployment", deploymentID).
 			Msg("deployment runner failed and the deployment couldn't be marked as an error")
 	}
+}
+
+// missedSoFar is first and every later close that is already past.
+// The walk stops at the next close that has not happened, or when the
+// calendar has no further session. One call of NextClose returns one close.
+func (r *InProcess) missedSoFar(ctx context.Context, calendar string, first SessionClose) ([]SessionClose, error) {
+	missed := []SessionClose{first}
+	after := first.Date
+	for {
+		next, err := r.clock.NextClose(ctx, calendar, after)
+		if errors.Is(err, ErrNoSession) {
+			return missed, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !r.clock.Now().After(next.Close) {
+			return missed, nil
+		}
+		missed = append(missed, *next)
+		after = next.Date
+	}
+}
+
+func sessionDates(sessions []SessionClose) []string {
+	dates := make([]string, len(sessions))
+	for i, session := range sessions {
+		dates[i] = commonpb.DateToDateString(session.Date)
+	}
+	return dates
 }
 
 // SkipMissed records a missed close and advances last_session_date. No Process, no PlaceOrder.
