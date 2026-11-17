@@ -426,8 +426,17 @@ func TestGetOHLCUnknownExchangeSuffixIsRefused(t *testing.T) {
 	end := date(t, "2021-01-06")
 	_, err := client.GetOHLC(context.Background(), "SHOP.TO", start, &end)
 	require.ErrorIs(t, err, marketdata.ErrStooqExchange)
+	// Ingest shows this sentence as GetOHLC wrote it.
 	require.EqualError(t, err, "stooq doesn't support the .TO exchange (SHOP.TO). "+
 		"Supported suffixes: .DE, .L, .US. Try another provider with --provider.")
+	lead, ok := marketdata.StooqExchangeLead("SHOP.TO")
+	require.True(t, ok)
+	require.Equal(t, "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US.", lead)
+	require.Equal(t, lead+" Try another provider with --provider.", err.Error())
+	require.True(t, marketdata.IsStooqExchangeRefusal(err.Error(), "SHOP.TO"))
+	require.True(t, marketdata.IsStooqExchangeRefusal(err.Error(), "shop.to"))
+	require.False(t, marketdata.IsStooqExchangeRefusal(err.Error(), "SHOP"))
+	require.False(t, marketdata.IsStooqExchangeRefusal(err.Error(), "VOD.L"))
 	require.False(t, called)
 }
 

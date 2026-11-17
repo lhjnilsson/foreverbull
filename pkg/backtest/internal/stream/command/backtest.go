@@ -993,6 +993,7 @@ func discardSymbolDownloadError(ctx context.Context, backtests repository.Backte
 // and the step says to delete it first.
 func symbolDownloadMessage(name, provider, symbol string, start, end *pb.Date, errText string, removed bool) string {
 	var lead, next string
+	exchangeLead, exchangeOK := finance.StooqExchangeLead(symbol)
 	switch {
 	case isNoPriceDataError(errText):
 		lead = fmt.Sprintf("%s has no prices for %s between %s and %s.", strings.ToLower(provider), symbol,
@@ -1004,6 +1005,9 @@ func symbolDownloadMessage(name, provider, symbol string, start, end *pb.Date, e
 	case isRefusedBarError(errText):
 		lead = errText + "."
 		next = providerFaultNextStep
+	case exchangeOK && finance.IsStooqExchangeRefusal(errText, symbol):
+		lead = exchangeLead
+		next = fmt.Sprintf("Remove %s or try another provider with --provider, then run `fbull backtest create` again.", symbol)
 	default:
 		if timedOut, ok := providerTimeoutProvider(errText, symbol); ok {
 			lead = fmt.Sprintf("%s took too long to respond for %s.", timedOut, symbol)

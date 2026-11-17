@@ -460,6 +460,14 @@ func (fs *MarketdataServer) downloadSymbol(
 				failSymbol(ctx, sender, rsp, ambiguousSymbolError(provider, symbol))
 				return nil
 			}
+			// ErrStooqExchange is an unsupported suffix or a suffixed ticker
+			// outside the bound (errStooqInvalidTicker). The sentence names
+			// this later ticker, not the one that was asked, so create shows
+			// the generic download message.
+			if errors.Is(fetchErr, marketdata.ErrStooqExchange) {
+				failSymbol(ctx, sender, rsp, fetchErr)
+				return nil
+			}
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -507,6 +515,9 @@ func (fs *MarketdataServer) downloadSymbol(
 			// delay, not as a failure to store.
 			err = &marketdata.TimeoutError{Provider: provider, Symbol: symbol}
 		case errors.As(err, &invalid):
+		case errors.Is(err, marketdata.ErrStooqExchange):
+			// The client's sentence, for an unsupported suffix or for
+			// errStooqInvalidTicker. Leave it.
 		case errors.Is(err, repository.ErrNoBars):
 			err = noPriceDataError(symbol)
 		case errors.As(err, &stored):
@@ -559,12 +570,20 @@ func nothingToFetch(ctx context.Context, bars supplier.Marketdata, start time.Ti
 // only result that opens the later-ticker lookup: a rename shows up as no
 // bars, and nothing else does. Every other failure is returned for the
 // symbol to fail with; a *marketdata.BlockedError is returned as is.
+// ErrStooqExchange is returned as the client wrote it, before the retry.
 func askedTickerBars(ctx context.Context, bars supplier.Marketdata, symbol, provider, storeSymbol string,
 	start time.Time, end *time.Time,
 ) ([]*pb.OHLC, error) {
 	ohlcs, err := bars.GetOHLC(ctx, storeSymbol, start, end)
 	if err == nil && len(ohlcs) > 0 {
 		return ohlcs, nil
+	}
+	// ErrStooqExchange is not a missing price. It is an unsupported
+	// exchange suffix, or a suffixed ticker outside the bound
+	// (errStooqInvalidTicker). A retry and a later ticker are refused the
+	// same way, so the symbol stops on the sentence GetOHLC returned.
+	if errors.Is(err, marketdata.ErrStooqExchange) {
+		return nil, err
 	}
 	// A failed request (HTTP 401, a 429 after the provider's own retries,
 	// 5xx, a refused connection, a timeout or a cancelled download) says
@@ -580,6 +599,12 @@ func askedTickerBars(ctx context.Context, bars supplier.Marketdata, symbol, prov
 	ohlcs, err = retryOHLC(ctx, bars, storeSymbol, start, end)
 	if err == nil && len(ohlcs) > 0 {
 		return ohlcs, nil
+	}
+	// A second ask that returns ErrStooqExchange is the same refusal,
+	// including errStooqInvalidTicker. It is not "no prices", and a later
+	// ticker is not asked.
+	if errors.Is(err, marketdata.ErrStooqExchange) {
+		return nil, err
 	}
 	// The first ask had bars with a gap and the retry has none. The two
 	// answers disagree, so this is not a rename: the symbol fails with the

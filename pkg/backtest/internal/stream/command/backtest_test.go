@@ -1299,6 +1299,75 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataIgnoresInvalidTickerFo
 	test.NotContains(err.Error(), "symbol 7 of 99")
 }
 
+// shopTORefusal is the sentence the Stooq client returns for SHOP.TO.
+// Create keeps the refusal and supplies its own next step.
+const shopTORefusal = "stooq doesn't support the .TO exchange (SHOP.TO). " +
+	"Supported suffixes: .DE, .L, .US. Try another provider with --provider."
+
+const shopTORemoved = "Couldn't load data for backtest 'stooq-shop': stooq doesn't support the .TO exchange (SHOP.TO). " +
+	"Supported suffixes: .DE, .L, .US. The backtest wasn't saved. " +
+	"Remove SHOP.TO or try another provider with --provider, then run `fbull backtest create` again."
+
+const shopTOKept = "Couldn't load data for backtest 'stooq-shop': stooq doesn't support the .TO exchange (SHOP.TO). " +
+	"Supported suffixes: .DE, .L, .US. The backtest was partly saved and couldn't be removed. " +
+	"Run `fbull backtest delete stooq-shop` first. " +
+	"Remove SHOP.TO or try another provider with --provider, then run `fbull backtest create` again."
+
+// prepareStooqShopDownload stores stooq-shop with SHOP.TO and answers the
+// download with Stooq's refusal.
+func (test *BacktestCommandTest) prepareStooqShopDownload() {
+	stooq, ok := proto.Clone(test.backtest).(*backtest.Backtest)
+	test.Require().True(ok)
+	stooq.Name = "stooq-shop"
+	stooq.Provider = "stooq"
+	backtests := repository.Backtest{Conn: test.db}
+	_, _, err := backtests.Create(context.TODO(), stooq)
+	test.Require().NoError(err)
+	err = backtests.UpdatePeriod(context.TODO(), "stooq-shop", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets: []*backtest.Backtest_Period_Asset{
+			{Symbol: "SHOP.TO", Enabled: true},
+		},
+	})
+	test.Require().NoError(err)
+
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "SHOP.TO",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  shopTORefusal,
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+}
+
+// An unsupported Stooq exchange suffix fails create with the refusal and
+// create's own step, and the backtest is removed.
+func (test *BacktestCommandTest) TestDownloadFinancialDataShowsStooqExchangeRefusal() {
+	test.prepareStooqShopDownload()
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("stooq-shop"))
+
+	test.Require().EqualError(err, shopTORemoved)
+	_, err = (&repository.Backtest{Conn: test.db}).Get(context.TODO(), "stooq-shop")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+// When that backtest could not be removed, the same refusal says to delete
+// it first. The name is still taken.
+func (test *BacktestCommandTest) TestDownloadFinancialDataKeepsStooqExchangeRefusalWhenRemovalFails() {
+	test.refuseBacktestDelete()
+	test.prepareStooqShopDownload()
+
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("stooq-shop"))
+
+	test.Require().EqualError(err, shopTOKept)
+	test.NotContains(err.Error(), "refused")
+	stored, err := (&repository.Backtest{Conn: test.db}).Get(context.TODO(), "stooq-shop")
+	test.Require().NoError(err)
+	test.Equal("stooq-shop", stored.Name)
+}
+
 // A ticker with more than one instrument names the provider and the ticker,
 // and points at the exchange suffix instead of a retry.
 func (test *BacktestCommandTest) TestDownloadFinancialDataNamesAmbiguousSymbol() {

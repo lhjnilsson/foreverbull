@@ -23,6 +23,20 @@ func StoredSymbol(symbol string) string {
 	return marketdata.StoredSymbol(symbol)
 }
 
+// StooqExchangeLead is Stooq's refusal of symbol without the provider step.
+// ok is false when symbol has no exchange suffix. Create uses it as the
+// lead; the full GetOHLC sentence is this plus " Try another provider with
+// --provider."
+func StooqExchangeLead(symbol string) (string, bool) {
+	return marketdata.StooqExchangeLead(symbol)
+}
+
+// IsStooqExchangeRefusal reports whether text is the full GetOHLC sentence
+// for symbol, including that step.
+func IsStooqExchangeRefusal(text, symbol string) bool {
+	return marketdata.IsStooqExchangeRefusal(text, symbol)
+}
+
 // LastCompletedSessionDate is the date of the last completed XNYS session as
 // of now, at midnight UTC: today from 16:30 America/New_York, yesterday
 // before. Every provider's fetch stops there, so a check of stored bars
