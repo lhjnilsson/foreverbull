@@ -113,19 +113,21 @@ func (db *Backtest) DeleteByID(ctx context.Context, id string) error {
 }
 
 // CreateOwned inserts a backtest for ownerID. Periods use backtest_id.
-// The backtest, its periods, and its period assets commit together.
-func (db *Backtest) CreateOwned(ctx context.Context, ownerID string, item *backtest.Backtest) (*backtest.Backtest, error) {
+// It returns the id the insert wrote. The backtest, its periods, and its
+// period assets commit together. A name that owner already stored is
+// ErrBacktestNameTaken, and that row is not returned.
+func (db *Backtest) CreateOwned(ctx context.Context, ownerID string, item *backtest.Backtest) (string, *backtest.Backtest, error) {
 	if ownerID == "" {
-		return nil, errors.New("account id is empty")
+		return "", nil, errors.New("account id is empty")
 	}
 	return db.insertBacktest(ctx, backtestWrite{ownerID: ownerID, item: item})
 }
 
 // CreateOwnedWithMembers is CreateOwned plus the universe members, in that
 // same transaction. An empty list still replaces membership, which stores none.
-func (db *Backtest) CreateOwnedWithMembers(ctx context.Context, ownerID string, item *backtest.Backtest, members []MemberInterval) (*backtest.Backtest, error) {
+func (db *Backtest) CreateOwnedWithMembers(ctx context.Context, ownerID string, item *backtest.Backtest, members []MemberInterval) (string, *backtest.Backtest, error) {
 	if ownerID == "" {
-		return nil, errors.New("account id is empty")
+		return "", nil, errors.New("account id is empty")
 	}
 	return db.insertBacktest(ctx, backtestWrite{ownerID: ownerID, item: item, members: members, writeMembers: true})
 }

@@ -87,6 +87,9 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 	if err := auth.EnsureSurrogateID(ctx, conn, "backtest"); err != nil {
 		return err
 	}
+	if err := MigrateCreateMessageID(ctx, conn); err != nil {
+		return err
+	}
 
 	if err := createSymbolEvents(ctx, conn); err != nil {
 		return err
@@ -161,6 +164,9 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	// Name stays the primary key. The id is the ingestion object key in both
 	// auth modes, so a re-create does not read an object left under the name.
 	if err := auth.EnsureSurrogateID(ctx, conn, "backtest"); err != nil {
+		return err
+	}
+	if err := MigrateCreateMessageID(ctx, conn); err != nil {
 		return err
 	}
 

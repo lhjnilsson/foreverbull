@@ -41,7 +41,7 @@ func (test *SessionTest) SetupTest() {
 		Name:     "backtest",
 		Provider: "yahoo",
 	}
-	test.storedBacktest, err = backtests.Create(ctx, &backtest)
+	_, test.storedBacktest, err = backtests.Create(ctx, &backtest)
 	test.Require().NoError(err)
 }
 
@@ -127,7 +127,7 @@ func (test *SessionTest) TestListByBacktest() {
 		Name:     "backtest2",
 		Provider: "yahoo",
 	}
-	test.storedBacktest, err = backtests.Create(ctx, &backtest2)
+	_, test.storedBacktest, err = backtests.Create(ctx, &backtest2)
 	test.Require().NoError(err)
 	session3, err := sessions.Create(ctx, "backtest2")
 	test.Require().NoError(err)

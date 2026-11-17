@@ -79,7 +79,7 @@ func (s *SessionTest) SetupTest() {
 			{StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1}, EndDate: &pb.Date{Year: 2024, Month: 12, Day: 31}},
 		},
 	}
-	s.backtest, err = backtests.Create(context.Background(), &backtest)
+	_, s.backtest, err = backtests.Create(context.Background(), &backtest)
 	s.Require().NoError(err)
 	sessions := repository.Session{Conn: s.conn}
 	s.session, err = sessions.Create(context.TODO(), "backtest")
@@ -497,7 +497,7 @@ func TestCreateExecutionAuthOnUsesBacktestID(t *testing.T) {
 	require.NoError(t, repository.MigrateBacktestOwner(ctx, pool, admin.ID, quietCopier{}))
 
 	backtests := repository.Backtest{Conn: pool}
-	_, err = backtests.CreateOwned(ctx, admin.ID, &backtest.Backtest{
+	_, _, err = backtests.CreateOwned(ctx, admin.ID, &backtest.Backtest{
 		Name:     "spy",
 		Provider: "yahoo",
 		Periods: []*backtest.Backtest_Period{{

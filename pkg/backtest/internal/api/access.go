@@ -88,8 +88,12 @@ func (bs *BacktestServer) createBacktestAuthed(req *servicePb.CreateBacktestRequ
 	if err != nil {
 		return err
 	}
+	messageID, err := creatingMessageID(orchestration)
+	if err != nil {
+		return err
+	}
 	backtests := repository.Backtest{Conn: bs.pgx}
-	queueFull, err := newQueueFullCreate(ctx, ownedBacktest(backtests, account.ID, createdName(req)))
+	queueFull, err := newQueueFullCreate(ctx, ownedBacktest(backtests, account.ID, createdName(req), messageID))
 	if err != nil {
 		return err
 	}
@@ -103,12 +107,11 @@ func (bs *BacktestServer) createBacktestAuthed(req *servicePb.CreateBacktestRequ
 			return fmt.Errorf("error sending response: %w", err)
 		}
 	}
+	if err = duplicateCreate(rsp); err != nil {
+		return err
+	}
 	return sendStoredBacktest(rsp, serverStream, createdName(req), func() (*backtest.Backtest, error) {
-		id, err := backtests.IDByOwnerAndName(ctx, account.ID, createdName(req))
-		if err != nil {
-			return nil, err
-		}
-		return backtests.GetByID(ctx, id)
+		return loadCreatedBacktest(ctx, backtests, messageID)
 	})
 }
 

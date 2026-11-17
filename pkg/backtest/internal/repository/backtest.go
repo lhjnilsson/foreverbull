@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	commonPB "github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS backtest (
 	provider text NOT NULL,
 	profile text NOT NULL DEFAULT '',
 	auto_close_on_universe_drop boolean NOT NULL DEFAULT true,
+	create_message_id text,
 	CONSTRAINT backtest_provider_check CHECK (provider IN ('yahoo', 'stooq', 'alpaca'))
 );
 
@@ -63,6 +65,45 @@ var ErrCloseOnUniverseDropFixed error = &userSentence{text: usercopy.CloseOnUniv
 // Its text is the user sentence. Yahoo is not stored in its place.
 var ErrProviderMissing error = &userSentence{text: usercopy.BacktestProviderMissing}
 
+// ErrBacktestNameTaken is the create that lost the name. Auth off, the name
+// is the primary key. Auth on, the pair is (owner_id, name). The text is the
+// duplicate wording a conflict already uses. The other create's row is not
+// returned.
+var ErrBacktestNameTaken = errors.New("already exists")
+
+// backtestNamePrimaryKey is the name primary key while auth is off.
+// backtestOwnerNameKey is (owner_id, name) once auth is on.
+const (
+	backtestNamePrimaryKey = "backtest_pkey"
+	backtestOwnerNameKey   = "backtest_owner_id_name_key"
+)
+
+type createMessageKey struct{}
+
+// WithCreateMessage marks the task that is inserting this backtest. The id
+// the insert returns is stored against that task, so a caller loads and
+// removes that row instead of whatever row currently has the name.
+func WithCreateMessage(ctx context.Context, messageID string) context.Context {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, createMessageKey{}, messageID)
+}
+
+func createMessageID(ctx context.Context) string {
+	id, _ := ctx.Value(createMessageKey{}).(string)
+	return id
+}
+
+func createMessageArg(ctx context.Context) any {
+	id := createMessageID(ctx)
+	if id == "" {
+		return nil
+	}
+	return id
+}
+
 // closeOnUniverseDrop is the stored choice. An omitted field is on.
 func closeOnUniverseDrop(item *backtest.Backtest) bool {
 	if item == nil || item.AutoCloseOnUniverseDrop == nil {
@@ -86,6 +127,24 @@ func MigrateAutoCloseOnUniverseDrop(ctx context.Context, conn postgres.Query) er
 		ADD COLUMN IF NOT EXISTS auto_close_on_universe_drop boolean NOT NULL DEFAULT true`)
 	if err != nil {
 		return fmt.Errorf("backtest: auto_close_on_universe_drop: %w", err)
+	}
+	return nil
+}
+
+// MigrateCreateMessageID adds the task id a create stores its row under.
+// The index is unique for a non-empty task, so two creates cannot share it.
+// Calling it twice is safe.
+func MigrateCreateMessageID(ctx context.Context, conn postgres.Query) error {
+	_, err := conn.Exec(ctx, `ALTER TABLE backtest ADD COLUMN IF NOT EXISTS create_message_id text`)
+	if err != nil {
+		return fmt.Errorf("backtest: create_message_id: %w", err)
+	}
+	_, err = conn.Exec(ctx, `
+		CREATE UNIQUE INDEX IF NOT EXISTS backtest_create_message_id_key
+		ON backtest (create_message_id)
+		WHERE create_message_id IS NOT NULL`)
+	if err != nil {
+		return fmt.Errorf("backtest: create_message_id: %w", err)
 	}
 	return nil
 }
@@ -155,53 +214,55 @@ type backtestWrite struct {
 }
 
 // Create inserts the backtest, its periods, and its period assets in one
-// transaction. A failure rolls those rows back, so the name is not left taken.
-func (db *Backtest) Create(ctx context.Context, item *backtest.Backtest) (*backtest.Backtest, error) {
+// transaction. It returns the id the insert wrote. A failure rolls those
+// rows back, so the name is not left taken. A name that is already stored
+// is ErrBacktestNameTaken, and the stored row is not returned.
+func (db *Backtest) Create(ctx context.Context, item *backtest.Backtest) (string, *backtest.Backtest, error) {
 	return db.insertBacktest(ctx, backtestWrite{item: item})
 }
 
 // CreateWithMembers is Create plus the universe members, in that same
 // transaction. An empty list still replaces membership, which stores none.
-func (db *Backtest) CreateWithMembers(ctx context.Context, item *backtest.Backtest, members []MemberInterval) (*backtest.Backtest, error) {
+func (db *Backtest) CreateWithMembers(ctx context.Context, item *backtest.Backtest, members []MemberInterval) (string, *backtest.Backtest, error) {
 	return db.insertBacktest(ctx, backtestWrite{item: item, members: members, writeMembers: true})
 }
 
-func (db *Backtest) insertBacktest(ctx context.Context, in backtestWrite) (*backtest.Backtest, error) {
+func (db *Backtest) insertBacktest(ctx context.Context, in backtestWrite) (string, *backtest.Backtest, error) {
 	provider, err := normalizeBacktestProvider(in.item.GetProvider())
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	on := closeOnUniverseDrop(in.item)
 	assignCloseOnUniverseDrop(in.item, on)
 	if err := refuseCloseOnDropChange(ctx, db.Conn, in, on); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	tx, err := beginBacktestTx(ctx, db.Conn)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 
 	id, err := insertBacktestRow(ctx, tx, in, provider)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if err := insertBacktestPeriods(ctx, tx, in, id); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if in.writeMembers {
 		if err := insertBacktestMembers(ctx, tx, in, id); err != nil {
-			return nil, err
+			return "", nil, err
 		}
 	}
 	stored, err := readCreatedBacktest(ctx, tx, in, id)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to create backtest: %w", err)
+		return "", nil, fmt.Errorf("failed to create backtest: %w", err)
 	}
-	return stored, nil
+	return id, stored, nil
 }
 
 func beginBacktestTx(ctx context.Context, conn postgres.Query) (pgx.Tx, error) {
@@ -217,33 +278,61 @@ func beginBacktestTx(ctx context.Context, conn postgres.Query) (pgx.Tx, error) {
 }
 
 func insertBacktestRow(ctx context.Context, conn postgres.Query, in backtestWrite, provider string) (string, error) {
+	messageID := createMessageArg(ctx)
 	if in.ownerID != "" {
 		var id string
 		err := conn.QueryRow(ctx, `
-			INSERT INTO backtest (name, benchmark, provider, profile, owner_id, auto_close_on_universe_drop)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO backtest (name, benchmark, provider, profile, owner_id, auto_close_on_universe_drop, create_message_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id`,
 			in.item.GetName(), in.item.GetBenchmark(), provider, in.item.GetProfile(), in.ownerID,
-			closeOnUniverseDrop(in.item)).Scan(&id)
+			closeOnUniverseDrop(in.item), messageID).Scan(&id)
 		if err != nil {
-			return "", fmt.Errorf("create backtest: %w", err)
+			return "", insertBacktestError(err, true)
+		}
+		if strings.TrimSpace(id) == "" {
+			return "", errors.New("backtest id is empty")
 		}
 		return id, nil
 	}
 	profile := strings.TrimSpace(in.item.GetProfile())
 	var id string
 	err := conn.QueryRow(ctx,
-		`INSERT INTO backtest (name, benchmark, provider, profile, auto_close_on_universe_drop)
-		VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO backtest (name, benchmark, provider, profile, auto_close_on_universe_drop, create_message_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`,
-		in.item.Name, in.item.Benchmark, provider, profile, closeOnUniverseDrop(in.item)).Scan(&id)
+		in.item.Name, in.item.Benchmark, provider, profile, closeOnUniverseDrop(in.item), messageID).Scan(&id)
 	if err != nil {
-		return "", fmt.Errorf("failed to create backtest: %w", err)
+		return "", insertBacktestError(err, false)
 	}
 	if strings.TrimSpace(id) == "" {
 		return "", errors.New("backtest id is empty")
 	}
 	return id, nil
+}
+
+// backtestNameTaken reports a unique violation on the name. Auth off, that
+// is the primary key. Auth on, it is (owner_id, name). Another unique
+// violation, such as a repeated period, stays a failed create.
+func backtestNameTaken(err error, owned bool) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return false
+	}
+	if owned {
+		return pgErr.ConstraintName == backtestOwnerNameKey
+	}
+	return pgErr.ConstraintName == backtestNamePrimaryKey
+}
+
+func insertBacktestError(err error, owned bool) error {
+	if backtestNameTaken(err, owned) {
+		return ErrBacktestNameTaken
+	}
+	if owned {
+		return fmt.Errorf("create backtest: %w", err)
+	}
+	return fmt.Errorf("failed to create backtest: %w", err)
 }
 
 // IDByName is the surrogate id of the backtest called name. Auth off is the
@@ -254,6 +343,23 @@ func (db *Backtest) IDByName(ctx context.Context, name string) (string, error) {
 	}
 	var id string
 	err := db.Conn.QueryRow(ctx, `SELECT id FROM backtest WHERE name = $1`, name).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(id) == "" {
+		return "", errors.New("backtest id is empty")
+	}
+	return id, nil
+}
+
+// IDByCreateMessage is the id the create task stored. It is not a lookup by
+// name: a second create of that name has a different task, or none.
+func (db *Backtest) IDByCreateMessage(ctx context.Context, messageID string) (string, error) {
+	if strings.TrimSpace(messageID) == "" {
+		return "", errors.New("create message id is empty")
+	}
+	var id string
+	err := db.Conn.QueryRow(ctx, `SELECT id FROM backtest WHERE create_message_id = $1`, messageID).Scan(&id)
 	if err != nil {
 		return "", err
 	}
@@ -353,13 +459,26 @@ func readCreatedBacktest(ctx context.Context, conn postgres.Query, in backtestWr
 	if in.ownerID != "" {
 		return stored.GetByID(ctx, id)
 	}
-	return stored.Get(ctx, in.item.Name)
+	return stored.GetBySurrogateID(ctx, id)
 }
 
 func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, error) {
 	if authOn() {
 		return nil, fmt.Errorf("get backtest by name is refused while AUTH_ENABLED=true")
 	}
+	return db.getOne(ctx, "backtest.name = $1", name)
+}
+
+// GetBySurrogateID loads the backtest whose id the insert returned.
+// It does not select by name.
+func (db *Backtest) GetBySurrogateID(ctx context.Context, id string) (*backtest.Backtest, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, errors.New("backtest id is empty")
+	}
+	return db.getOne(ctx, "backtest.id = $1", id)
+}
+
+func (db *Backtest) getOne(ctx context.Context, where string, arg any) (*backtest.Backtest, error) {
 	type rowData struct {
 		Name        string
 		Benchmark   string
@@ -393,9 +512,9 @@ func (db *Backtest) Get(ctx context.Context, name string) (*backtest.Backtest, e
 		LEFT JOIN backtest_period ON backtest.name = backtest_period.backtest_name
 		LEFT JOIN backtest_period_asset ON backtest_period.backtest_name = backtest_period_asset.backtest_name
 		AND backtest_period.start_date = backtest_period_asset.start_date
-		WHERE backtest.name = $1
+		WHERE `+where+`
 		ORDER BY backtest_period.start_date, backtest_period_asset.symbol DESC
-	`, name)
+	`, arg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get backtest: %w", err)
 	}

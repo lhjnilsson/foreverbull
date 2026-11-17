@@ -207,13 +207,10 @@ func insertAccount(t *testing.T, pool *pgxpool.Pool, role, username string) auth
 
 func createOwned(t *testing.T, backtests repository.Backtest, ownerID, name string) string {
 	t.Helper()
-	item, err := backtests.CreateOwned(context.Background(), ownerID, &backtest.Backtest{Name: name, Provider: "yahoo"})
+	id, item, err := backtests.CreateOwned(context.Background(), ownerID, &backtest.Backtest{Name: name, Provider: "yahoo"})
 	require.NoError(t, err)
 	require.Equal(t, name, item.GetName())
-	var id string
-	err = backtests.Conn.QueryRow(context.Background(), `
-		SELECT id FROM backtest WHERE owner_id = $1 AND name = $2`, ownerID, name).Scan(&id)
-	require.NoError(t, err)
+	require.NotEmpty(t, id)
 	return id
 }
 
@@ -303,7 +300,7 @@ func TestOwnedCreateSendsStoredBacktest(t *testing.T) {
 	// would store are inserted here. Another owner's row of the same name must
 	// not be the one sent back.
 	createOwned(t, backtests, other.ID, "same")
-	_, err = backtests.CreateOwned(ctx, owner.ID, &backtest.Backtest{Name: "same", Benchmark: "SPY", Provider: "yahoo"})
+	_, _, err = backtests.CreateOwned(ctx, owner.ID, &backtest.Backtest{Name: "same", Benchmark: "SPY", Provider: "yahoo"})
 	require.NoError(t, err)
 
 	steps := make(chan *streamPb.Orchestration_Step, 3)
@@ -312,7 +309,16 @@ func TestOwnedCreateSendsStoredBacktest(t *testing.T) {
 	steps <- &streamPb.Orchestration_Step{Num: 3, State: commonPb.State_STATE_COMPLETED}
 	close(steps)
 	orchestrated := new(stream.MockStream)
-	orchestrated.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(steps))
+	orchestrated.On("RunOrchestration", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			o := args.Get(1).(*streamPb.Orchestration)
+			messageID := o.GetSteps()[0].GetMessages()[0].GetId()
+			_, err := pool.Exec(ctx, `
+				UPDATE backtest SET create_message_id = $1 WHERE owner_id = $2 AND name = 'same'`,
+				messageID, owner.ID)
+			require.NoError(t, err)
+		}).
+		Return((<-chan *streamPb.Orchestration_Step)(steps))
 	server := api.NewBacktestServer(pool, orchestrated)
 
 	capture := &createCapture{ctx: auth.WithAccount(ctx, owner)}

@@ -86,7 +86,7 @@ func (test *BacktestCommandTest) SetupSuite() {
 		},
 	}
 	backtests := repository.Backtest{Conn: test.db}
-	_, err = backtests.Create(context.TODO(), test.backtest)
+	_, _, err = backtests.Create(context.TODO(), test.backtest)
 	test.Require().NoError(err)
 }
 
@@ -97,7 +97,7 @@ func (test *BacktestCommandTest) SetupTest() {
 	err := repository.Recreate(context.Background(), test.db)
 	test.Require().NoError(err)
 	backtests := repository.Backtest{Conn: test.db}
-	_, err = backtests.Create(context.TODO(), test.backtest)
+	_, _, err = backtests.Create(context.TODO(), test.backtest)
 	test.Require().NoError(err)
 
 	test.etfscraper = new(dependency.MockETFScraper)
@@ -1027,7 +1027,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataNamesProvid
 	stooq.Name = "stooq-backtest"
 	stooq.Provider = "stooq"
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.TODO(), stooq)
+	_, _, err := backtests.Create(context.TODO(), stooq)
 	test.Require().NoError(err)
 	err = backtests.UpdatePeriod(context.TODO(), "stooq-backtest", &backtest.Backtest_Period{
 		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
@@ -1065,7 +1065,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataExactSenten
 		Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "XYZ", Enabled: true}},
 	}}
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.TODO(), oef)
+	_, _, err := backtests.Create(context.TODO(), oef)
 	test.Require().NoError(err)
 
 	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
@@ -1103,7 +1103,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataNoISINExactSentence() 
 		Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "XYZ", Enabled: true}},
 	}}
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.TODO(), oef)
+	_, _, err := backtests.Create(context.TODO(), oef)
 	test.Require().NoError(err)
 
 	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
@@ -1238,7 +1238,7 @@ func (test *BacktestCommandTest) createOEF(assetCount int) {
 	b := proto.Clone(test.backtest).(*backtest.Backtest)
 	b.Name = "oef-2024q1"
 	backtests := repository.Backtest{Conn: test.db}
-	_, err := backtests.Create(context.TODO(), b)
+	_, _, err := backtests.Create(context.TODO(), b)
 	test.Require().NoError(err)
 	assets := make([]*backtest.Backtest_Period_Asset, 0, assetCount)
 	for i := range assetCount {

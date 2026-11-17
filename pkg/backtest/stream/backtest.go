@@ -1,7 +1,10 @@
 package stream
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	streamPb "github.com/lhjnilsson/foreverbull/internal/stream/pb"
@@ -58,6 +61,9 @@ type CreateBacktestFromETFCommand struct {
 	Profile                 string `json:"profile,omitempty"`
 	OwnerID                 string `json:"owner_id,omitempty"`
 	AutoCloseOnUniverseDrop *bool  `json:"auto_close_on_universe_drop,omitempty"`
+	// CreateMessageID is this task's id. The insert stores the backtest id
+	// against it, so later steps do not look the row up by name.
+	CreateMessageID string `json:"create_message_id,omitempty"`
 }
 
 func NewCreateBacktestFromETFCommand(backtestName, etfName, startDate, endDate, provider, profile string, closeOnDrop *bool) (stream.Message, error) {
@@ -70,19 +76,61 @@ func NewCreateBacktestFromETFCommand(backtestName, etfName, startDate, endDate, 
 		Profile:                 profile,
 		AutoCloseOnUniverseDrop: closeOnDrop,
 	}
-	return stream.NewMessage("backtest", "create", "from_etf", cmd)
+	msg, err := stream.NewMessage("backtest", "create", "from_etf", cmd)
+	if err != nil {
+		return nil, err
+	}
+	if err = stampCreateMessage(msg, func(id string) any {
+		cmd.CreateMessageID = id
+		return cmd
+	}); err != nil {
+		return nil, err
+	}
+	return msg, nil
 }
 
 type CreateBacktestFromBacktestCommand struct {
 	Backtest []byte `json:"backtest"`
 	OwnerID  string `json:"owner_id,omitempty"`
+	// CreateMessageID is this task's id. The insert stores the backtest id
+	// against it, so later steps do not look the row up by name.
+	CreateMessageID string `json:"create_message_id,omitempty"`
 }
 
 func NewCreateBacktestFromBacktestCommand(backtest []byte) (stream.Message, error) {
 	cmd := &CreateBacktestFromBacktestCommand{
 		Backtest: backtest,
 	}
-	return stream.NewMessage("backtest", "create", "from_backtest", cmd)
+	msg, err := stream.NewMessage("backtest", "create", "from_backtest", cmd)
+	if err != nil {
+		return nil, err
+	}
+	if err = stampCreateMessage(msg, func(id string) any {
+		cmd.CreateMessageID = id
+		return cmd
+	}); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+// stampCreateMessage writes the task id into the payload the worker reads.
+// The id is the message id, which the API already has, so it can load the
+// row the insert wrote without asking for the name.
+func stampCreateMessage(msg stream.Message, rewrite func(id string) any) error {
+	if msg == nil || msg.GetMsg() == nil {
+		return errors.New("create message id is empty")
+	}
+	id := strings.TrimSpace(msg.GetMsg().GetId())
+	if id == "" {
+		return errors.New("create message id is empty")
+	}
+	payload, err := json.Marshal(rewrite(id))
+	if err != nil {
+		return fmt.Errorf("error creating message: %w", err)
+	}
+	msg.GetMsg().Payload = payload
+	return nil
 }
 
 type DownloadFinancialDataCommand struct {
@@ -167,7 +215,7 @@ func CreateBacktestFromETFOwned(backtestName, etfName, startDate, endDate, provi
 	rsp := &backtestServicePb.CreateBacktestResponse{}
 	rspFields := rsp.ProtoReflect().Descriptor().Fields()
 
-	cmd, err := stream.NewMessage("backtest", "create", "from_etf", &CreateBacktestFromETFCommand{
+	creating := &CreateBacktestFromETFCommand{
 		BacktestName:            backtestName,
 		ETFName:                 etfName,
 		StartDate:               startDate,
@@ -176,9 +224,16 @@ func CreateBacktestFromETFOwned(backtestName, etfName, startDate, endDate, provi
 		Profile:                 profile,
 		OwnerID:                 ownerID,
 		AutoCloseOnUniverseDrop: closeOnDrop,
-	})
+	}
+	cmd, err := stream.NewMessage("backtest", "create", "from_etf", creating)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	if err = stampCreateMessage(cmd, func(id string) any {
+		creating.CreateMessageID = id
+		return creating
+	}); err != nil {
+		return nil, err
 	}
 	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("CREATING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 
@@ -212,12 +267,19 @@ func CreateBacktestFromBacktestOwned(item *backtest.Backtest, ownerID string) (*
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling backtest: %w", err)
 	}
-	cmd, err := stream.NewMessage("backtest", "create", "from_backtest", &CreateBacktestFromBacktestCommand{
+	creating := &CreateBacktestFromBacktestCommand{
 		Backtest: encoded,
 		OwnerID:  ownerID,
-	})
+	}
+	cmd, err := stream.NewMessage("backtest", "create", "from_backtest", creating)
 	if err != nil {
 		return nil, fmt.Errorf("error creating message: %w", err)
+	}
+	if err = stampCreateMessage(cmd, func(id string) any {
+		creating.CreateMessageID = id
+		return creating
+	}); err != nil {
+		return nil, err
 	}
 	o.Steps = append(o.Steps, &streamPb.Orchestration_Step{Num: int32(rspFields.ByName("CREATING").Number()), Messages: []*streamPb.Message{cmd.GetMsg()}})
 

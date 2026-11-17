@@ -102,7 +102,7 @@ func (test *BacktestServerTest) createBacktest(name string) *backtest.Backtest {
 		Name:     name,
 		Provider: "yahoo",
 	}
-	backtest, err := backtests.Create(context.TODO(), &b)
+	_, backtest, err := backtests.Create(context.TODO(), &b)
 	test.Require().NoError(err)
 	test.Require().NotNil(backtest)
 	return backtest
@@ -257,7 +257,15 @@ func (test *BacktestServerTest) createStream(name string, statuses []*streamPb.O
 		statusCh <- status
 	}
 	close(statusCh)
-	test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+	test.stream.On("RunOrchestration", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			o := args.Get(1).(*streamPb.Orchestration)
+			messageID := o.GetSteps()[0].GetMessages()[0].GetId()
+			_, err := test.pgx.Exec(context.Background(),
+				`UPDATE backtest SET create_message_id = $1 WHERE name = $2`, messageID, name)
+			test.Require().NoError(err)
+		}).
+		Return((<-chan *streamPb.Orchestration_Step)(statusCh))
 
 	req := &servicePb.CreateBacktestRequest{
 		Create: &servicePb.CreateBacktestRequest_Backtest{
@@ -311,6 +319,40 @@ func (test *BacktestServerTest) TestCreateBacktestSendsStoredBacktest() {
 			test.Nil(rsp.GetBacktest())
 			test.NotEqual(pb.State_STATE_COMPLETED, rsp.GetSTORING().GetState())
 		}
+	})
+}
+
+func (test *BacktestServerTest) TestCreateBacktestDuplicateNameIsAConflict() {
+	test.Run("creating step names the duplicate", func() {
+		message := repository.ErrBacktestNameTaken.Error()
+		statusCh := make(chan *streamPb.Orchestration_Step, 1)
+		statusCh <- &streamPb.Orchestration_Step{Num: 1, State: pb.State_STATE_FAILED, Error: &message}
+		close(statusCh)
+		test.stream.On("RunOrchestration", mock.Anything, mock.Anything).Return((<-chan *streamPb.Orchestration_Step)(statusCh))
+
+		resp, err := test.client.CreateBacktest(context.Background(), &servicePb.CreateBacktestRequest{
+			Create: &servicePb.CreateBacktestRequest_Backtest{
+				Backtest: &servicePb.CreateBacktestRequest_CreateFromBacktest{
+					Backtest: &backtest.Backtest{Name: "race", Provider: "yahoo"},
+				},
+			},
+		})
+		test.Require().NoError(err)
+
+		var failed bool
+		for {
+			msg, recvErr := resp.Recv()
+			if recvErr != nil {
+				test.Require().Equal(codes.AlreadyExists, status.Code(recvErr))
+				test.Equal(repository.ErrBacktestNameTaken.Error(), status.Convert(recvErr).Message())
+				failed = true
+				break
+			}
+			if msg.GetCREATING().GetState() == pb.State_STATE_FAILED {
+				test.Equal(repository.ErrBacktestNameTaken.Error(), msg.GetCREATING().GetMessage())
+			}
+		}
+		test.True(failed)
 	})
 }
 
@@ -549,7 +591,14 @@ func (test *BacktestServerTest) createStreamStoring(name string, statuses []*str
 	}
 	close(statusCh)
 	test.stream.On("RunOrchestration", mock.Anything, mock.Anything).
-		Run(func(mock.Arguments) { test.createBacktest(name) }).
+		Run(func(args mock.Arguments) {
+			o := args.Get(1).(*streamPb.Orchestration)
+			messageID := o.GetSteps()[0].GetMessages()[0].GetId()
+			ctx := repository.WithCreateMessage(context.Background(), messageID)
+			backtests := repository.Backtest{Conn: test.pgx}
+			_, _, err := backtests.Create(ctx, &backtest.Backtest{Name: name, Provider: "yahoo"})
+			test.Require().NoError(err)
+		}).
 		Return((<-chan *streamPb.Orchestration_Step)(statusCh))
 
 	req := &servicePb.CreateBacktestRequest{

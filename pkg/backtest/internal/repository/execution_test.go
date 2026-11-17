@@ -53,7 +53,7 @@ func (test *ExecutionTest) SetupTest() {
 			},
 		},
 	}
-	_, err = backtests.Create(ctx, &b)
+	_, _, err = backtests.Create(ctx, &b)
 	test.Require().NoError(err)
 	test.storedBacktest, err = backtests.Get(ctx, "backtest")
 	test.Require().NoError(err)
@@ -238,7 +238,7 @@ func (test *ExecutionTest) TestCreateCopiesBacktestProvider() {
 
 	for _, provider := range []string{"stooq", "alpaca"} {
 		name := provider + "-bt"
-		_, err := backtests.Create(ctx, &backtest.Backtest{Name: name, Provider: provider})
+		_, _, err := backtests.Create(ctx, &backtest.Backtest{Name: name, Provider: provider})
 		test.Require().NoError(err)
 		session, err := sessions.Create(ctx, name)
 		test.Require().NoError(err)

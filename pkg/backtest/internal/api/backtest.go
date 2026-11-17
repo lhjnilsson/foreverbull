@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -100,8 +101,12 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 		return fmt.Errorf("invalid create type")
 	}
 
+	messageID, err := creatingMessageID(o)
+	if err != nil {
+		return err
+	}
 	backtests := repository.Backtest{Conn: bs.pgx}
-	queueFull, err := newQueueFullCreate(ctx, namedBacktest(backtests, createdName(req)))
+	queueFull, err := newQueueFullCreate(ctx, namedBacktest(backtests, createdName(req), messageID))
 	if err != nil {
 		return err
 	}
@@ -117,9 +122,49 @@ func (bs *BacktestServer) CreateBacktest(req *servicePb.CreateBacktestRequest,
 			return fmt.Errorf("error sending response: %w", err)
 		}
 	}
+	if err = duplicateCreate(rsp); err != nil {
+		return err
+	}
 	return sendStoredBacktest(rsp, serverStream, createdName(req), func() (*backtest.Backtest, error) {
-		return backtests.Get(ctx, createdName(req))
+		return loadCreatedBacktest(ctx, backtests, messageID)
 	})
+}
+
+// creatingMessageID is the CREATING task. The insert stores the backtest id
+// against it.
+func creatingMessageID(o *internalPb.Orchestration) (string, error) {
+	if len(o.GetSteps()) == 0 || len(o.GetSteps()[0].GetMessages()) == 0 {
+		return "", errors.New("create message id is empty")
+	}
+	id := strings.TrimSpace(o.GetSteps()[0].GetMessages()[0].GetId())
+	if id == "" {
+		return "", errors.New("create message id is empty")
+	}
+	return id, nil
+}
+
+// loadCreatedBacktest reads the row this create stored, by that id.
+func loadCreatedBacktest(ctx context.Context, backtests repository.Backtest, messageID string) (*backtest.Backtest, error) {
+	id, err := backtests.IDByCreateMessage(ctx, messageID)
+	if err != nil {
+		return nil, err
+	}
+	if environment.GetAuthEnabled() {
+		return backtests.GetByID(ctx, id)
+	}
+	return backtests.GetBySurrogateID(ctx, id)
+}
+
+// duplicateCreate is a name the database already stored. The status is
+// AlreadyExists, which the HTTP API writes as 409.
+func duplicateCreate(rsp *servicePb.CreateBacktestResponse) error {
+	if rsp.GetCREATING().GetState() != pb.State_STATE_FAILED {
+		return nil
+	}
+	if rsp.GetCREATING().GetMessage() != repository.ErrBacktestNameTaken.Error() {
+		return nil
+	}
+	return status.Error(codes.AlreadyExists, repository.ErrBacktestNameTaken.Error())
 }
 
 // createdName is the backtest name a create request stores.
