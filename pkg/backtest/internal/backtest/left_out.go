@@ -24,6 +24,27 @@ type lastBarsByID interface {
 	LastBarsByID(ctx context.Context, backtestID, provider string, end time.Time) ([]repository.AliasLastBar, error)
 }
 
+// periodLastBarsByName is the symbol-list lookup. A symbol list has no
+// universe_member rows, so LastBars is empty. PeriodLastBars reads the
+// enabled period assets instead, still per provider and before end, and
+// still by ISIN when the symbol has one.
+type periodLastBarsByName interface {
+	PeriodLastBars(ctx context.Context, backtestName, provider string, end time.Time) ([]repository.AliasLastBar, error)
+}
+
+type periodLastBarsByID interface {
+	PeriodLastBarsByID(ctx context.Context, backtestID, provider string, end time.Time) ([]repository.AliasLastBar, error)
+}
+
+// The production repository implements every lookup the session type-asserts.
+// A test double that does not is left unfiltered; a failed read is not.
+var (
+	_ lastBarsByName       = (*repository.UniverseMember)(nil)
+	_ lastBarsByID         = (*repository.UniverseMember)(nil)
+	_ periodLastBarsByName = (*repository.UniverseMember)(nil)
+	_ periodLastBarsByID   = (*repository.UniverseMember)(nil)
+)
+
 // leftOut records the members a run passed over because their prices had
 // ended: an ETF member that was delisted keeps its membership until the next
 // month-end holdings list drops it, but it has no bar to trade on. Each
@@ -36,6 +57,10 @@ type lastBarsByID interface {
 // trade the strategy never placed.
 type leftOut struct {
 	lastBar map[string]time.Time
+	// kept is a confirmed delisting whose last bar is the newest bar any
+	// symbol has. That is where the stored data ends, so the symbol is not
+	// left out and the run does not name it.
+	kept    map[string]bool
 	held    map[string]bool
 	holding map[string]bool
 }
@@ -43,6 +68,7 @@ type leftOut struct {
 func newLeftOut() *leftOut {
 	return &leftOut{
 		lastBar: make(map[string]time.Time),
+		kept:    make(map[string]bool),
 		held:    make(map[string]bool),
 		holding: make(map[string]bool),
 	}
@@ -96,9 +122,12 @@ func withoutEndedPrices(source symbolSource, aliases []repository.AliasLastBar, 
 			return nil, err
 		}
 		day := dayOf(t)
-		kept := make([]string, 0, len(symbols))
+		keptSymbols := make([]string, 0, len(symbols))
 		for _, symbol := range symbols {
 			last, ok := lastBarAt(aliases, symbol, day)
+			if ok && confirmed[symbol] && !last.Before(newest) {
+				left.kept[symbol] = true
+			}
 			if ok && confirmed[symbol] && last.Before(day) && last.Before(newest) {
 				if previous, seen := left.lastBar[symbol]; !seen || last.After(previous) {
 					left.lastBar[symbol] = last
@@ -108,9 +137,9 @@ func withoutEndedPrices(source symbolSource, aliases []repository.AliasLastBar, 
 				}
 				continue
 			}
-			kept = append(kept, symbol)
+			keptSymbols = append(keptSymbols, symbol)
 		}
-		return kept, nil
+		return keptSymbols, nil
 	}
 }
 

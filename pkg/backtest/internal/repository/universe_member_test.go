@@ -450,6 +450,90 @@ func (test *UniverseMemberTest) TestLastBarsGivesEachAliasItsISINsLastBar() {
 	}
 }
 
+// A symbol list has no universe_member rows. PeriodLastBars still returns
+// each enabled asset's last bar for this provider, before the window, and
+// an asset with an ISIN shares the bars stored under its other tickers.
+// A disabled asset and the benchmark are not part of the run.
+func (test *UniverseMemberTest) TestPeriodLastBarsReadsASymbolListByISINAndOwnBars() {
+	ctx := context.Background()
+	test.resetFinanceBars()
+	_, _, err := test.backtests.Create(ctx, &backtest.Backtest{
+		Name: "list", Benchmark: "SPY", Provider: "yahoo",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2026, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2026, Month: 4, Day: 30},
+			Assets: []*backtest.Backtest_Period_Asset{
+				{Symbol: "AAPL", Enabled: true},
+				{Symbol: "ABC", Enabled: true},
+				{Symbol: "FB", Enabled: true},
+				{Symbol: "NOBARS", Enabled: true},
+				{Symbol: "SKIP", Enabled: false},
+			},
+		}},
+	})
+	test.Require().NoError(err)
+	_, _, err = test.backtests.Create(ctx, &backtest.Backtest{
+		Name: "other", Benchmark: "SPY", Provider: "yahoo",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2026, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2026, Month: 4, Day: 30},
+			Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "OTHER", Enabled: true}},
+		}},
+	})
+	test.Require().NoError(err)
+
+	instruments := repository.Instrument{Conn: test.conn}
+	test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+		ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2026-01-01"), ToDate: test.toPtr("2026-05-01"),
+	}))
+	test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+		ISIN: metaISIN, Symbol: "META", FromDate: test.date("2026-05-01"),
+	}))
+
+	open := func(s string) time.Time { return test.date(s).Add(13*time.Hour + 30*time.Minute) }
+	test.financeBars("yahoo", "AAPL", open("2026-04-30"), open("2026-05-04"))
+	test.financeBars("yahoo", "ABC", open("2026-03-31"))
+	test.financeBars("stooq", "ABC", open("2026-04-20"))
+	// Yahoo stores the renamed ISIN under META. FB itself has no bars.
+	test.financeBars("yahoo", "META", open("2026-01-05"), open("2026-04-29"))
+	test.financeBars("yahoo", "SKIP", open("2026-04-30"))
+	test.financeBars("yahoo", "SPY", open("2026-06-01"))
+	test.financeBars("yahoo", "OTHER", open("2026-04-30"))
+
+	aliases, err := test.members.PeriodLastBars(ctx, "list", "yahoo", test.date("2026-05-01"))
+	test.Require().NoError(err)
+
+	got := make(map[string]string, len(aliases))
+	counts := make(map[string]int, len(aliases))
+	for _, alias := range aliases {
+		counts[alias.Symbol]++
+		if alias.LastBar == nil {
+			got[alias.Symbol] = ""
+			continue
+		}
+		got[alias.Symbol] = alias.LastBar.UTC().Format(time.DateOnly)
+	}
+	test.Equal(map[string]string{
+		"AAPL":   "2026-04-30",
+		"ABC":    "2026-03-31",
+		"FB":     "2026-04-29",
+		"META":   "2026-04-29",
+		"NOBARS": "",
+	}, got)
+	test.Equal(map[string]int{"AAPL": 1, "ABC": 1, "FB": 1, "META": 1, "NOBARS": 1}, counts)
+	for _, alias := range aliases {
+		switch alias.Symbol {
+		case "FB":
+			test.Equal(test.date("2026-01-01"), alias.FromDate)
+			test.Require().NotNil(alias.ToDate)
+			test.Equal(test.date("2026-05-01"), *alias.ToDate)
+		case "AAPL", "ABC", "NOBARS":
+			test.Equal(test.date("0001-01-01"), alias.FromDate)
+			test.Nil(alias.ToDate)
+		}
+	}
+}
+
 func (test *UniverseMemberTest) TestLastBarsLeavesAnISINWithoutBarsNil() {
 	ctx := context.Background()
 	test.resetFinanceBars()

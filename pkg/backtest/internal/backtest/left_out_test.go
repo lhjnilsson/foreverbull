@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -27,6 +28,54 @@ func (f fakeMembersWithBars) LastBars(_ context.Context, _ string, provider stri
 	*f.provider = provider
 	*f.end = end
 	return f.aliases, nil
+}
+
+// fakePeriodBars is a symbol-list lookup: no membership rows, and the last
+// bar of each enabled period asset, as repository.UniverseMember.PeriodLastBars.
+type fakePeriodBars struct {
+	aliases  []repository.AliasLastBar
+	err      error
+	provider *string
+	end      *time.Time
+}
+
+func (f fakePeriodBars) SymbolsAt(context.Context, string, time.Time) ([]string, error) {
+	return nil, nil
+}
+
+func (f fakePeriodBars) List(context.Context, string) ([]repository.MemberInterval, error) {
+	return nil, nil
+}
+
+func (f fakePeriodBars) PeriodLastBars(_ context.Context, _ string, provider string, end time.Time) ([]repository.AliasLastBar, error) {
+	if f.provider != nil {
+		*f.provider = provider
+	}
+	if f.end != nil {
+		*f.end = end
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.aliases, nil
+}
+
+// symbolListBacktest is a plain symbol list: enabled period assets, no
+// universe_member rows.
+func symbolListBacktest(symbols ...string) *pb.Backtest {
+	assets := make([]*pb.Backtest_Period_Asset, 0, len(symbols))
+	for _, symbol := range symbols {
+		assets = append(assets, &pb.Backtest_Period_Asset{Symbol: symbol, Enabled: true})
+	}
+	return &pb.Backtest{
+		Name:      "list",
+		Benchmark: "SPY",
+		Periods: []*pb.Backtest_Period{{
+			StartDate: date(2026, 1, 1),
+			EndDate:   date(2026, 4, 30),
+			Assets:    assets,
+		}},
+	}
 }
 
 func day(year int, month time.Month, d int) time.Time {
@@ -97,6 +146,131 @@ func TestRunBacktestLeavesOutMemberAfterItsLastBar(t *testing.T) {
 	require.Equal(t, "yahoo", provider)
 	require.Equal(t, day(2026, 5, 1), end)
 	require.Equal(t, []string{"1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC."}, session.RunNotices())
+}
+
+// A symbol-list backtest has no universe_member rows. A confirmed delisting
+// is still passed on its last bar and left out after it, and the notice is
+// the same line an ETF member gets. XYZ's bars ended too, with no delisting
+// stored, so it stays. FB's bars are the ISIN's, stored under a later ticker,
+// so the rename is not a delisting.
+func TestRunBacktestSymbolListLeavesOutSymbolAfterItsLastBar(t *testing.T) {
+	t.Parallel()
+
+	before := time.Date(2026, 3, 31, 13, 30, 0, 0, time.UTC)
+	after := time.Date(2026, 4, 1, 13, 30, 0, 0, time.UTC)
+	later := time.Date(2026, 4, 2, 13, 30, 0, 0, time.UTC)
+
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(&servicePb.RunBacktestResponse{NumPeriods: 3}, nil).Once()
+	for _, at := range []time.Time{before, after, later} {
+		client.On("GetCurrentPeriod", mock.Anything, mock.Anything).Return(periodAt(at), nil).Once()
+	}
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).
+		Return(&servicePb.GetCurrentPeriodResponse{IsRunning: false}, nil).Once()
+	client.On("PlaceOrdersAndContinue", mock.Anything, mock.Anything).
+		Return(&servicePb.PlaceOrdersAndContinueResponse{}, nil).Times(3)
+
+	pool.On("Process", mock.Anything, before, []string{"AAPL", "ABC", "FB", "XYZ"}, mock.Anything).Return(nil, nil).Once()
+	pool.On("Process", mock.Anything, after, []string{"AAPL", "FB", "XYZ"}, mock.Anything).Return(nil, nil).Once()
+	pool.On("Process", mock.Anything, later, []string{"AAPL", "FB", "XYZ"}, mock.Anything).Return(nil, nil).Once()
+
+	provider := ""
+	end := time.Time{}
+	session := &ZipelineSession{
+		client: client,
+		symbolsAt: fakePeriodBars{
+			aliases: []repository.AliasLastBar{
+				{Symbol: "AAPL", FromDate: day(1, 1, 1), LastBar: ptr(time.Date(2026, 4, 30, 13, 30, 0, 0, time.UTC))},
+				{Symbol: "ABC", FromDate: day(1, 1, 1), LastBar: ptr(before)},
+				{Symbol: "FB", FromDate: day(2026, 1, 1), ToDate: ptr(day(2026, 5, 1)), LastBar: ptr(time.Date(2026, 4, 30, 13, 30, 0, 0, time.UTC))},
+				{Symbol: "XYZ", FromDate: day(1, 1, 1), LastBar: ptr(time.Date(2026, 3, 15, 13, 30, 0, 0, time.UTC))},
+			},
+			provider: &provider,
+			end:      &end,
+		},
+		backtests: fakeBacktests{
+			backtest: symbolListBacktest("ABC", "FB", "AAPL", "XYZ"),
+			events: []repository.SymbolEvent{{
+				Symbol: "ABC", Kind: repository.EventDelisted, On: day(2026, 3, 31), Evidence: "alpaca asset status inactive",
+			}},
+		},
+	}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "list"}, pool)
+	require.NoError(t, err)
+	drain(t, ch)
+	require.NoError(t, session.RunFailure())
+
+	require.Equal(t, "yahoo", provider)
+	require.Equal(t, day(2026, 5, 1), end)
+	require.Equal(t, []string{"1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC."}, session.RunNotices())
+}
+
+// Every enabled symbol's last bar is the same day, so the stored data ends
+// there. A confirmed delisting on that day is not left out and not named.
+func TestRunBacktestSymbolListLeavesNothingOutWhenEveryBarEndsTogether(t *testing.T) {
+	t.Parallel()
+
+	last := time.Date(2026, 4, 29, 13, 30, 0, 0, time.UTC)
+	past := time.Date(2026, 4, 30, 13, 30, 0, 0, time.UTC)
+
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	client.On("RunBacktest", mock.Anything, mock.Anything).
+		Return(&servicePb.RunBacktestResponse{NumPeriods: 2}, nil).Once()
+	for _, at := range []time.Time{last, past} {
+		client.On("GetCurrentPeriod", mock.Anything, mock.Anything).Return(periodAt(at), nil).Once()
+	}
+	client.On("GetCurrentPeriod", mock.Anything, mock.Anything).
+		Return(&servicePb.GetCurrentPeriodResponse{IsRunning: false}, nil).Once()
+	client.On("PlaceOrdersAndContinue", mock.Anything, mock.Anything).
+		Return(&servicePb.PlaceOrdersAndContinueResponse{}, nil).Times(2)
+
+	pool.On("Process", mock.Anything, last, []string{"AAPL", "MSFT"}, mock.Anything).Return(nil, nil).Once()
+	pool.On("Process", mock.Anything, past, []string{"AAPL", "MSFT"}, mock.Anything).Return(nil, nil).Once()
+
+	session := &ZipelineSession{
+		client: client,
+		symbolsAt: fakePeriodBars{aliases: []repository.AliasLastBar{
+			{Symbol: "AAPL", FromDate: day(1, 1, 1), LastBar: ptr(last)},
+			{Symbol: "MSFT", FromDate: day(1, 1, 1), LastBar: ptr(last)},
+		}},
+		backtests: fakeBacktests{
+			backtest: symbolListBacktest("MSFT", "AAPL"),
+			events: []repository.SymbolEvent{
+				{Symbol: "AAPL", Kind: repository.EventDelisted, On: day(2026, 4, 29), Evidence: "alpaca asset status inactive"},
+				{Symbol: "MSFT", Kind: repository.EventDelisted, On: day(2026, 4, 29), Evidence: "yahoo search returned no listing and no later ticker"},
+			},
+		},
+	}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "list"}, pool)
+	require.NoError(t, err)
+	drain(t, ch)
+	require.NoError(t, session.RunFailure())
+	require.Empty(t, session.RunNotices())
+}
+
+// A failed last-bar read stops the run before Zipline starts. There is no
+// fallback that keeps every symbol.
+func TestRunBacktestSymbolListFailsWhenLastPricesCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	readErr := errors.New("ohlc unavailable")
+	client := servicePb.NewMockEngineSessionClient(t)
+	pool := worker.NewMockPool(t)
+	session := &ZipelineSession{
+		client:    client,
+		symbolsAt: fakePeriodBars{err: readErr},
+		backtests: fakeBacktests{backtest: symbolListBacktest("AAPL", "MSFT")},
+	}
+
+	ch, err := session.RunBacktest(context.Background(), &pb.Execution{Backtest: "list"}, pool)
+	require.Nil(t, ch)
+	require.ErrorIs(t, err, readErr)
+	require.ErrorContains(t, err, "error reading last prices of list")
 }
 
 // The run asks for sessions past the newest stored bar, e.g. a provider that
