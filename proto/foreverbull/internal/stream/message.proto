@@ -41,15 +41,28 @@ message State {
   repeated string notices = 4;
 }
 
+// Progress is one report on TOPIC_TASK_PROGRESS. It is not a task state.
+message Progress {
+  string text = 1;
+  // Set while a price provider is limiting requests. The next report leaves
+  // them empty once the download continues.
+  string rate_limit_provider = 2;
+  int32 rate_limit_wait_seconds = 3;
+}
+
 message Orchestration {
   message Step {
     int32 num = 1;
     repeated Message messages = 2;
     foreverbull.common.State state = 3;
-    // Set only when the step failed.
+    // Set only when the step failed. On a running step it is progress text.
     optional string error = 4;
     // Notices of the step's commands that completed with one.
     repeated string notices = 5;
+    // Copied onto the running step while a price provider is limiting
+    // requests. Empty on the next progress report without a wait.
+    string rate_limit_provider = 6;
+    int32 rate_limit_wait_seconds = 7;
   }
   repeated Step steps = 1;
 }

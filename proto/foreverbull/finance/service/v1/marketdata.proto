@@ -109,6 +109,15 @@ message DownloadHistoricalDataResponse {
   // dividend_failure is set with STATUS_ERROR when the symbol's dividends
   // failed. Callers name the cause from it, not from error.
   DividendFailure dividend_failure = 6;
+  // RateLimit is its own frame while the provider is holding the download.
+  // Symbol stays empty and status stays STATUS_UNSPECIFIED. The next symbol
+  // frame means the download continued.
+  message RateLimit {
+    string provider = 1;
+    // Whole seconds of the pause. A pause of 5s or less is not sent.
+    int32 wait_seconds = 2;
+  }
+  RateLimit rate_limit = 7;
 }
 
 // GetOHLC reads bars already stored in the broker database.

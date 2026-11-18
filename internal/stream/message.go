@@ -133,6 +133,14 @@ func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
 			message = *step.Error
 		}
 		stepMsg.Set(stepMsg.Descriptor().Fields().ByNumber(protoreflect.FieldNumber(2)), protoreflect.ValueOfString(message))
+		// Written on every update, including empty, so a rate-limit note on
+		// this step does not survive the next progress report or completion.
+		if err := setStringField(stepMsg, "rate_limit_provider", step.GetRateLimitProvider()); err != nil {
+			return err
+		}
+		if err := setInt32Field(stepMsg, "rate_limit_wait_seconds", step.GetRateLimitWaitSeconds()); err != nil {
+			return err
+		}
 		if len(step.Notices) > 0 {
 			noticesField := stepMsg.Descriptor().Fields().ByName("notices")
 			if noticesField == nil || !noticesField.IsList() || noticesField.Kind() != protoreflect.StringKind {
@@ -147,5 +155,23 @@ func UpdateOrchestration(msg proto.Message, step *pb.Orchestration_Step) error {
 	} else {
 		return fmt.Errorf("step message not found")
 	}
+	return nil
+}
+
+func setStringField(msg protoreflect.Message, name, value string) error {
+	field := msg.Descriptor().Fields().ByName(protoreflect.Name(name))
+	if field == nil || field.Kind() != protoreflect.StringKind || field.IsList() {
+		return fmt.Errorf("%s field not found in step message", name)
+	}
+	msg.Set(field, protoreflect.ValueOfString(value))
+	return nil
+}
+
+func setInt32Field(msg protoreflect.Message, name string, value int32) error {
+	field := msg.Descriptor().Fields().ByName(protoreflect.Name(name))
+	if field == nil || field.Kind() != protoreflect.Int32Kind {
+		return fmt.Errorf("%s field not found in step message", name)
+	}
+	msg.Set(field, protoreflect.ValueOfInt32(value))
 	return nil
 }

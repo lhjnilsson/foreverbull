@@ -34,6 +34,11 @@ const (
 	maxRateLimitBackoff   = 30 * time.Second
 )
 
+// rateLimitNoteAfter is the longest provider pause that stays off the
+// download progress line. A longer pause is reported with its provider and
+// its length in whole seconds. A shorter pause is not sent.
+const rateLimitNoteAfter = 5 * time.Second
+
 // rateLimitRetries is how many times a Yahoo, Stooq, or Alpaca asset-status
 // request is sent again after a 429. Alpaca bar requests go through the SDK's
 // client, so their transport sends each request once and only slows the
@@ -45,11 +50,17 @@ const rateLimitRetries = 3
 // everyone: callers already waiting for a slot check the pause again when
 // their slot comes, and wait it out before they send.
 type requestLimiter struct {
+	// provider is the name a long pause is reported under. Empty on a
+	// limiter built for a test that does not name one.
+	provider string
 	interval time.Duration
 	slots    *rate.Limiter
 
 	mu          sync.Mutex
 	pausedUntil time.Time
+	// notedUntil is the end of the pause already reported, so every waiter
+	// of that one pause does not report it again.
+	notedUntil time.Time
 }
 
 func newRequestLimiter(requestsPerSecond int) *requestLimiter {
@@ -63,10 +74,16 @@ func newRequestLimiterEvery(interval time.Duration) *requestLimiter {
 
 // providerLimiters holds one limiter per provider for the life of the
 // process. The keys are the NormalizeProvider allowlist, so it can't grow.
+func namedLimiter(provider string, requestsPerSecond int) *requestLimiter {
+	limiter := newRequestLimiter(requestsPerSecond)
+	limiter.provider = provider
+	return limiter
+}
+
 var providerLimiters = map[string]*requestLimiter{
-	"yahoo":  newRequestLimiter(yahooRequestsPerSecond),
-	"stooq":  newRequestLimiter(stooqRequestsPerSecond),
-	"alpaca": newRequestLimiter(alpacaRequestsPerSecond),
+	"yahoo":  namedLimiter("yahoo", yahooRequestsPerSecond),
+	"stooq":  namedLimiter("stooq", stooqRequestsPerSecond),
+	"alpaca": namedLimiter("alpaca", alpacaRequestsPerSecond),
 }
 
 // limiterFor is the shared limiter of provider. An unknown provider is a
@@ -79,17 +96,22 @@ func limiterFor(provider string) *requestLimiter {
 	return limiter
 }
 
-// WaitRefusedError is a wait for a request slot that was refused because
-// the slot, or the end of a 429 pause, comes after the ctx deadline.
-// Nothing was sent and the slot was given back. It is a DeadlineExceeded,
-// so callers read it as the provider taking too long, or as the task's own
-// time limit when Deadline is that limit. Its text is for the server log
-// only; user-facing copy never shows it.
+// WaitRefusedError is a wait that was refused because it ends after the
+// ctx deadline. Pause is set when that wait is a 429 pause; otherwise it
+// is the next request slot. Nothing was sent and a reserved slot was given
+// back. It is a DeadlineExceeded, so callers read it as the provider taking
+// too long, or as the task's own time limit when Deadline is that limit.
+// Its text is for the server log only; user-facing copy never shows it.
 type WaitRefusedError struct {
 	Deadline time.Time
+	// Pause distinguishes a 429 pause from the next request slot.
+	Pause bool
 }
 
 func (e *WaitRefusedError) Error() string {
+	if e != nil && e.Pause {
+		return "the provider pause ends after the deadline"
+	}
 	return "the next request slot comes after the deadline"
 }
 
@@ -116,14 +138,24 @@ func (l *requestLimiter) wait(ctx context.Context) error {
 		}
 		now := time.Now()
 		if until := l.paused(); until.After(now) {
-			if err := sleepUntil(ctx, now, until); err != nil {
+			// A pause that ends after the deadline is refused before it is
+			// named: the download is not going to wait it out.
+			if deadline, ok := ctx.Deadline(); ok && until.After(deadline) {
+				return &WaitRefusedError{Deadline: deadline, Pause: true}
+			}
+			if err := l.reportLongPause(ctx, until); err != nil {
+				return err
+			}
+			// now is before the report. Sleep the time still left, not the
+			// whole pause again.
+			if err := sleepUntil(ctx, time.Now(), until, true); err != nil {
 				return err
 			}
 			continue
 		}
 		reservation := l.slots.ReserveN(now, 1)
 		slot := now.Add(reservation.DelayFrom(now))
-		if err := sleepUntil(ctx, now, slot); err != nil {
+		if err := sleepUntil(ctx, now, slot, false); err != nil {
 			reservation.Cancel()
 			return err
 		}
@@ -137,13 +169,14 @@ func (l *requestLimiter) wait(ctx context.Context) error {
 }
 
 // sleepUntil waits until at, or refuses at once when at is after ctx's
-// deadline. It returns ctx's error when ctx ends first.
-func sleepUntil(ctx context.Context, now, at time.Time) error {
+// deadline. pause names a 429 pause; otherwise the refusal is the next
+// request slot. It returns ctx's error when ctx ends first.
+func sleepUntil(ctx context.Context, now, at time.Time, pause bool) error {
 	if !at.After(now) {
 		return nil
 	}
 	if deadline, ok := ctx.Deadline(); ok && at.After(deadline) {
-		return &WaitRefusedError{Deadline: deadline}
+		return &WaitRefusedError{Deadline: deadline, Pause: pause}
 	}
 	timer := time.NewTimer(at.Sub(now))
 	defer timer.Stop()
@@ -153,6 +186,61 @@ func sleepUntil(ctx context.Context, now, at time.Time) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+type rateLimitReportFunc func(provider string, waitSeconds int32)
+
+type rateLimitReportKey struct{}
+
+// WithRateLimitReport returns ctx that hears a provider pause longer than
+// rateLimitNoteAfter. A download sets it so the pause can be sent on the
+// download stream. A ctx without a reporter is not told.
+func WithRateLimitReport(ctx context.Context, report func(provider string, waitSeconds int32)) context.Context {
+	return context.WithValue(ctx, rateLimitReportKey{}, rateLimitReportFunc(report))
+}
+
+// notablePause is the whole seconds of a pause the progress line names.
+// The seconds are the pause rounded to the nearest second, so a 30s pause
+// stays 30 after a few milliseconds have already passed. A pause of
+// rateLimitNoteAfter or less, including one that rounds down to that, is
+// not named.
+func notablePause(wait time.Duration) (int32, bool) {
+	if wait <= rateLimitNoteAfter {
+		return 0, false
+	}
+	seconds := int32(wait.Round(time.Second) / time.Second)
+	if seconds <= int32(rateLimitNoteAfter/time.Second) {
+		return 0, false
+	}
+	return seconds, true
+}
+
+// reportLongPause tells ctx's reporter about a pause that ends at until,
+// once per pause. until is the pause the caller is about to wait out.
+// A pause that would be named, with a reporter set and no provider on the
+// limiter, is an error: the note cannot be sent without a name.
+func (l *requestLimiter) reportLongPause(ctx context.Context, until time.Time) error {
+	seconds, ok := notablePause(time.Until(until))
+	if !ok {
+		return nil
+	}
+	report, ok := ctx.Value(rateLimitReportKey{}).(rateLimitReportFunc)
+	if !ok || report == nil {
+		return nil
+	}
+	if l.provider == "" {
+		return errors.New("rate-limit pause has no provider to name")
+	}
+	l.mu.Lock()
+	if !until.After(l.notedUntil) {
+		l.mu.Unlock()
+		return nil
+	}
+	l.notedUntil = until
+	provider := l.provider
+	l.mu.Unlock()
+	report(provider, seconds)
+	return nil
 }
 
 // pause keeps every caller, including those already waiting, from sending
@@ -280,7 +368,7 @@ func (t *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		// A 429 waits out the shared pause in limiter.wait. A 5xx waits its
 		// own backoff first.
 		if resp.StatusCode != http.StatusTooManyRequests {
-			if err := sleepUntil(ctx, time.Now(), waited); err != nil {
+			if err := sleepUntil(ctx, time.Now(), waited, false); err != nil {
 				return t.endedRetry(req, last, err)
 			}
 		}

@@ -129,7 +129,7 @@ class Date(Message[_DateFields]):
         month: int
         day: int
 
-_StepFields: TypeAlias = Literal["state", "message", "notices"]
+_StepFields: TypeAlias = Literal["state", "message", "notices", "rate_limit_provider", "rate_limit_wait_seconds"]
 
 class Step(Message[_StepFields]):
     """
@@ -144,6 +144,8 @@ class Step(Message[_StepFields]):
             ```
         message:
             Why the step failed. Empty unless state is STATE_FAILED.
+            On a running download step it is the progress line, such as
+            "Downloading prices: 1,240 of 10,000 symbols".
 
             ```proto
             string message = 2;
@@ -155,9 +157,21 @@ class Step(Message[_StepFields]):
             ```proto
             repeated string notices = 3;
             ```
+        rate_limit_provider:
+            Set on a running download step while the provider is limiting requests.
+            The client names the pause on the progress line when the wait is longer
+            than its threshold. The next update that leaves these empty clears it.
+
+            ```proto
+            string rate_limit_provider = 4;
+            ```
+        rate_limit_wait_seconds:
+            ```proto
+            int32 rate_limit_wait_seconds = 5;
+            ```
     """
 
-    __slots__ = ("state", "message", "notices")
+    __slots__ = ("state", "message", "notices", "rate_limit_provider", "rate_limit_wait_seconds")
 
     if TYPE_CHECKING:
 
@@ -167,12 +181,16 @@ class Step(Message[_StepFields]):
             state: State | None = None,
             message: str = "",
             notices: list[str] | None = None,
+            rate_limit_provider: str = "",
+            rate_limit_wait_seconds: int = 0,
         ) -> None:
             pass
 
         state: State
         message: str
         notices: list[str]
+        rate_limit_provider: str
+        rate_limit_wait_seconds: int
 
 class State(Enum):
     """
@@ -206,7 +224,7 @@ class State(Enum):
 
 
 _DESC = file_desc(
-    b'\n\x18foreverbull/common.proto\x12\x12foreverbull.common"?\n\x07Request\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01B\x07\n\x05_data"e\n\x08Response\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01\x12\x19\n\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01B\x07\n\x05_dataB\x08\n\x06_error"B\n\x04Date\x12\x12\n\x04year\x18\x01 \x01(\x05R\x04year\x12\x14\n\x05month\x18\x02 \x01(\x05R\x05month\x12\x10\n\x03day\x18\x03 \x01(\x05R\x03day"k\n\x04Step\x12/\n\x05state\x18\x01 \x01(\x0e2\x19.foreverbull.common.StateR\x05state\x12\x18\n\x07message\x18\x02 \x01(\tR\x07message\x12\x18\n\x07notices\x18\x03 \x03(\tR\x07notices*X\n\x05State\x12\x15\n\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n\rSTATE_RUNNING\x10\x01\x12\x13\n\x0fSTATE_COMPLETED\x10\x02\x12\x10\n\x0cSTATE_FAILED\x10\x03B*Z(github.com/lhjnilsson/foreverbull/pkg/pbb\x06proto3',
+    b'\n\x18foreverbull/common.proto\x12\x12foreverbull.common"?\n\x07Request\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01B\x07\n\x05_data"e\n\x08Response\x12\x12\n\x04task\x18\x01 \x01(\tR\x04task\x12\x17\n\x04data\x18\x02 \x01(\x0cH\x00R\x04data\x88\x01\x01\x12\x19\n\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01B\x07\n\x05_dataB\x08\n\x06_error"B\n\x04Date\x12\x12\n\x04year\x18\x01 \x01(\x05R\x04year\x12\x14\n\x05month\x18\x02 \x01(\x05R\x05month\x12\x10\n\x03day\x18\x03 \x01(\x05R\x03day"\xd2\x01\n\x04Step\x12/\n\x05state\x18\x01 \x01(\x0e2\x19.foreverbull.common.StateR\x05state\x12\x18\n\x07message\x18\x02 \x01(\tR\x07message\x12\x18\n\x07notices\x18\x03 \x03(\tR\x07notices\x12.\n\x13rate_limit_provider\x18\x04 \x01(\tR\x11rateLimitProvider\x125\n\x17rate_limit_wait_seconds\x18\x05 \x01(\x05R\x14rateLimitWaitSeconds*X\n\x05State\x12\x15\n\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n\rSTATE_RUNNING\x10\x01\x12\x13\n\x0fSTATE_COMPLETED\x10\x02\x12\x10\n\x0cSTATE_FAILED\x10\x03B*Z(github.com/lhjnilsson/foreverbull/pkg/pbb\x06proto3',
     [],
     {
         "Request": Request,

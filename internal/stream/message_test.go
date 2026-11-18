@@ -198,6 +198,25 @@ func (test *UpdateOrchestrationTest) TestUpdateOrchestration() {
 		test.Equal(commonPb.State_STATE_COMPLETED, test.msg.DOWNLOADING.State)
 		test.Empty(test.msg.DOWNLOADING.Message, "a leftover progress text would print as a notice")
 	})
+	test.Run("rate limit wait is copied and the next update clears it", func() {
+		progress := "Downloading prices: 1,240 of 10,000 symbols"
+		test.Require().NoError(UpdateOrchestration(test.msg, &pb.Orchestration_Step{
+			Num: 2, State: commonPb.State_STATE_RUNNING, Error: &progress,
+			RateLimitProvider: "yahoo", RateLimitWaitSeconds: 30,
+		}))
+		test.Equal(commonPb.State_STATE_RUNNING, test.msg.DOWNLOADING.State)
+		test.Equal(progress, test.msg.DOWNLOADING.GetMessage())
+		test.Equal("yahoo", test.msg.DOWNLOADING.GetRateLimitProvider())
+		test.Equal(int32(30), test.msg.DOWNLOADING.GetRateLimitWaitSeconds())
+
+		next := "Downloading prices: 1,241 of 10,000 symbols"
+		test.Require().NoError(UpdateOrchestration(test.msg, &pb.Orchestration_Step{
+			Num: 2, State: commonPb.State_STATE_RUNNING, Error: &next,
+		}))
+		test.Equal(next, test.msg.DOWNLOADING.GetMessage())
+		test.Empty(test.msg.DOWNLOADING.GetRateLimitProvider())
+		test.Zero(test.msg.DOWNLOADING.GetRateLimitWaitSeconds())
+	})
 	test.Run("mark as failed", func() {
 		step := &pb.Orchestration_Step{
 			Num:   1,

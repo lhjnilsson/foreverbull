@@ -265,6 +265,8 @@ func TestRateLimitWaitRefusesASlotPastTheDeadline(t *testing.T) {
 	var refused *WaitRefusedError
 	require.ErrorAs(t, err, &refused)
 	require.Equal(t, deadline, refused.Deadline)
+	require.False(t, refused.Pause)
+	require.EqualError(t, err, "the next request slot comes after the deadline")
 }
 
 // Waits that time out or are cancelled give their slots back: after 100 of
@@ -337,6 +339,124 @@ func TestRateLimitPauseHoldsCallersAlreadyWaiting(t *testing.T) {
 		require.GreaterOrEqual(t, at.Sub(pausedAt), pauseFor-arrivalTolerance, "a waiting caller sent during the pause")
 	}
 	require.Equal(t, 1, beforePause, "only the slot taken before the 429 went out")
+}
+
+func TestNotablePause(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		wait time.Duration
+		want int32
+		ok   bool
+	}{
+		{"under the threshold", 2 * time.Second, 0, false},
+		{"at the threshold", 5 * time.Second, 0, false},
+		{"just over the threshold rounds down", 5*time.Second + time.Nanosecond, 0, false},
+		{"rounds down to the threshold", 5*time.Second + 400*time.Millisecond, 0, false},
+		{"rounds up past the threshold", 5*time.Second + 500*time.Millisecond, 6, true},
+		{"six seconds", 6 * time.Second, 6, true},
+		{"thirty seconds", 30 * time.Second, 30, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := notablePause(tc.wait)
+			require.Equal(t, tc.ok, ok)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// A pause longer than 5s is reported once, with the provider and the whole
+// seconds. Reporting that same pause again does not send it twice.
+func TestRateLimitLongPauseIsReported(t *testing.T) {
+	t.Parallel()
+	limiter := newRequestLimiter(yahooRequestsPerSecond)
+	limiter.provider = "yahoo"
+	var calls []int32
+	ctx := WithRateLimitReport(context.Background(), func(provider string, seconds int32) {
+		require.Equal(t, "yahoo", provider)
+		calls = append(calls, seconds)
+	})
+
+	limiter.pause(30 * time.Second)
+	until := limiter.paused()
+	require.NoError(t, limiter.reportLongPause(ctx, until))
+	require.NoError(t, limiter.reportLongPause(ctx, until))
+	require.Equal(t, []int32{30}, calls)
+}
+
+// A pause of 5s or less is not reported, so the progress line stays plain.
+func TestRateLimitShortPauseIsNotReported(t *testing.T) {
+	t.Parallel()
+	for _, wait := range []time.Duration{2 * time.Second, 5 * time.Second} {
+		limiter := newRequestLimiter(yahooRequestsPerSecond)
+		limiter.provider = "yahoo"
+		calls := 0
+		ctx := WithRateLimitReport(context.Background(), func(string, int32) { calls++ })
+		limiter.pause(wait)
+		require.NoError(t, limiter.reportLongPause(ctx, limiter.paused()))
+		require.Zero(t, calls, "pause %s", wait)
+	}
+}
+
+// A long pause is named before the wait, and cancelling during the report
+// ends the wait without sleeping it out.
+func TestRateLimitWaitReportsALongPauseBeforeSleeping(t *testing.T) {
+	t.Parallel()
+	limiter := newRequestLimiterEvery(time.Hour)
+	limiter.provider = "yahoo"
+	limiter.pause(30 * time.Second)
+	var seconds int32
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx = WithRateLimitReport(ctx, func(provider string, waitSeconds int32) {
+		require.Equal(t, "yahoo", provider)
+		seconds = waitSeconds
+		cancel()
+	})
+
+	err := limiter.wait(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, int32(30), seconds)
+}
+
+// A pause that runs past the deadline is refused at once and is not named:
+// the download is not going to wait it out.
+func TestRateLimitPausePastTheDeadlineIsNotReported(t *testing.T) {
+	t.Parallel()
+	limiter := newRequestLimiterEvery(time.Hour)
+	limiter.provider = "yahoo"
+	limiter.pause(30 * time.Second)
+	calls := 0
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	ctx = WithRateLimitReport(ctx, func(string, int32) { calls++ })
+
+	began := time.Now()
+	err := limiter.wait(ctx)
+	require.Less(t, time.Since(began), time.Second)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Zero(t, calls)
+	var refused *WaitRefusedError
+	require.ErrorAs(t, err, &refused)
+	require.True(t, refused.Pause)
+	require.EqualError(t, err, "the provider pause ends after the deadline")
+}
+
+// A long pause that a reporter would name, on a limiter with no provider,
+// fails the wait. It does not panic, and it does not sleep the pause out.
+func TestRateLimitPauseWithoutAProviderIsAnError(t *testing.T) {
+	t.Parallel()
+	limiter := newRequestLimiterEvery(time.Hour)
+	limiter.pause(30 * time.Second)
+	ctx := WithRateLimitReport(context.Background(), func(string, int32) {
+		t.Fatal("a pause with no provider must not be reported")
+	})
+	began := time.Now()
+	err := limiter.wait(ctx)
+	require.Less(t, time.Since(began), time.Second)
+	require.EqualError(t, err, "rate-limit pause has no provider to name")
 }
 
 // Every client of a provider uses that provider's one limiter, whichever

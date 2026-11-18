@@ -791,6 +791,16 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 			}
 			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
 		}
+		providerName, waitSeconds, isPause, err := rateLimitPause(msg)
+		if err != nil {
+			return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
+		}
+		if isPause {
+			if err := progress.noteRateLimit(providerName, waitSeconds); err != nil {
+				return discardFailedBacktest(ctx, backtests, command.BacktestName, backtestID, err)
+			}
+			continue
+		}
 		if msg.GetStatus() == financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR {
 			var dividendFetch *financeapi.DividendFetchError
 			if errors.As(financeapi.DividendFailure(msg), &dividendFetch) {

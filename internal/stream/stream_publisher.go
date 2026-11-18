@@ -45,7 +45,7 @@ const unconfirmedBuffer = 4
 // WaitForCompletion waits for the task's final state. Each onProgress gets
 // the text of every progress report the command sends meanwhile, over core
 // NATS, before the final state is returned.
-func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
+func WaitForCompletion(onProgress ...func(Progress)) PublishOpt {
 	return func(nn *NATSStream, msg *message) (func(ctx context.Context) error, func(), error) {
 		if nn.nc == nil {
 			return nil, nil, errors.New("error following the task: no core NATS connection for unrecorded states")
@@ -89,17 +89,22 @@ func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 		stop := func() { stopOnce.Do(func() { unsubscribe(sub, unrecordedSub, unconfirmedSub, progressSub) }) }
 		return func(ctx context.Context) error {
 			defer stop()
-			report := func(m *nats.Msg) {
-				for _, onText := range onProgress {
-					onText(string(m.Data))
+			report := func(m *nats.Msg) error {
+				decoded, err := unmarshalProgress(m.Data)
+				if err != nil {
+					return err
 				}
+				for _, onText := range onProgress {
+					onText(decoded)
+				}
+				return nil
 			}
 			// drain reports the progress sent before the final state. The
 			// flush is a round trip on this connection, so every progress
 			// message the server routed before it is in the channel.
-			drain := func() {
+			drain := func() error {
 				if progress == nil {
-					return
+					return nil
 				}
 				if err := nn.nc.Flush(); err != nil {
 					log.Err(err).Msg("error flushing before the last progress")
@@ -107,9 +112,11 @@ func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 				for {
 					select {
 					case m := <-progress:
-						report(m)
+						if err := report(m); err != nil {
+							return err
+						}
 					default:
-						return
+						return nil
 					}
 				}
 			}
@@ -137,7 +144,9 @@ func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 				var stateMsg *nats.Msg
 				select {
 				case m := <-progress:
-					report(m)
+					if err := report(m); err != nil {
+						return err
+					}
 					continue
 				case m := <-unrecorded:
 					state := pb.State{}
@@ -185,16 +194,22 @@ func WaitForCompletion(onProgress ...func(text string)) PublishOpt {
 
 // finalState reports whether state ends the task, and the task's result
 // when it does. drain runs before a COMPLETED or ERROR result is returned.
-func finalState(state *pb.State, drain func()) (bool, error) {
+func finalState(state *pb.State, drain func() error) (bool, error) {
 	switch state.State {
 	case pb.State_STATE_COMPLETED:
-		drain()
+		if err := drain(); err != nil {
+			return true, err
+		}
 		if len(state.GetNotices()) > 0 {
 			return true, &Notice{Lines: state.GetNotices()}
 		}
 		return true, nil
 	case pb.State_STATE_ERROR:
-		drain()
+		// The command's own error is what the caller has to read. A progress
+		// frame that cannot be read is logged and does not replace it.
+		if err := drain(); err != nil {
+			log.Err(err).Msg("error reading progress before a failed command")
+		}
 		if state.GetError() == "" {
 			return true, errors.New("command failed")
 		}
