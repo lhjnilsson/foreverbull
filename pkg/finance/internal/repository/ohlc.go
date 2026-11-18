@@ -583,12 +583,61 @@ func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asO
 // span about a year, and twice that plus a month covers holidays and halts.
 const stockDataWindow = time.Duration(defaultOHLCListLimit*2+30) * 24 * time.Hour
 
+// ambiguousSymbolQuery finds asked tickers that two instruments both hold
+// on the as-of date. ListResolved refuses those instead of picking one.
+const ambiguousSymbolQuery = `
+SELECT symbol, count(DISTINCT isin)::int
+  FROM asset_symbol
+ WHERE symbol = ANY($1::text[])
+   AND from_date <= $2::date
+   AND (to_date IS NULL OR $2::date < to_date)
+ GROUP BY symbol
+HAVING count(DISTINCT isin) > 1
+ ORDER BY symbol`
+
+// refuseAmbiguous is ErrAmbiguousSymbol when any asked ticker belongs to
+// more than one instrument on asOf. Every such ticker is named.
+func (db *OHLC) refuseAmbiguous(ctx context.Context, symbols []string, asOf time.Time) error {
+	rows, err := db.Conn.Query(ctx, ambiguousSymbolQuery, symbols, asOf.Format(time.DateOnly))
+	if err != nil {
+		return fmt.Errorf("failed to resolve symbol: %w", err)
+	}
+	defer rows.Close()
+
+	day := asOf.Format(time.DateOnly)
+	parts := make([]string, 0)
+	for rows.Next() {
+		var symbol string
+		var n int
+		if err := rows.Scan(&symbol, &n); err != nil {
+			return fmt.Errorf("failed to resolve symbol: %w", err)
+		}
+		parts = append(parts, fmt.Sprintf("symbol %s maps to %d instruments at %s", symbol, n, day))
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to resolve symbol: %w", err)
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", strings.Join(parts, "; "), ErrAmbiguousSymbol)
+}
+
 // ListResolved returns stored bars for the tickers the algorithm asked for.
 // A renamed ticker (FB then META, one ISIN) is labeled with the asked symbol.
 // time is inside (asOf-window, asOf], at most limit bars per symbol. limit 0
 // means 252. An empty symbol list returns no bars. A listed share class is
 // read under its stored name (BRK.B reads BRKB). Errors do not include a
 // database URL.
+//
+// A bar counts for the instrument that holds the asked ticker on asOf only
+// when that instrument's alias covers the bar's date, or the bar is stored
+// under the instrument's latest ticker on an earlier date of the same
+// instrument and no other instrument held that ticker then. Yahoo keeps
+// FB's history under META; a later company that reuses FB does not receive
+// those bars, and its own FB bars do not fill META. Two instruments holding
+// the asked ticker on asOf is an error. A symbol with no asset_symbol row
+// is read on its own bars.
 func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
 	if len(symbols) == 0 {
 		return nil, nil
@@ -605,6 +654,9 @@ func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []str
 	symbols = storedSymbols(symbols)
 	provider = priceProvider(provider)
 	asOf = asOf.UTC()
+	if err := db.refuseAmbiguous(ctx, symbols, asOf); err != nil {
+		return nil, err
+	}
 	since := asOf.Add(-stockDataWindow)
 
 	rows, err := db.Conn.Query(ctx, `
@@ -617,17 +669,42 @@ func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []str
 			         (a.from_date <= $5::date) DESC,
 			         a.from_date DESC
 		),
+		span AS (
+			SELECT isin,
+			       min(from_date) AS first_from,
+			       (array_agg(symbol ORDER BY from_date DESC))[1] AS latest
+			  FROM asset_symbol
+			 WHERE isin IN (SELECT isin FROM owner)
+			 GROUP BY isin
+		),
 		candidate AS (
 			SELECT o.symbol AS wanted, o.symbol AS ticker, NULL::date AS from_date, NULL::date AS to_date,
 			       o.time, o.high, o.low, o.open, o.close, o.volume
 			FROM ohlc o
 			WHERE o.symbol = ANY($1::text[]) AND o.provider = $2 AND o.time > $3 AND o.time <= $4
+			  AND NOT EXISTS (SELECT 1 FROM asset_symbol a WHERE a.symbol = o.symbol)
 			UNION ALL
 			SELECT w.wanted, o.symbol, s.from_date, s.to_date, o.time, o.high, o.low, o.open, o.close, o.volume
 			FROM owner w
 			JOIN asset_symbol s ON s.isin = w.isin
+			JOIN span sp ON sp.isin = w.isin
 			JOIN ohlc o ON o.symbol = s.symbol
 			WHERE o.provider = $2 AND o.time > $3 AND o.time <= $4
+			  AND (
+			    (s.from_date <= o.time::date AND (s.to_date IS NULL OR o.time::date < s.to_date))
+			    OR (
+			      o.symbol = sp.latest
+			      AND o.time::date >= sp.first_from
+			      AND o.time::date < s.from_date
+			      AND NOT EXISTS (
+			        SELECT 1 FROM asset_symbol other
+			         WHERE other.symbol = o.symbol
+			           AND other.isin <> w.isin
+			           AND other.from_date <= o.time::date
+			           AND (other.to_date IS NULL OR o.time::date < other.to_date)
+			      )
+			    )
+			  )
 		),
 		chosen AS (
 			SELECT DISTINCT ON (wanted, time) wanted AS symbol, time, high, low, open, close, volume
