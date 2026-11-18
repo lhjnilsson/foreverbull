@@ -684,6 +684,66 @@ def test_backtest_create_with_start_refuses_a_start_before_the_calendar(monkeypa
     assert result.output == f"Using provider: yahoo (from --provider)\n✖ {_START_BEFORE_CALENDAR_FLAG}\n"
 
 
+_CALENDAR_UNREADABLE_DELETE_FIRST = (
+    "Couldn't load data for backtest 'oef-2024q1': the data service failed while ingesting prices. "
+    "The backtest was partly saved and couldn't be removed. Run `fbull backtest delete oef-2024q1` first. "
+    "Run `fbull backtest create` again once it's fixed."
+)
+_CALENDAR_UNREADABLE_REMOVED = (
+    "Couldn't load data for backtest 'oef-2024q1': the data service failed while ingesting prices. "
+    "Nothing was saved, so run `fbull backtest create` again once it's fixed."
+)
+_START_AFTER_CALENDAR_DELETE_FIRST = (
+    "Couldn't load data for backtest 'oef-2024q1': it ends on 2027-12-12, after the last trading "
+    "day in foreverbull's market calendar (2027-11-02). The backtest was partly saved and couldn't be "
+    "removed. Run `fbull backtest delete oef-2024q1` first. Choose an end on or before 2027-11-02, then "
+    "run `fbull backtest create` again."
+)
+_START_AFTER_CALENDAR_REMOVED = (
+    "Couldn't load data for backtest 'oef-2024q1': it ends on 2027-12-12, after the last trading "
+    "day in foreverbull's market calendar (2027-11-02). The backtest wasn't saved. Choose an end on or "
+    "before 2027-11-02, then run `fbull backtest create` again."
+)
+
+
+@pytest.mark.parametrize(
+    ("shown", "broker"),
+    [
+        (
+            _CALENDAR_UNREADABLE_DELETE_FIRST,
+            _CALENDAR_UNREADABLE_DELETE_FIRST + "\nDetails: error getting zipline engine: pod not ready",
+        ),
+        (
+            _CALENDAR_UNREADABLE_REMOVED,
+            _CALENDAR_UNREADABLE_REMOVED + "\nDetails: error getting zipline engine: pod not ready",
+        ),
+        (_START_AFTER_CALENDAR_DELETE_FIRST, _START_AFTER_CALENDAR_DELETE_FIRST),
+        (_START_AFTER_CALENDAR_REMOVED, _START_AFTER_CALENDAR_REMOVED),
+    ],
+    ids=[
+        "calendar-unreadable-kept",
+        "calendar-unreadable-removed",
+        "start-after-calendar-kept",
+        "start-after-calendar-removed",
+    ],
+)
+def test_backtest_create_cleanup_delete_sentence_is_printed(shown, broker, monkeypatch):
+    """The download step's cleanup sentence is not rewritten. Details stay behind --verbose."""
+    monkeypatch.setenv("TTY_COMPATIBLE", "0")
+    monkeypatch.setenv("LOGGING_LEVEL", "ERROR")
+    with (
+        patch("foreverbull.broker.backtest.create", side_effect=_download_failed_stream(broker)),
+        patch("foreverbull.broker.backtest.delete") as mock_delete,
+    ):
+        result = _create_from_file()
+
+    mock_delete.assert_not_called()
+    assert result.exit_code == 1
+    assert result.output == f"Using provider: yahoo (from --provider)\n✖ {shown}\n"
+    assert "pod not ready" not in result.output
+    assert "Details:" not in result.output
+
+
 def test_backtest_create_no_price_data_prints_exact_copy_and_exits_1(monkeypatch):
     monkeypatch.setenv("TTY_COMPATIBLE", "0")
     monkeypatch.setenv("LOGGING_LEVEL", "ERROR")

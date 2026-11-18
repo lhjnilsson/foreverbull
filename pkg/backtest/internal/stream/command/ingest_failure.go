@@ -256,7 +256,29 @@ func discardFailedIngest(ctx context.Context, backtests repository.Backtest, nam
 	} else {
 		result = plainSentence(ingestFailureMessage(name, readIngestFailure(cause), removed))
 	}
-	return markKept(removed, result)
+	return markKept(removed, joinCleanup(result, removed, err))
+}
+
+// cleanupLeft is a failed create whose backtest row is still stored.
+// Error is the sentence the user sees. Unwrap keeps the delete error, so a
+// log of the chain still has it. The sentence does not repeat that text.
+type cleanupLeft struct {
+	text string
+	err  error
+}
+
+func (e *cleanupLeft) Error() string { return e.text }
+
+func (e *cleanupLeft) Unwrap() error { return e.err }
+
+// joinCleanup attaches a failed cleanup delete to the user sentence.
+// A delete that worked, or a row that was already gone, leaves the sentence
+// as it is. Error stays that sentence. Unwrap is the delete error.
+func joinCleanup(sentence error, removed bool, delErr error) error {
+	if removed || sentence == nil || delErr == nil || errors.Is(delErr, pgx.ErrNoRows) {
+		return sentence
+	}
+	return &cleanupLeft{text: sentence.Error(), err: delErr}
 }
 
 // endedIngestNextStep is the step after a canceled or timed-out ingest whose

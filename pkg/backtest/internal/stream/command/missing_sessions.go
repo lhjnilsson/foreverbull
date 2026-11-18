@@ -870,9 +870,14 @@ func discardPastCalendar(ctx context.Context, backtests repository.Backtest, nam
 		log.Warn().Err(err).Str("backtest", name).Msg("error deleting backtest that ends after the calendar")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+		if removed {
+			return ctxErr
+		}
+		// The name is still taken. A bare cancel would hide that.
+		return joinCleanup(plainSentence(endedIngestMessage(name, ctxErr)), false, err)
 	}
-	return plainSentence(pastCalendarMessage(name, end, calendarEnd.LastSession, removed))
+	sentence := joinCleanup(plainSentence(pastCalendarMessage(name, end, calendarEnd.LastSession, removed)), removed, err)
+	return markKept(removed, sentence)
 }
 
 // pastCalendarMessage is the message when a backtest ends after the last
