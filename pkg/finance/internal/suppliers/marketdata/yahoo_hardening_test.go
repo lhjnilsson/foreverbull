@@ -230,6 +230,30 @@ func TestYahooSearchAssetFailsWhenAQuoteLookupFails(t *testing.T) {
 	require.NotErrorIs(t, err, ErrNoISIN)
 }
 
+// A listed quote comes back with the symbol, the long name, and the ISIN. An empty quotes array listed nothing.
+func TestYahooSearchAssetReturnsSymbolNameAndISIN(t *testing.T) {
+	t.Parallel()
+	client := searchServers(t, []string{"META"}, map[string]string{
+		"META": `{"stocks":[{"keywords":"META|US30303M1027"}]}`,
+	})
+
+	assets, err := client.SearchAsset(context.Background(), "US30303M1027")
+	require.NoError(t, err)
+	require.Len(t, assets, 1)
+	require.Equal(t, "META", assets[0].Symbol)
+	require.Equal(t, "META Inc.", assets[0].Name)
+	require.Equal(t, "US30303M1027", assets[0].ISIN)
+}
+
+func TestYahooSearchAssetEmptyQuotesListsNothing(t *testing.T) {
+	t.Parallel()
+	client := searchServers(t, nil, map[string]string{})
+
+	assets, err := client.SearchAsset(context.Background(), "ZZZZ")
+	require.NoError(t, err)
+	require.Empty(t, assets)
+}
+
 func TestYahooClientDefaultsToSharedClientWithTimeout(t *testing.T) {
 	t.Parallel()
 	client := &YahooClient{}

@@ -1,5 +1,6 @@
 from datetime import datetime
 from datetime import timedelta
+from typing import cast
 
 import yfinance
 import yfinance.data
@@ -253,6 +254,19 @@ def verify(database: engine.Engine, backtest: backtest_pb.Backtest):
         return end.date() == end_date
 
 
+def asset_from_yahoo_info(info: dict) -> marketdata_pb.Asset:
+    """The asset row populate stores for one Yahoo ticker.
+
+    The symbol is the one Yahoo returned. The name is left empty. A ticker Yahoo did not list has no symbol key.
+    """
+    return marketdata_pb.Asset(symbol=cast(str, info["symbol"]), name="")
+
+
+def yahoo_asset(symbol: str) -> marketdata_pb.Asset:
+    """Look up one ticker through yfinance and return the asset populate would store."""
+    return asset_from_yahoo_info(yfinance.Ticker(symbol).info)
+
+
 def populate(database: engine.Engine, backtest: backtest_pb.Backtest):
     # Latest yfinance claims to have fixed the too-many-request issue, keep until verified
     # yfinance.data.YfData.user_agent_headers["User-Agent"] = (
@@ -279,11 +293,7 @@ def populate(database: engine.Engine, backtest: backtest_pb.Backtest):
     with database.connect() as conn:
         for start, end, symbol in what_to_populate():
             feed = yfinance.Ticker(symbol)
-            info = feed.info
-            asset = marketdata_pb.Asset(
-                symbol=info["symbol"],
-                name="",
-            )
+            asset = asset_from_yahoo_info(feed.info)
             conn.execute(
                 text(
                     """INSERT INTO asset (symbol, name)

@@ -474,3 +474,104 @@ def test_pool_keeps_the_listen_error_when_cleanup_also_fails(monkeypatch):
     finally:
         for path in created:
             os.rmdir(path)
+
+
+class _Surveyor:
+    def __init__(self, *args, **kwargs):
+        self.survey_time = 0
+
+    def add_post_pipe_connect_cb(self, callback):
+        return None
+
+    def close(self):
+        return None
+
+
+class _ReadyProcess:
+    def __init__(self, target, args):
+        self._daemon = args[0]
+
+    def start(self):
+        self._daemon._running_event.set()
+
+    def is_alive(self):
+        return False
+
+    def join(self, timeout=None):
+        return None
+
+    def terminate(self):
+        return None
+
+
+class _BoomProcess:
+    def __init__(self, target, args):
+        return None
+
+    def start(self):
+        raise RuntimeError("cannot start worker")
+
+
+def _process_pool(monkeypatch, process):
+    monkeypatch.delenv(worker.THREADED_EXECUTION, raising=False)
+    monkeypatch.setattr(worker.models.Algorithm, "from_file_path", lambda _path: None)
+    monkeypatch.setattr(worker.pynng, "Surveyor0", _Surveyor)
+    monkeypatch.setattr(worker, "Process", process)
+    monkeypatch.setattr(worker.WorkerPool, "_wait_for_started_pipe", lambda self, worker, expected, deadline: True)
+    return worker.WorkerPool("unused", executors=1)
+
+
+def test_log_queue_is_closed_when_the_algorithm_cannot_load():
+    pool = worker.WorkerPool("missing_algorithm.py")
+    log_queue = pool._log_queue
+    with pytest.raises(exceptions.ConfigurationError), pool:
+        pass
+    assert worker._mp_queue_is_closed(log_queue) is True
+    assert pool._process_startup_errors is None
+
+
+def test_log_queue_is_closed_when_the_pool_exits(monkeypatch):
+    pool = _threaded_pool(monkeypatch)
+    log_queue = pool._log_queue
+    with pool:
+        assert worker._mp_queue_is_closed(log_queue) is False
+    assert worker._mp_queue_is_closed(log_queue) is True
+
+
+def test_log_queue_is_closed_when_shutdown_fails(monkeypatch):
+    pool = _threaded_pool(monkeypatch)
+    log_queue = pool._log_queue
+
+    with pytest.raises(OSError, match="socket close failed"), pool:
+        socket = pool._worker_surveyor_socket
+        original = socket.close
+
+        def boom():
+            socket.close = original
+            raise OSError("socket close failed")
+
+        socket.close = boom
+    assert worker._mp_queue_is_closed(log_queue) is True
+
+
+def test_process_startup_queue_is_closed_after_the_workers_start(monkeypatch):
+    pool = _process_pool(monkeypatch, _ReadyProcess)
+    log_queue = pool._log_queue
+    with pool:
+        startup = pool._process_startup_errors
+        assert startup is not None
+        assert worker._mp_queue_is_closed(startup) is True
+        assert worker._mp_queue_is_closed(log_queue) is False
+    assert worker._mp_queue_is_closed(log_queue) is True
+    assert worker._mp_queue_is_closed(startup) is True
+
+
+def test_process_queues_are_closed_when_the_worker_fails_to_start(monkeypatch):
+    pool = _process_pool(monkeypatch, _BoomProcess)
+    log_queue = pool._log_queue
+    with pytest.raises(RuntimeError, match="cannot start worker"), pool:
+        pass
+    assert worker._mp_queue_is_closed(log_queue) is True
+    startup = pool._process_startup_errors
+    assert startup is not None
+    assert worker._mp_queue_is_closed(startup) is True

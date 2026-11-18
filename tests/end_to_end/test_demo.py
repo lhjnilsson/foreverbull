@@ -65,6 +65,15 @@ def simple_algorithm(tmp_path):
     return project / "crossover.py", project / "backtest.yaml"
 
 
+def _kubectl_output(completed: subprocess.CompletedProcess[str]) -> str:
+    """Stdout from a kubectl command. A failure names the exit code, stderr, and stdout."""
+    if completed.returncode != 0:
+        stderr = completed.stderr.rstrip("\n")
+        stdout = completed.stdout.rstrip("\n")
+        raise AssertionError(f"kubectl exited {completed.returncode}\nstderr:\n{stderr}\nstdout:\n{stdout}")
+    return completed.stdout
+
+
 def zipline_bundle(action: str, backtest: str) -> str:
     """Run zipline_bundle.py in the Zipline pod, where the run reads its bundle."""
     completed = subprocess.run(
@@ -89,8 +98,7 @@ def zipline_bundle(action: str, backtest: str) -> str:
         timeout=300,
         check=False,
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    return completed.stdout
+    return _kubectl_output(completed)
 
 
 def kubectl(*args: str) -> str:
@@ -101,8 +109,7 @@ def kubectl(*args: str) -> str:
         timeout=330,
         check=False,
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    return completed.stdout
+    return _kubectl_output(completed)
 
 
 def pod_names(app: str) -> set[str]:
