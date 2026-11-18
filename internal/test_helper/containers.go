@@ -116,7 +116,13 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 	name := t.Name() + strings.Split(uuid.NewString(), "-")[0]
 	dbName := strings.ToLower(strings.ReplaceAll(name, "/", "_"))
 
-	conn, err := pgxpool.New(context.TODO(), connectionString)
+	// One connection, closed when the test ends. The default pool size follows
+	// the CPU count, and a pool left open here is still connected while later
+	// tests in the same process use this shared Postgres.
+	cfg, err := pgxpool.ParseConfig(connectionString)
+	require.NoError(t, err)
+	cfg.MaxConns = 1
+	conn, err := pgxpool.NewWithConfig(context.TODO(), cfg)
 	require.NoError(t, err)
 	_, err = conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE) ", dbName))
 	require.NoError(t, err)
@@ -125,6 +131,7 @@ func PostgresContainer(t *testing.T, networkID string) (ConnectionString string)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, err := conn.Exec(context.TODO(), fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE) ", dbName))
+		conn.Close()
 		require.NoError(t, err)
 	})
 	return strings.Replace(connectionString, "to_be_substituted", dbName, 1)

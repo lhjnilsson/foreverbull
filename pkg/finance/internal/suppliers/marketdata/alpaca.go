@@ -40,15 +40,37 @@ const AlpacaPaperHost = "https://paper-api.alpaca.markets"
 // alpacaTradingURL is AlpacaPaperHost. Tests replace AlpacaBars.tradingURL.
 const alpacaTradingURL = AlpacaPaperHost
 
+// AlpacaOption configures an AlpacaBars client.
+type AlpacaOption func(*AlpacaBars) error
+
+// WithAlpacaBaseURL overrides https://data.alpaca.markets. Tests point it
+// at an httptest server. An empty URL fails before a request is sent.
+func WithAlpacaBaseURL(baseURL string) AlpacaOption {
+	return func(a *AlpacaBars) error {
+		baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		if baseURL == "" {
+			return errors.New("alpaca: empty base URL")
+		}
+		a.opts.BaseURL = baseURL
+		return nil
+	}
+}
+
 // NewAlpacaBars builds a bars client. An empty key or secret fails before any request.
-func NewAlpacaBars(apiKey, apiSecret string) (*AlpacaBars, error) {
+func NewAlpacaBars(apiKey, apiSecret string, opts ...AlpacaOption) (*AlpacaBars, error) {
 	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" {
 		return nil, errors.New("alpaca price source requires an api key and secret")
 	}
-	return &AlpacaBars{opts: marketdata.ClientOpts{
+	a := &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey:    apiKey,
 		APISecret: apiSecret,
-	}, limiter: limiterFor("alpaca")}, nil
+	}, limiter: limiterFor("alpaca")}
+	for _, opt := range opts {
+		if err := opt(a); err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
 }
 
 // alpacaTimeout is the SDK's own default request timeout, kept for the
