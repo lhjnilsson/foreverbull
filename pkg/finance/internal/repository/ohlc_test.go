@@ -601,6 +601,32 @@ func (test *OHLCTests) TestListResolvedFollowsTickerAliases() {
 	test.Empty(none)
 }
 
+// Two instruments that both hold FB on the asked day are not a choice.
+// ListResolved names every such ticker and returns no bars.
+func (test *OHLCTests) TestListResolvedRefusesAnAmbiguousTicker() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: test.conn}
+	_, err := instruments.Store(ctx, "US30303M1027", "Meta Platforms")
+	test.Require().NoError(err)
+	_, err = instruments.Store(ctx, "US0000000002", "Other Corp")
+	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		('US30303M1027', 'FB', '2021-07-01', NULL),
+		('US0000000002', 'FB', '2021-07-01', NULL)`)
+	test.Require().NoError(err)
+	assets := repository.Asset{Conn: test.conn}
+	test.Require().NoError(assets.Store(ctx, "FB", "Facebook"))
+	day := time.Date(2021, 10, 1, 0, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "stooq", "FB", day, 1, 1, 1, 10, 1))
+
+	asOf := time.Date(2021, 10, 15, 21, 0, 0, 0, time.UTC)
+	_, err = test.ohlcStorage.ListResolved(ctx, "stooq", []string{"FB"}, asOf, 10)
+	test.Require().ErrorIs(err, repository.ErrAmbiguousSymbol)
+	test.Require().ErrorContains(err, "symbol FB maps to 2 instruments at 2021-10-15")
+	test.NotContains(err.Error(), "postgres://")
+}
+
 func (test *OHLCTests) TestListRejectsBadInput() {
 	ctx := context.Background()
 	asOf := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
