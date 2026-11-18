@@ -120,6 +120,10 @@ func (h backtestRoutes) create(w http.ResponseWriter, r *http.Request) {
 		web.BadRequestSentence(w, sentence)
 		return
 	}
+	if sentence, ok := failedKeptBacktest(stream.last); ok {
+		web.BadRequestSentence(w, sentence)
+		return
+	}
 	web.WriteMessage(w, stream.last)
 }
 
@@ -144,6 +148,32 @@ func failedStartBeforeCalendar(rsp *servicePb.CreateBacktestResponse) (string, b
 		if sentence, ok := startBeforeCalendarSentence(step.GetMessage()); ok {
 			return sentence, true
 		}
+	}
+	return "", false
+}
+
+// failedKeptBacktest is a failed create step that says the backtest was
+// partly saved. The page shows that sentence. The details marker, which the
+// CLI prints only with --verbose, stays off the page. The delete-first
+// sentence is in front of the step and is kept.
+func failedKeptBacktest(rsp *servicePb.CreateBacktestResponse) (string, bool) {
+	if rsp == nil {
+		return "", false
+	}
+	for _, step := range []*pb.Step{rsp.GetCREATING(), rsp.GetDOWNLOADING(), rsp.GetINGESTING(), rsp.GetSTORING()} {
+		if step.GetState() != pb.State_STATE_FAILED {
+			continue
+		}
+		message := step.GetMessage()
+		if !strings.Contains(message, usercopy.BacktestNotRemoved) {
+			continue
+		}
+		shown, _, _ := strings.Cut(message, "\nDetails: ")
+		shown = strings.TrimSpace(shown)
+		if shown == "" {
+			return "", false
+		}
+		return shown, true
 	}
 	return "", false
 }

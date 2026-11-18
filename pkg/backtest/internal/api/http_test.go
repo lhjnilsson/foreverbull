@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -343,6 +344,58 @@ func TestHTTP(t *testing.T) {
 		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/executions/missing", nil))
 
 		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("cleanup delete failure is the page error", func(t *testing.T) {
+		const (
+			unreadable = "Couldn't load data for backtest 'oef-2024q1': the data service failed while ingesting prices. " +
+				"The backtest was partly saved and couldn't be removed. Run `fbull backtest delete oef-2024q1` first. " +
+				"Run `fbull backtest create` again once it's fixed."
+			pastCalendar = "Couldn't load data for backtest 'oef-2024q1': it ends on 2027-12-12, after the last trading " +
+				"day in foreverbull's market calendar (2027-11-02). The backtest was partly saved and couldn't be " +
+				"removed. Run `fbull backtest delete oef-2024q1` first. Choose an end on or before 2027-11-02, then " +
+				"run `fbull backtest create` again."
+		)
+		for _, sentence := range []string{unreadable, pastCalendar} {
+			want, err := json.Marshal(struct {
+				Error string `json:"error"`
+			}{Error: sentence})
+			require.NoError(t, err)
+			fake := &fakeBacktests{create: &servicePb.CreateBacktestResponse{
+				DOWNLOADING: &pb.Step{
+					State:   pb.State_STATE_FAILED,
+					Message: sentence + "\nDetails: backtest delete refused",
+				},
+			}}
+			mux := http.NewServeMux()
+			api.RegisterHTTP(mux, fake)
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", `{"name":"oef-2024q1","start":"2024-01-02","end":"2024-03-28","provider":"yahoo"}`))
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Equal(t, string(want), rec.Body.String())
+			require.NotContains(t, rec.Body.String(), "Details:")
+		}
+	})
+
+	t.Run("a removed backtest keeps its sentence", func(t *testing.T) {
+		const sentence = "Couldn't load data for backtest 'oef-2024q1': it ends on 2027-12-12, after the last trading " +
+			"day in foreverbull's market calendar (2027-11-02). The backtest wasn't saved. Choose an end on or " +
+			"before 2027-11-02, then run `fbull backtest create` again."
+		rsp := &servicePb.CreateBacktestResponse{
+			DOWNLOADING: &pb.Step{State: pb.State_STATE_FAILED, Message: sentence},
+		}
+		want, err := web.Marshal(rsp)
+		require.NoError(t, err)
+		fake := &fakeBacktests{create: rsp}
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, fake)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests", `{"name":"oef-2024q1","start":"2024-01-02","end":"2024-03-28","provider":"yahoo"}`))
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, string(want), rec.Body.String())
+		require.NotContains(t, rec.Body.String(), "Details:")
 	})
 
 	// POST is mounted by the strategy module. This mux only has the backtest routes.
