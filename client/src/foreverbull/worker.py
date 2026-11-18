@@ -265,6 +265,22 @@ def _run_worker_process(daemon: WorkerDaemon) -> None:
     daemon.run()
 
 
+def _mp_queue_is_closed(mp_queue: Queue) -> bool:
+    """True after close(). The flag is private on multiprocessing.Queue; there is no public predicate."""
+    return bool(getattr(mp_queue, "_closed", False))
+
+
+def _close_mp_queue(mp_queue: "Queue | None") -> None:
+    """Close a process queue and wait for its feeder thread.
+
+    A queue that was never written to has no feeder thread. Closing one that is already closed does nothing.
+    """
+    if mp_queue is None or _mp_queue_is_closed(mp_queue):
+        return
+    mp_queue.close()
+    mp_queue.join_thread()
+
+
 class WorkerPool(Worker):
     def __init__(self, file_path: str, executors: int = multiprocessing.cpu_count()):
         self._file_path = file_path
@@ -279,6 +295,8 @@ class WorkerPool(Worker):
         self.logger = logging.getLogger().getChild(__name__)
         self._log_queue = Queue()
         self._log_listener = logging.handlers.QueueListener(self._log_queue, *logging.getLogger().handlers)
+        # The process-startup queue, when workers are processes. Threads use queue.Queue, which has no feeder thread.
+        self._process_startup_errors: Queue | None = None
         self._stop_event: threading.Event | multiprocessing.synchronize.Event | None = None
         # Pipe objects nng has started on the surveyor. A survey sent before that is discarded, not queued.
         self._connected_pipe_ids: set[int] = set()
@@ -299,24 +317,31 @@ class WorkerPool(Worker):
             stop_event = multiprocessing.Event()
             ready_event = multiprocessing.Event
             startup_errors = Queue()
+            self._process_startup_errors = startup_errors
         self._stop_event = stop_event
 
-        for _ in range(self._executors):
-            is_ready = ready_event()
-            daemon = WorkerDaemon(
-                self._worker_surveyor_address,
-                self._log_queue,
-                is_ready,
-                stop_event,
-                self._file_path,
-                startup_errors,
-            )
-            worker = (
-                threading.Thread(target=daemon.run) if threaded else Process(target=_run_worker_process, args=(daemon,))
-            )
-            worker.start()
-            self._workers.append(worker)
-            self._wait_until_started(worker, is_ready, startup_errors, len(self._workers))
+        try:
+            for _ in range(self._executors):
+                is_ready = ready_event()
+                daemon = WorkerDaemon(
+                    self._worker_surveyor_address,
+                    self._log_queue,
+                    is_ready,
+                    stop_event,
+                    self._file_path,
+                    startup_errors,
+                )
+                worker = (
+                    threading.Thread(target=daemon.run)
+                    if threaded
+                    else Process(target=_run_worker_process, args=(daemon,))
+                )
+                worker.start()
+                self._workers.append(worker)
+                self._wait_until_started(worker, is_ready, startup_errors, len(self._workers))
+        finally:
+            # The parent has finished reading startup errors. Close its feeder even when a worker failed to start.
+            _close_mp_queue(self._process_startup_errors)
 
     def _note_worker_pipe(self, pipe: object) -> None:
         """Record a respondent pipe nng has started on the surveyor.
@@ -376,70 +401,87 @@ class WorkerPool(Worker):
         self,
     ):
         try:
-            models.Algorithm.from_file_path(self._file_path)
-        except Exception as e:
-            raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}") from e
-        # mkdtemp creates the directory with mode 0700, readable and writable only by this user.
-        self._socket_dir = tempfile.mkdtemp(prefix=SOCKET_DIR_PREFIX)
-        self._worker_surveyor_address = f"ipc://{os.path.join(self._socket_dir, SOCKET_NAME)}"
-        try:
-            self._worker_surveyor_socket = pynng.Surveyor0(
-                listen=self._worker_surveyor_address, send_timeout=SURVEY_TIMEOUT_MS, recv_timeout=SURVEY_TIMEOUT_MS
-            )
-        except BaseException as e:
             try:
-                self._remove_socket_dir()
-            except OSError as cleanup_error:
-                # Keep the listen error; a failed cleanup is only extra context.
-                e.add_note(f"Also couldn't remove the worker pool's socket directory: {cleanup_error}")
-            raise
-        # A survey closes after survey_time (nng's default is 1s), and any later recv raises BadState.
-        # Keep the survey open as long as recv waits, so _broadcast's bound is this one timeout.
-        self._worker_surveyor_socket.survey_time = SURVEY_TIMEOUT_MS
-        # Fires after nng starts the pipe. _wait_until_started does not send until then.
-        self._worker_surveyor_socket.add_post_pipe_connect_cb(self._note_worker_pipe)
-        # Listen before any worker starts, so a worker's startup log reaches the pool's handlers.
-        self._log_listener.start()
-        try:
-            self._start_daemons()
+                models.Algorithm.from_file_path(self._file_path)
+            except Exception as e:
+                raise exceptions.ConfigurationError(f"Unable to load algorithm: {e}") from e
+            # mkdtemp creates the directory with mode 0700, readable and writable only by this user.
+            self._socket_dir = tempfile.mkdtemp(prefix=SOCKET_DIR_PREFIX)
+            self._worker_surveyor_address = f"ipc://{os.path.join(self._socket_dir, SOCKET_NAME)}"
+            try:
+                self._worker_surveyor_socket = pynng.Surveyor0(
+                    listen=self._worker_surveyor_address,
+                    send_timeout=SURVEY_TIMEOUT_MS,
+                    recv_timeout=SURVEY_TIMEOUT_MS,
+                )
+            except BaseException as e:
+                try:
+                    self._remove_socket_dir()
+                except OSError as cleanup_error:
+                    # Keep the listen error; a failed cleanup is only extra context.
+                    e.add_note(f"Also couldn't remove the worker pool's socket directory: {cleanup_error}")
+                raise
+            # A survey closes after survey_time (nng's default is 1s), and any later recv raises BadState.
+            # Keep the survey open as long as recv waits, so _broadcast's bound is this one timeout.
+            self._worker_surveyor_socket.survey_time = SURVEY_TIMEOUT_MS
+            # Fires after nng starts the pipe. _wait_until_started does not send until then.
+            self._worker_surveyor_socket.add_post_pipe_connect_cb(self._note_worker_pipe)
+            # Listen before any worker starts, so a worker's startup log reaches the pool's handlers.
+            self._log_listener.start()
+            try:
+                self._start_daemons()
+            except BaseException:
+                # __exit__ doesn't run when __enter__ raises, so stop what already started here.
+                self._shutdown(strict=False)
+                raise
+            return self
         except BaseException:
-            # __exit__ doesn't run when __enter__ raises, so stop what already started here.
-            self._shutdown(strict=False)
+            # __exit__ does not run when __enter__ raises. Close the queues on that path too.
+            self._close_queues()
             raise
-        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self._stop_event is None:
-            return
-        self._shutdown(strict=True)
+        try:
+            if self._stop_event is None:
+                return
+            self._shutdown(strict=True)
+        finally:
+            self._close_queues()
+
+    def _close_queues(self) -> None:
+        """Close the process queues. Safe when a queue was already closed or never created."""
+        _close_mp_queue(self._log_queue)
+        _close_mp_queue(self._process_startup_errors)
 
     def _shutdown(self, *, strict: bool) -> None:
         """Stop the workers, the log listener and the surveyor socket.
 
         strict raises RuntimeError when a worker doesn't exit; otherwise a stuck process is terminated.
+        The process queues are closed afterwards, including when this raises.
         """
-        if self._stop_event is not None:
-            self._stop_event.set()
-        deadline = time.monotonic() + 5
-        while not self._log_queue.empty() and time.monotonic() < deadline:
-            time.sleep(0.1)
+        try:
+            if self._stop_event is not None:
+                self._stop_event.set()
+            deadline = time.monotonic() + 5
+            while not self._log_queue.empty() and time.monotonic() < deadline:
+                time.sleep(0.1)
 
-        self._log_queue.put_nowait(None)
-        self._log_listener.stop()
-        self._log_queue.close()
-        self._log_queue.join_thread()
-        stuck = False
-        for w in self._workers:
-            w.join(timeout=5)
-            if w.is_alive():
-                stuck = True
-                if isinstance(w, Process):
-                    w.terminate()
-                    w.join(timeout=5)
-        self._worker_surveyor_socket.close()
-        self._remove_socket_dir()
-        if stuck and strict:
-            raise RuntimeError("Worker did not exit")
+            self._log_queue.put_nowait(None)
+            self._log_listener.stop()
+            stuck = False
+            for w in self._workers:
+                w.join(timeout=5)
+                if w.is_alive():
+                    stuck = True
+                    if isinstance(w, Process):
+                        w.terminate()
+                        w.join(timeout=5)
+            self._worker_surveyor_socket.close()
+            self._remove_socket_dir()
+            if stuck and strict:
+                raise RuntimeError("Worker did not exit")
+        finally:
+            self._close_queues()
 
     def _remove_socket_dir(self) -> None:
         if self._socket_dir is not None:

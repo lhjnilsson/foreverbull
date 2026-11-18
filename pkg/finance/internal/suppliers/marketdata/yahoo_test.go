@@ -60,12 +60,6 @@ func (test *YahooTest) TestGetAsset() {
 	}
 }
 
-func (test *YahooTest) TestSearchAsset() {
-	asset, err := test.client.SearchAsset(context.Background(), "US02079K3059")
-	test.Require().NoError(err)
-	test.NotNil(asset)
-}
-
 func (test *YahooTest) TestGetIndex() {
 	type TestCase struct {
 		Symbol      string

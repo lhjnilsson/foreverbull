@@ -238,3 +238,99 @@ def test_empty_rate_limit_provider_says_the_provider():
     assert progress_text(_PLAIN, "", 30) == (
         "Downloading prices: 1,240 of 10,000 symbols (paused 30 seconds because the provider is limiting requests)"
     )
+
+
+# output.py builds `console = Console()`. Rich reads FORCE_COLOR, NO_COLOR, and TTY_COMPATIBLE.
+# TTY_COMPATIBLE is checked before FORCE_COLOR. A non-empty NO_COLOR strips the color bytes
+# even when FORCE_COLOR made the stream a terminal. An empty value is the same as unset.
+_UNSET = object()
+
+
+def _color_console(
+    monkeypatch,
+    *,
+    force=_UNSET,
+    no=_UNSET,
+    tty_compatible=_UNSET,
+    isatty=False,
+    term="xterm-256color",
+    colorterm: str | None = "truecolor",
+):
+    for name in ("FORCE_COLOR", "NO_COLOR", "TTY_COMPATIBLE"):
+        monkeypatch.delenv(name, raising=False)
+    if force is not _UNSET:
+        monkeypatch.setenv("FORCE_COLOR", force)
+    if no is not _UNSET:
+        monkeypatch.setenv("NO_COLOR", no)
+    if tty_compatible is not _UNSET:
+        monkeypatch.setenv("TTY_COMPATIBLE", tty_compatible)
+    monkeypatch.setenv("TERM", term)
+    if colorterm is None:
+        monkeypatch.delenv("COLORTERM", raising=False)
+    else:
+        monkeypatch.setenv("COLORTERM", colorterm)
+    stream = io.StringIO()
+    stream.isatty = lambda: isatty
+    console = Console(file=stream)
+    console.print("[red]hi[/red]")
+    return console, stream.getvalue()
+
+
+def test_force_color_unset_on_a_pipe_prints_no_color(monkeypatch):
+    console, text = _color_console(monkeypatch)
+    assert console.is_terminal is False
+    assert console.no_color is False
+    assert text == "hi\n"
+
+
+def test_force_color_set_colors_a_pipe(monkeypatch):
+    console, text = _color_console(monkeypatch, force="1")
+    assert console.is_terminal is True
+    assert console.no_color is False
+    assert text == "\x1b[31mhi\x1b[0m\n"
+
+
+def test_empty_force_color_does_not_color_a_pipe(monkeypatch):
+    console, text = _color_console(monkeypatch, force="")
+    assert console.is_terminal is False
+    assert text == "hi\n"
+
+
+def test_no_color_strips_color_when_force_color_is_set(monkeypatch):
+    console, text = _color_console(monkeypatch, force="1", no="1")
+    assert console.is_terminal is True
+    assert console.no_color is True
+    assert text == "hi\n"
+
+
+def test_empty_no_color_does_not_strip_forced_color(monkeypatch):
+    console, text = _color_console(monkeypatch, force="1", no="")
+    assert console.no_color is False
+    assert text == "\x1b[31mhi\x1b[0m\n"
+
+
+def test_tty_compatible_zero_beats_force_color(monkeypatch):
+    console, text = _color_console(monkeypatch, force="1", tty_compatible="0", term="dumb", colorterm=None)
+    assert console.is_terminal is False
+    assert console.is_dumb_terminal is False
+    assert text == "hi\n"
+
+
+def test_force_color_on_a_dumb_terminal_stays_dumb(monkeypatch):
+    console, text = _color_console(monkeypatch, force="1", term="dumb", colorterm=None)
+    assert console.is_terminal is True
+    assert console.is_dumb_terminal is True
+    assert text == "hi\n"
+
+
+def test_a_tty_is_colored_when_force_color_and_no_color_are_unset(monkeypatch):
+    console, text = _color_console(monkeypatch, isatty=True)
+    assert console.is_terminal is True
+    assert text == "\x1b[31mhi\x1b[0m\n"
+
+
+def test_force_color_zero_still_counts_as_set(monkeypatch):
+    # Any non-empty FORCE_COLOR, including "0", makes Rich treat the stream as a terminal.
+    console, text = _color_console(monkeypatch, force="0")
+    assert console.is_terminal is True
+    assert text == "\x1b[31mhi\x1b[0m\n"
