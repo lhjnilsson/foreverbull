@@ -31,8 +31,15 @@ enum State {
 message Step {
   State state = 1;
   // Why the step failed. Empty unless state is STATE_FAILED.
+  // On a running download step it is the progress line, such as
+  // "Downloading prices: 1,240 of 10,000 symbols".
   string message = 2;
   // Lines the user must read although the step completed, such as prices
   // the ingest filled. A client that does not know this field ignores it.
   repeated string notices = 3;
+  // Set on a running download step while the provider is limiting requests.
+  // The client names the pause on the progress line when the wait is longer
+  // than its threshold. The next update that leaves these empty clears it.
+  string rate_limit_provider = 4;
+  int32 rate_limit_wait_seconds = 5;
 }

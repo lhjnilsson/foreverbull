@@ -186,6 +186,11 @@ func (s *downloadSender) send(rsp *servicePb.DownloadHistoricalDataResponse) {
 		return
 	}
 	if err := s.stream.Send(rsp); err == nil {
+		// A rate-limit frame is not a symbol result. Counting it would hide
+		// a symbol the time limit still has to name.
+		if rsp.GetRateLimit() != nil {
+			return
+		}
 		if s.reported == nil {
 			s.reported = make(map[string]struct{})
 		}
@@ -946,6 +951,14 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	var blocked *marketdata.BlockedError
 
 	sender := newDownloadSender(serverStream, cancel)
+	ctx = marketdata.WithRateLimitReport(ctx, func(provider string, waitSeconds int32) {
+		sender.send(&servicePb.DownloadHistoricalDataResponse{
+			RateLimit: &servicePb.DownloadHistoricalDataResponse_RateLimit{
+				Provider:    provider,
+				WaitSeconds: waitSeconds,
+			},
+		})
+	})
 	var wg sync.WaitGroup
 	assetCh := make(chan string, downloadWorkers)
 	for range downloadWorkers {

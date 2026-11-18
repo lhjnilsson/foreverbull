@@ -115,6 +115,23 @@ func TestDownloadSenderWithoutStopDoesNotPanic(t *testing.T) {
 	assert.Equal(t, int32(1), stream.sends.Load())
 }
 
+// A rate-limit frame is sent and is not counted as a finished symbol.
+func TestDownloadSenderRateLimitIsNotASymbol(t *testing.T) {
+	stream := &countingStream{}
+	sender := newDownloadSender(stream, func() {})
+	sender.send(&servicePb.DownloadHistoricalDataResponse{
+		RateLimit: &servicePb.DownloadHistoricalDataResponse_RateLimit{
+			Provider: "yahoo", WaitSeconds: 30,
+		},
+	})
+
+	require.Equal(t, "AAPL", sender.firstUnreported([]string{"AAPL"}))
+	require.Len(t, stream.sent, 1)
+	require.Equal(t, "yahoo", stream.sent[0].GetRateLimit().GetProvider())
+	require.Equal(t, int32(30), stream.sent[0].GetRateLimit().GetWaitSeconds())
+	require.Empty(t, stream.sent[0].GetSymbol())
+}
+
 // newDownloadSender wires stop: the first failed Send calls it once.
 func TestNewDownloadSenderStopsOnFailedSend(t *testing.T) {
 	var stops atomic.Int32

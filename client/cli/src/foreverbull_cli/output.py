@@ -113,6 +113,19 @@ def execution_link(execution_id: str) -> str:
     return grafana_execution_url(os.environ.get(GRAFANA_URL_ENV, GRAFANA_URL_DEFAULT), execution_id)
 
 
+def progress_text(message: str, provider: str, wait_seconds: int) -> str:
+    """The progress line, naming a provider pause by its length.
+
+    The note is how long the pause is, not a countdown. A wait of 0 or less
+    leaves the line as message. The next call without a wait does the same,
+    so the note does not stick. An empty provider is named "the provider".
+    """
+    if wait_seconds <= 0:
+        return message
+    name = provider or "the provider"
+    return f"{message} (paused {wait_seconds} seconds because {name} is limiting requests)"
+
+
 class FBSpinnerColumn(SpinnerColumn):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -185,7 +198,16 @@ class LiveProgress(Live):
                             self.progress.start_task(task_id)
                         # The broker sends progress such as "Downloading prices:
                         # 1,240 of 10,000 symbols" as the running step's message.
-                        self.progress.update(task_id, description=step.message or label)
+                        # A provider pause names its length on that line, and
+                        # the next update without one replaces the line.
+                        self.progress.update(
+                            task_id,
+                            description=progress_text(
+                                step.message or label,
+                                step.rate_limit_provider,
+                                step.rate_limit_wait_seconds,
+                            ),
+                        )
                     case common_pb.State.COMPLETED:
                         if not self.progress.tasks[task_id].started:
                             self.progress.start_task(task_id)

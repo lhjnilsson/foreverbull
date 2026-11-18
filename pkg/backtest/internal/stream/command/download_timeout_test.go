@@ -92,11 +92,39 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataReportsProgress() {
 	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil)
 
 	reports := make([]string, 0)
-	ctx := stream.WithProgress(context.TODO(), func(text string) { reports = append(reports, text) })
+	ctx := stream.WithProgress(context.TODO(), func(progress stream.Progress) { reports = append(reports, progress.Text) })
 	err := command.DownloadFinancialData(ctx, test.downloadMessage("oef-2024q1"))
 	// No bars are stored, so create then fails the missing-session check;
 	// the report sent before it is what this test checks.
 	test.Require().ErrorContains(err, "missing prices on trading days")
 	// 98 members and the benchmark.
 	test.Equal([]string{"Downloading prices: 0 of 99 symbols"}, reports)
+}
+
+// A rate-limit frame on the finance stream is carried on the progress
+// message, and the next symbol result clears it.
+func (test *BacktestCommandTest) TestDownloadFinancialDataCarriesRateLimit() {
+	test.createOEF(98)
+	clientStream := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		RateLimit: &financeServicePB.DownloadHistoricalDataResponse_RateLimit{
+			Provider: "yahoo", WaitSeconds: 30,
+		},
+	}, nil).Once()
+	clientStream.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "AAPL",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_OK,
+	}, nil).Once()
+	clientStream.On("Recv", mock.Anything).Return(nil, io.EOF).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStream, nil)
+
+	reports := make([]stream.Progress, 0)
+	ctx := stream.WithProgress(context.TODO(), func(progress stream.Progress) { reports = append(reports, progress) })
+	err := command.DownloadFinancialData(ctx, test.downloadMessage("oef-2024q1"))
+	test.Require().ErrorContains(err, "missing prices on trading days")
+	test.Equal([]stream.Progress{
+		{Text: "Downloading prices: 0 of 99 symbols"},
+		{Text: "Downloading prices: 0 of 99 symbols", Provider: "yahoo", WaitSeconds: 30},
+		{Text: "Downloading prices: 1 of 99 symbols"},
+	}, reports)
 }

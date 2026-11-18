@@ -33,6 +33,8 @@ func ReturnNotice(ctx context.Context, message stream.Message) error {
 func ReturnProgress(ctx context.Context, message stream.Message) error {
 	stream.ReportProgress(ctx, "Downloading prices: 0 of 2 symbols")
 	stream.ReportProgress(ctx, "Downloading prices: 1 of 2 symbols")
+	stream.ReportRateLimit(ctx, "Downloading prices: 1,240 of 10,000 symbols", "yahoo", 30)
+	stream.ReportProgress(ctx, "Downloading prices: 1,241 of 10,000 symbols")
 	return nil
 }
 
@@ -248,17 +250,30 @@ func (test *StreamTest) TestRunOrchestration() {
 		for st := range test.uut.RunOrchestration(context.Background(), &o) {
 			steps = append(steps, st)
 		}
-		test.Require().Len(steps, 4)
+		test.Require().Len(steps, 6)
 		test.Equal(common.State_STATE_RUNNING, steps[0].State)
 		test.Nil(steps[0].Error)
-		for index, want := range []string{"Downloading prices: 0 of 2 symbols", "Downloading prices: 1 of 2 symbols"} {
+		for index, want := range []string{
+			"Downloading prices: 0 of 2 symbols",
+			"Downloading prices: 1 of 2 symbols",
+			"Downloading prices: 1,240 of 10,000 symbols",
+			"Downloading prices: 1,241 of 10,000 symbols",
+		} {
 			test.Equal(int32(2), steps[index+1].Num)
 			test.Equal(common.State_STATE_RUNNING, steps[index+1].State)
 			test.Require().NotNil(steps[index+1].Error)
 			test.Equal(want, *steps[index+1].Error)
 		}
-		test.Equal(common.State_STATE_COMPLETED, steps[3].State)
-		test.Nil(steps[3].Error, "progress is not a notice")
+		test.Empty(steps[1].GetRateLimitProvider())
+		test.Zero(steps[1].GetRateLimitWaitSeconds())
+		test.Equal("yahoo", steps[3].GetRateLimitProvider())
+		test.Equal(int32(30), steps[3].GetRateLimitWaitSeconds())
+		test.Empty(steps[4].GetRateLimitProvider(), "the next progress update clears the pause")
+		test.Zero(steps[4].GetRateLimitWaitSeconds())
+		test.Equal(common.State_STATE_COMPLETED, steps[5].State)
+		test.Nil(steps[5].Error, "progress is not a notice")
+		test.Empty(steps[5].GetRateLimitProvider())
+		test.Zero(steps[5].GetRateLimitWaitSeconds())
 
 		// Progress is core NATS only: no task state carries it, so it is
 		// neither kept on the foreverbull stream nor written to

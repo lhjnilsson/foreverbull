@@ -21,8 +21,15 @@ func (s *NATSStream) runOrchestrationStep(ctx context.Context, step *pb.Orchestr
 	out chan<- *pb.Orchestration_Step,
 ) ([]string, error) {
 	g, ctx := errgroup.WithContext(ctx)
-	progress := func(text string) {
-		running := &pb.Orchestration_Step{Num: step.Num, State: commonPb.State_STATE_RUNNING, Error: &text}
+	progress := func(update Progress) {
+		text := update.Text
+		running := &pb.Orchestration_Step{
+			Num:                  step.Num,
+			State:                commonPb.State_STATE_RUNNING,
+			Error:                &text,
+			RateLimitProvider:    update.Provider,
+			RateLimitWaitSeconds: update.WaitSeconds,
+		}
 		select {
 		case out <- running:
 		case <-ctx.Done():

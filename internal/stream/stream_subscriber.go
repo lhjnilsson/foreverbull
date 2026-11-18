@@ -122,11 +122,16 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 		// Progress goes over core NATS, not as a task state: it isn't kept
 		// on the JetStream stream and gets no message_states row.
 		progressTopic := fmt.Sprintf(TOPIC_TASK_PROGRESS, ns.module, msg.msg.Component, msg.msg.Method, msg.msg.GetId())
-		ctx = WithProgress(ctx, func(text string) {
+		ctx = WithProgress(ctx, func(update Progress) {
 			if ns.nc == nil {
 				return
 			}
-			if err := ns.nc.Publish(progressTopic, []byte(text)); err != nil {
+			payload, err := marshalProgress(update)
+			if err != nil {
+				log.Err(err).Msg("error encoding progress")
+				return
+			}
+			if err := ns.nc.Publish(progressTopic, payload); err != nil {
 				log.Err(err).Msg("error publishing progress")
 			}
 		})

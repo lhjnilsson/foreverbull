@@ -13,6 +13,7 @@ from foreverbull_cli.output import format_date_field
 from foreverbull_cli.output import format_optional_float
 from foreverbull_cli.output import format_proto_date
 from foreverbull_cli.output import grafana_execution_url
+from foreverbull_cli.output import progress_text
 from rich.console import Console
 from typer.testing import CliRunner
 
@@ -164,3 +165,76 @@ def test_live_progress_shows_a_running_steps_progress_in_place_of_its_row():
     assert "Downloading prices" not in rendered
     assert "Downloading" in rendered.splitlines()[1]
     assert progress.notices == [], "progress is not a notice"
+
+
+_WITH_WAIT = "Downloading prices: 1,240 of 10,000 symbols (paused 30 seconds because yahoo is limiting requests)"
+_SIX_SECONDS = "Downloading prices: 1,240 of 10,000 symbols (paused 6 seconds because yahoo is limiting requests)"
+_AFTER_WAIT = "Downloading prices: 1,241 of 10,000 symbols"
+_PLAIN = "Downloading prices: 1,240 of 10,000 symbols"
+
+
+def _downloading_line(progress: LiveProgress) -> str:
+    matches = [
+        task.description for task in progress.progress.tasks if str(task.description).startswith("Downloading prices:")
+    ]
+    assert len(matches) == 1
+    return str(matches[0])
+
+
+def test_rate_limit_wait_is_named_on_the_progress_line_and_then_cleared():
+    assert progress_text(_PLAIN, "yahoo", 30) == _WITH_WAIT
+    assert progress_text(_AFTER_WAIT, "", 0) == _AFTER_WAIT
+
+    progress = LiveProgress()
+    progress.update_from_message(_create_rsp())
+    waiting = common_pb.Step(
+        state=common_pb.State.RUNNING,
+        message=_PLAIN,
+        rate_limit_provider="yahoo",
+        rate_limit_wait_seconds=30,
+    )
+    progress.update_from_message(
+        _create_rsp(CREATING=common_pb.Step(state=common_pb.State.COMPLETED), DOWNLOADING=waiting)
+    )
+    assert _downloading_line(progress) == _WITH_WAIT
+
+    continued = common_pb.Step(state=common_pb.State.RUNNING, message=_AFTER_WAIT)
+    progress.update_from_message(
+        _create_rsp(CREATING=common_pb.Step(state=common_pb.State.COMPLETED), DOWNLOADING=continued)
+    )
+    assert _downloading_line(progress) == _AFTER_WAIT
+    rendered = _rendered(progress.progress)
+    assert _AFTER_WAIT in rendered
+    assert "limiting requests" not in rendered
+
+
+def test_rate_limit_wait_of_six_seconds_is_named():
+    assert progress_text(_PLAIN, "yahoo", 6) == _SIX_SECONDS
+
+
+def test_rate_limit_wait_of_zero_is_not_named():
+    assert progress_text(_PLAIN, "yahoo", 0) == _PLAIN
+    assert progress_text(_PLAIN, "", 0) == _PLAIN
+
+    progress = LiveProgress()
+    progress.update_from_message(_create_rsp())
+    quiet = common_pb.Step(state=common_pb.State.RUNNING, message=_PLAIN)
+    progress.update_from_message(
+        _create_rsp(CREATING=common_pb.Step(state=common_pb.State.COMPLETED), DOWNLOADING=quiet)
+    )
+    assert _downloading_line(progress) == _PLAIN
+    rendered = _rendered(progress.progress)
+    assert _PLAIN in rendered
+    assert "limiting requests" not in rendered
+
+
+def test_unknown_rate_limit_provider_is_named_as_sent():
+    assert progress_text(_PLAIN, "polygon", 30) == (
+        "Downloading prices: 1,240 of 10,000 symbols (paused 30 seconds because polygon is limiting requests)"
+    )
+
+
+def test_empty_rate_limit_provider_says_the_provider():
+    assert progress_text(_PLAIN, "", 30) == (
+        "Downloading prices: 1,240 of 10,000 symbols (paused 30 seconds because the provider is limiting requests)"
+    )
