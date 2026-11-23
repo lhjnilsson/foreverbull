@@ -23,7 +23,6 @@ func validEnv(t *testing.T) {
 	t.Setenv(MinioAccessKey, "access-key-value")
 	t.Setenv(MinioSecretKey, "secret-key-value")
 	t.Setenv(AuthTrustedProxies, "")
-	t.Setenv(WorkerDatabaseURL, "")
 }
 
 func TestSetupStartsWithAValidFullConfig(t *testing.T) {
@@ -293,26 +292,6 @@ func TestSetupForTestFillsTestConnectionsWithoutDocker(t *testing.T) {
 	portRange, err := GetBacktestPortRange()
 	require.NoError(t, err)
 	require.Equal(t, PortRange{Start: 27000, End: 27015}, portRange)
-}
-
-func TestWorkerDatabaseURLNeverFallsBackToTheOwner(t *testing.T) {
-	for _, auth := range []string{"true", "false"} {
-		t.Run("AUTH_ENABLED="+auth, func(t *testing.T) {
-			t.Setenv(AuthEnabled, auth)
-			t.Setenv(WorkerDatabaseURL, "")
-			t.Setenv(PostgresURL, "postgres://postgres:foreverbull@localhost:5432/postgres")
-
-			url, err := GetWorkerDatabaseURL()
-			require.EqualError(t, err, "WORKER_DATABASE_URL is not set; the owner POSTGRES_URL is not handed to a service pod")
-			require.Empty(t, url)
-
-			reader := "postgres://foreverbull_worker:reader@postgres:5432/foreverbull"
-			t.Setenv(WorkerDatabaseURL, reader)
-			url, err = GetWorkerDatabaseURL()
-			require.NoError(t, err)
-			require.Equal(t, reader, url)
-		})
-	}
 }
 
 func TestGetBacktestPortRangeRejectsBadValues(t *testing.T) {

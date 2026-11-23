@@ -48,9 +48,10 @@ def engine_stub():
 
 
 @pytest.fixture
-def broker_session_stub(engine_stub: engine_service_pb_grpc.EngineSessionClientSync):
+def broker_session_stub(engine_stub: engine_service_pb_grpc.EngineSessionClientSync, fb_database):
+    connection, _ = fb_database
     server = grpc.server(thread_pool=futures.ThreadPoolExecutor())
-    bs = Broker(engine_stub)
+    bs = Broker(engine_stub, connection=connection)
     backtest_service_pb_grpc.BacktestServicerServiceSync.add_to_server(bs, server)
     session_service_pb_grpc.SessionServicerServiceSync.add_to_server(bs, server)
     server.add_insecure_port("[::]:6067")

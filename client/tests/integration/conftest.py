@@ -139,7 +139,7 @@ def backtest_entity():
 
 @pytest.fixture(scope="session")
 def foreverbull_bundle(backtest_entity: backtest_pb.Backtest, fb_database):
-    _, verify_or_populate = fb_database
+    connection, verify_or_populate = fb_database
     verify_or_populate(backtest_entity)
 
     def sanity_check(bundle):
@@ -158,11 +158,11 @@ def foreverbull_bundle(backtest_entity: backtest_pb.Backtest, fb_database):
                 if backtest_end > stored_asset.end_date:
                     raise ValueError("End date is not correct")
 
-    bundles.register("foreverbull", SQLIngester(backtest_entity), calendar_name="XNYS")
+    bundles.register("foreverbull", SQLIngester(backtest_entity, connection=connection), calendar_name="XNYS")
     try:
         sanity_check(bundles.load("foreverbull", os.environ, None))
     except (ValueError, LookupError):
-        s = service.BacktestService()
+        s = service.BacktestService(connection=connection)
         req = engine_service_pb.IngestRequest(
             backtest=backtest_entity,
         )
@@ -192,8 +192,9 @@ def baseline_performance_handle_data(context, data, backtest: backtest_pb.Backte
 
 
 @pytest.fixture(scope="session")
-def baseline_performance(foreverbull_bundle, backtest_entity: backtest_pb.Backtest):
-    register("foreverbull", SQLIngester(backtest_entity), calendar_name="XNYS")
+def baseline_performance(foreverbull_bundle, backtest_entity: backtest_pb.Backtest, fb_database):
+    connection, _ = fb_database
+    register("foreverbull", SQLIngester(backtest_entity, connection=connection), calendar_name="XNYS")
     benchmark_spec = BenchmarkSpec.from_cli_params(
         no_benchmark=True,
         benchmark_sid=None,

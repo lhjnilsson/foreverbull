@@ -304,7 +304,7 @@ Go server defaults are in `internal/environment/env.go`. Empty optional vars are
 | `FOREVERBULL_BROKER_CA` | PEM file trusted for remote broker gRPC. Unset uses the system trust store. Remote gRPC is always TLS. `127.0.0.1`, `::1`, and `localhost` stay plaintext |
 | `FOREVERBULL_CONFIG` | Explicit cluster config YAML path |
 | `FOREVERBULL_BROKER_URL` | Broker HTTP origin for `fbull login` / `logout`. Default `http://localhost:8080` on local Kind; remote reads `remote.broker_url`. Must be `https://` unless the host is `127.0.0.1` or `localhost` |
-| `DATABASE_URL` | Zipline ingest and the pytest plugin (Testcontainers). Strategy workers do not receive it |
+| `DATABASE_URL` | Zipline ingest. The pytest plugin passes the engine and does not set this variable. Strategy workers do not receive it |
 | `BROKER_HOSTNAME` | Worker/NNG hostname (default `127.0.0.1`; in-cluster workers get `SERVER_ADDRESS`) |
 | `BROKER_PORT` | Worker broker gRPC port; in-cluster workers get `GRPC_PORT` (`50055`) |
 | `NAMESPACE_PORT` | Required for the worker namespace socket |

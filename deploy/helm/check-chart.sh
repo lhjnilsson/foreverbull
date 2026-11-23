@@ -397,20 +397,16 @@ if grep -E 'port: 4222|port: 9000|port: 5432|name: postgres' "${grafana_policy}"
   exit 1
 fi
 rm -f "${policy}" "${grafana_policy}"
-for secret_name in foreverbull-nats foreverbull-worker; do
-  if ! grep -q "name: ${secret_name}$" "${first_render}"; then
-    echo "chart must create Secret ${secret_name}" >&2
-    exit 1
-  fi
-done
-for env_name in NATS_PASSWORD WORKER_DB_PASSWORD; do
-  if grep -A1 -E "^ +- name: ${env_name}$" "${first_render}" | grep -qE '^ +value:'; then
-    echo "${env_name} must come from a secretKeyRef, not a plain value" >&2
-    exit 1
-  fi
-done
-if ! grep -Fq 'postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@' "${first_render}"; then
-  echo "broker must pass the reader URL, not a raw worker password" >&2
+if ! grep -q 'name: foreverbull-nats$' "${first_render}"; then
+  echo "chart must create Secret foreverbull-nats" >&2
+  exit 1
+fi
+if grep -Eq 'WORKER_DATABASE_URL|WORKER_DB_PASSWORD|foreverbull-worker|foreverbull_worker' "${first_render}"; then
+  echo "chart must not create a worker database role or WORKER_DATABASE_URL" >&2
+  exit 1
+fi
+if grep -A1 -E '^ +- name: NATS_PASSWORD$' "${first_render}" | grep -qE '^ +value:'; then
+  echo "NATS_PASSWORD must come from a secretKeyRef, not a plain value" >&2
   exit 1
 fi
 nats_conf_b64="$(awk '/^  nats.conf:/{print; exit}' "${first_render}" | sed -E 's/.*"([^"]+)".*/\1/')"

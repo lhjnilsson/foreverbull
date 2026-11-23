@@ -152,9 +152,23 @@ class CalendarService(calendar_service_pb_grpc.CalendarServiceSync):
 
 
 class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.HealthServicer):
-    def __init__(self):
+    def __init__(self, *, database_url: str | None = None, connection=None):
+        if database_url is not None and connection is not None:
+            raise ValueError("BacktestService takes a database URL or a connection, not both")
         self.logger = logging.getLogger(__name__)
         self.sessions: list[Session] = []
+        self._database_url = database_url
+        self._connection = connection
+
+    def set_database(self, *, database_url: str | None = None, connection=None) -> None:
+        if database_url is not None and connection is not None:
+            raise ValueError("BacktestService takes a database URL or a connection, not both")
+        if database_url is None and connection is None:
+            raise ValueError("BacktestService takes a database URL or a connection")
+        if self._database_url is not None or self._connection is not None:
+            raise RuntimeError("BacktestService database is already set")
+        self._database_url = database_url
+        self._connection = connection
 
     def download_ingestion(self, request: engine_service_pb.DownloadIngestionRequest, context):
         storage = Storage.from_environment()
@@ -168,7 +182,12 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
         if backtest is None:
             raise ValueError("ingest request has no backtest")
         try:
-            ingester = SQLIngester(backtest)
+            if self._connection is not None:
+                ingester = SQLIngester(backtest, connection=self._connection)
+            elif self._database_url is not None:
+                ingester = SQLIngester(backtest, database_url=self._database_url)
+            else:
+                ingester = SQLIngester(backtest)
             bundles.register(backtest.name, ingester, calendar_name="XNYS")
             bundles.ingest(backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
         except Exception as exc:

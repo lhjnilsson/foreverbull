@@ -46,13 +46,6 @@ const (
 	// PostgresURL is required. Setup refuses to start without it.
 	PostgresURL = "POSTGRES_URL"
 
-	// WorkerDatabaseURL is the reader role URL for a service pod. Empty is an
-	// error from GetWorkerDatabaseURL; the owner URL is never used in its place.
-	WorkerDatabaseURL = "WORKER_DATABASE_URL"
-	// WorkerDBPassword is the password for role foreverbull_worker. It is not
-	// the database owner password.
-	WorkerDBPassword = "WORKER_DB_PASSWORD"
-
 	// NatsURL is required. Setup refuses to start without it.
 	NatsURL                   = "NATS_URL"
 	NatsUser                  = "NATS_USER"
@@ -593,16 +586,6 @@ func GetLogLevel() string {
 
 func GetPostgresURL() string {
 	return os.Getenv(PostgresURL)
-}
-
-// GetWorkerDatabaseURL is the reader role URL a service pod may use. An empty
-// value is an error that names WORKER_DATABASE_URL, whether or not
-// authentication is on. The owner URL is never returned in its place.
-func GetWorkerDatabaseURL() (string, error) {
-	if url := strings.TrimSpace(os.Getenv(WorkerDatabaseURL)); url != "" {
-		return url, nil
-	}
-	return "", fmt.Errorf("%s is not set; the owner %s is not handed to a service pod", WorkerDatabaseURL, PostgresURL)
 }
 
 func GetNATSURL() string {

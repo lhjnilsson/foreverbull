@@ -621,12 +621,19 @@ def _index_timestamp(index: pd.Index, position: int) -> pd.Timestamp:
 
 
 class DatabaseEngine:
-    def __init__(self):
-        database_uri = os.environ.get("DATABASE_URL")
-        if database_uri is None:
-            raise KeyError("DATABASE_URL environment variable not set")
-
-        self._engine = get_engine(database_uri)
+    def __init__(self, database_url: str | None = None, *, connection=None):
+        # The Zipline process reads DATABASE_URL. A caller that has the engine
+        # or URL passes it in. An empty URL is not replaced with the environment.
+        if connection is not None and database_url is not None:
+            raise ValueError("DatabaseEngine takes a database URL or a connection, not both")
+        if connection is not None:
+            self._engine = connection
+        else:
+            if database_url is None:
+                database_url = os.environ.get("DATABASE_URL")
+            if not database_url:
+                raise KeyError("DATABASE_URL environment variable not set")
+            self._engine = get_engine(database_url)
         self.provider = ohlc_provider()
 
     def get_data(self, symbol, from_date, to_date):
@@ -721,9 +728,22 @@ class SQLIngester:
         events: pd.DataFrame | None = None,
         dividends: pd.DataFrame | None = None,
         corporate_actions: pd.DataFrame | None = None,
+        database_url: str | None = None,
+        connection=None,
     ):
+        if engine is not None and (database_url is not None or connection is not None):
+            raise ValueError("SQLIngester takes an engine or a database URL, not both")
+        if database_url is not None and connection is not None:
+            raise ValueError("SQLIngester takes a database URL or a connection, not both")
         self.backtest = backtest
-        self.engine = engine or DatabaseEngine()
+        if engine is None:
+            if connection is not None:
+                engine = DatabaseEngine(connection=connection)
+            elif database_url is not None:
+                engine = DatabaseEngine(database_url)
+            else:
+                engine = DatabaseEngine()
+        self.engine = engine
         if hasattr(self.engine, "provider"):
             self.engine.provider = bundle_provider(backtest)
         self._aliases = aliases

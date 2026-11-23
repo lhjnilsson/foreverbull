@@ -12,7 +12,7 @@ The plugin registers itself as `foreverbull` (`pytest11`). None of the fixtures 
 | --- | --- | --- | --- |
 | `fb_env` | function | no | Process env defaults (`setup_env`) |
 | `namespace_server` | function | no | In-process pynng namespace fake on an ephemeral port |
-| `fb_database` | session | yes | Postgres Testcontainer plus `verify_or_populate` for OHLC data |
+| `fb_database` | session | yes | Postgres Testcontainer plus `verify_or_populate` for OHLC data. Does not set `DATABASE_URL` |
 | `asset_manager` | function | yes | Load the start/end testing `Asset` / `Assets` subclasses from that database |
 | `portfolio_manager` | function | yes | Build a `Portfolio` with optional positions |
 | `session` | function | yes | Insert synthetic OHLC bars (`constant`, `trend`, `cross_up`), call production `Algorithm.process`, and `replay` that order trace |

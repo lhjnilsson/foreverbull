@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 
@@ -151,7 +152,7 @@ class TestBacktestService:
         server.start()
         time.sleep(1)
         try:
-            yield server
+            yield servicer
         finally:
             servicer.stop()
             server.stop(None)
@@ -165,9 +166,11 @@ class TestBacktestService:
         stub: engine_service_pb_grpc.EngineClientSync,
         backtest_entity: backtest_pb.Backtest,
         fb_database,
+        servicer: service.BacktestService,
     ):
-        _, verify = fb_database
+        connection, verify = fb_database
         verify(backtest_entity)
+        servicer.set_database(connection=connection)
         response = stub.ingest(
             engine_service_pb.IngestRequest(
                 backtest=backtest_entity,
@@ -178,13 +181,15 @@ class TestBacktestService:
     def test_ingest_missing_driver_reports_the_driver_without_the_password(
         self,
         stub: engine_service_pb_grpc.EngineClientSync,
+        servicer: service.BacktestService,
         monkeypatch,
         caplog,
     ):
         secret = "n0t-the-default-Pa55"
-        monkeypatch.setenv("DATABASE_URL", f"postgresql+psycopg://foreverbull:{secret}@127.0.0.1:1/foreverbull")
+        servicer.set_database(database_url=f"postgresql+psycopg://foreverbull:{secret}@127.0.0.1:1/foreverbull")
         # sys.modules[...] = None makes the import fail the way a missing package does.
         monkeypatch.setitem(sys.modules, "psycopg", None)
+        assert "DATABASE_URL" not in os.environ
 
         with pytest.raises(grpc.RpcError) as raised:
             stub.ingest(engine_service_pb.IngestRequest(backtest=backtest_pb.Backtest(name="missing-driver")))
@@ -301,7 +306,9 @@ class TestIngestWithoutContext:
         backtest = backtest_pb.Backtest(name="no-context")
 
         with pytest.raises(RuntimeError, match="no bars for BRKB"):
-            service.BacktestService().ingest(engine_service_pb.IngestRequest(backtest=backtest), None)
+            service.BacktestService(connection=object()).ingest(
+                engine_service_pb.IngestRequest(backtest=backtest), None
+            )
 
 
 class _NoBars:

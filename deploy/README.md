@@ -75,8 +75,6 @@ checks every setting at startup and exits with one line per bad variable.
 | `POSTGRES_URL` | `postgres://foreverbull:$(POSTGRES_PASSWORD)@postgres:5432/foreverbull` |
 | `NATS_URL` | `nats://nats:4222`. The password is not in this URL |
 | `NATS_USER` / `NATS_PASSWORD` | User `broker`. The password is Secret `foreverbull-nats` key `password` |
-| `WORKER_DB_PASSWORD` | Secret `foreverbull-worker` key `password`. Not the database owner password |
-| `WORKER_DATABASE_URL` | `postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:5432/foreverbull`. Still set on the broker pod. The broker does not copy it into `ExecutionConfiguration` |
 | `MINIO_URL` | `minio:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET` | From Secret `foreverbull-credentials`. Local Kind: `minioadmin` / `minioadmin` |
 | `MINIO_SECURE` | `false`. The in-cluster MinIO serves plain HTTP. Set `true` for a MinIO behind TLS |
@@ -249,18 +247,14 @@ on the host. A remote broker that still publishes `8080` and `50055` stays
 open until `AUTH_ENABLED=true` and the admin are set. An unset flag is not
 "authentication was configured".
 
-A service image does not receive the database owner URL or the MinIO root
-keys. The worker reads `asset`, `ohlc`, and `asset_symbol` as role
-`foreverbull_worker`. That role is not granted `account`, `api_token`,
-`browser_session`, `oauth_state`, or `domain_grant`. Its password is Secret
-`foreverbull-worker`. NATS authenticates the broker user from Secret
-`foreverbull-nats`. Service pods
-have no NATS user. Their NetworkPolicy allows DNS, the broker (gRPC and the
-session ports the worker dials), and Postgres. It does not allow MinIO or
-NATS. The algorithm still reads bars with SQL, so Postgres stays reachable
-as that role. The Zipline deployment is the platform image and still uses
-the database owner URL. A command that names a backtest id is refused when
-its `owner_id` is not the owner stored on that row.
+A service image does not receive a database URL or the MinIO root keys.
+Bars arrive on the worker request. NATS authenticates the broker user from
+Secret `foreverbull-nats`. Service pods have no NATS user. Their
+NetworkPolicy allows DNS, the broker (gRPC and the session ports the worker
+dials), and Postgres. It does not allow MinIO or NATS. The Zipline
+deployment is the platform image and still uses the database owner URL. A
+command that names a backtest id is refused when its `owner_id` is not the
+owner stored on that row.
 
 Session secrets are kept in the broker process. Run one broker replica. A
 second replica does not have the map and refuses a session it did not mint.

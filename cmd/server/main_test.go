@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"net"
 	"strconv"
@@ -48,4 +49,16 @@ func TestPingPostgresGivesUpAndNamesHost(t *testing.T) {
 	require.Contains(t, lines[1], "attempt 2 of 3")
 	require.NotContains(t, lines[1], "if this persists")
 	require.NotContains(t, buf.String(), "secret-password")
+}
+
+func TestOpenPostgresPoolHidesTheDSN(t *testing.T) {
+	const password = "super-secret-password"
+	dsn := "postgres://foreverbull:" + password + "@127.0.0.1:notaport/foreverbull"
+	_, err := openPostgresPool(context.Background(), dsn)
+	require.Error(t, err)
+	require.EqualError(t, err, "failed to create postgres pool from POSTGRES_URL")
+	require.NotContains(t, err.Error(), password)
+	require.NotContains(t, err.Error(), dsn)
+	require.NotContains(t, err.Error(), "notaport")
+	require.NoError(t, errors.Unwrap(err))
 }
