@@ -315,12 +315,12 @@ const (
 	lastBarsQueryByName = `
 		SELECT s.symbol, s.from_date, s.to_date, last.bar
 		  FROM asset_symbol s
+		  JOIN instrument i ON i.isin = s.isin
 		  JOIN (SELECT DISTINCT isin FROM universe_member WHERE backtest_name = $1) m ON m.isin = s.isin
 		  LEFT JOIN LATERAL (
 			SELECT max(o.time) AS bar
-			  FROM asset_symbol a
-			  JOIN ohlc o ON o.symbol = a.symbol
-			 WHERE a.isin = s.isin
+			  FROM instrument_ohlc o
+			 WHERE o.instrument_id = i.id
 			   AND o.provider = $2
 			   AND o.time < $3::date
 		  ) last ON true
@@ -328,12 +328,12 @@ const (
 	lastBarsQueryByID = `
 		SELECT s.symbol, s.from_date, s.to_date, last.bar
 		  FROM asset_symbol s
+		  JOIN instrument i ON i.isin = s.isin
 		  JOIN (SELECT DISTINCT isin FROM universe_member WHERE backtest_id = $1) m ON m.isin = s.isin
 		  LEFT JOIN LATERAL (
 			SELECT max(o.time) AS bar
-			  FROM asset_symbol a
-			  JOIN ohlc o ON o.symbol = a.symbol
-			 WHERE a.isin = s.isin
+			  FROM instrument_ohlc o
+			 WHERE o.instrument_id = i.id
 			   AND o.provider = $2
 			   AND o.time < $3::date
 		  ) last ON true
@@ -357,11 +357,11 @@ const (
 			  FROM asset_symbol a
 			  JOIN listed l ON l.symbol = a.symbol
 		  ) m ON m.isin = s.isin
+		  JOIN instrument i ON i.isin = s.isin
 		  LEFT JOIN LATERAL (
 			SELECT max(o.time) AS bar
-			  FROM asset_symbol a
-			  JOIN ohlc o ON o.symbol = a.symbol
-			 WHERE a.isin = s.isin
+			  FROM instrument_ohlc o
+			 WHERE o.instrument_id = i.id
 			   AND o.provider = $2
 			   AND o.time < $3::date
 		  ) last ON true
@@ -394,11 +394,11 @@ const (
 			  FROM asset_symbol a
 			  JOIN listed l ON l.symbol = a.symbol
 		  ) m ON m.isin = s.isin
+		  JOIN instrument i ON i.isin = s.isin
 		  LEFT JOIN LATERAL (
 			SELECT max(o.time) AS bar
-			  FROM asset_symbol a
-			  JOIN ohlc o ON o.symbol = a.symbol
-			 WHERE a.isin = s.isin
+			  FROM instrument_ohlc o
+			 WHERE o.instrument_id = i.id
 			   AND o.provider = $2
 			   AND o.time < $3::date
 		  ) last ON true

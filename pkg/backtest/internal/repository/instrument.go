@@ -29,12 +29,14 @@ CREATE TABLE IF NOT EXISTS asset_symbol (
 	symbol text NOT NULL,
 	from_date date NOT NULL,
 	to_date date,
+	evidence text NOT NULL DEFAULT 'snapshot',
 	PRIMARY KEY (isin, from_date),
 	CONSTRAINT asset_symbol_isin_fkey FOREIGN KEY (isin) REFERENCES instrument (isin),
 	CONSTRAINT asset_symbol_no_overlap EXCLUDE USING gist (
 		isin WITH =,
 		daterange(from_date, to_date, '[)') WITH &&
-	)
+	),
+	CONSTRAINT asset_symbol_evidence_check CHECK (evidence IN ('snapshot', 'later_ticker'))
 );
 
 ` + assetSymbolSymbolIndex
@@ -68,7 +70,7 @@ func MigrateAssetSymbol(ctx context.Context, conn postgres.Query) error {
 	if _, err := conn.Exec(ctx, assetSymbolSymbolIndex); err != nil {
 		return fmt.Errorf("asset_symbol: symbol index: %w", err)
 	}
-	return nil
+	return migrateAssetSymbolEvidence(ctx, conn)
 }
 
 func migrateAssetSymbolForeignKey(ctx context.Context, conn postgres.Query) error {
@@ -129,6 +131,30 @@ func migrateAssetSymbolExclusion(ctx context.Context, conn postgres.Query) error
 
 	if _, err = conn.Exec(ctx, addAssetSymbolExclusion); err != nil {
 		return fmt.Errorf("asset_symbol: exclusion: %w", err)
+	}
+	return nil
+}
+
+// migrateAssetSymbolEvidence matches pkg/finance. Existing rows stay
+// 'snapshot' until the finance backfill marks a request-dated alias.
+func migrateAssetSymbolEvidence(ctx context.Context, conn postgres.Query) error {
+	if _, err := conn.Exec(ctx, `
+		ALTER TABLE asset_symbol
+			ADD COLUMN IF NOT EXISTS evidence text NOT NULL DEFAULT 'snapshot'`); err != nil {
+		return fmt.Errorf("asset_symbol: evidence: %w", err)
+	}
+	exists, err := tableConstraintExists(ctx, conn, "asset_symbol", "asset_symbol_evidence_check")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err = conn.Exec(ctx, `
+		ALTER TABLE asset_symbol
+			ADD CONSTRAINT asset_symbol_evidence_check
+			CHECK (evidence IN ('snapshot', 'later_ticker'))`); err != nil {
+		return fmt.Errorf("asset_symbol: evidence check: %w", err)
 	}
 	return nil
 }

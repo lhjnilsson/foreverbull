@@ -260,16 +260,19 @@ func TestDownloadSymbolLooksUpLaterTickerOnlyOnNoBars(t *testing.T) {
 				}
 			}
 
-			var metaBars, metaAssets, metaAliases int
+			var metaBars, metaAssets, metaAliases, mapped int
 			require.NoError(t, pool.QueryRow(context.Background(),
 				`SELECT count(*) FROM ohlc WHERE symbol = 'META'`).Scan(&metaBars))
 			require.NoError(t, pool.QueryRow(context.Background(),
 				`SELECT count(*) FROM asset WHERE symbol = 'META'`).Scan(&metaAssets))
 			require.NoError(t, pool.QueryRow(context.Background(),
 				`SELECT count(*) FROM asset_symbol WHERE symbol = 'META'`).Scan(&metaAliases))
+			require.NoError(t, pool.QueryRow(context.Background(),
+				`SELECT count(*) FROM provider_symbol WHERE symbol = 'META'`).Scan(&mapped))
+			require.Zero(t, metaAliases, "the request end is not written into asset_symbol")
 			if tc.wantLookup {
 				require.Equal(t, 1, metaBars, "META's bars are stored")
-				require.Equal(t, 1, metaAliases, "META is recorded as FB's later ticker")
+				require.Equal(t, 1, mapped, "META is the ticker the bars are stored under")
 				return
 			}
 			require.Zero(t, metaBars, "no later-ticker bars are stored")

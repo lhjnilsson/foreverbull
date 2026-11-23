@@ -301,6 +301,23 @@ func requireResolved(t *testing.T, pool *pgxpool.Pool, provider, symbol string, 
 	}
 }
 
+// copyReadToYahoo copies bars and the provider_symbol rows the read uses.
+// instrument_ohlc is that read, so a yahoo copy of the bars alone is empty.
+func copyReadToYahoo(t *testing.T, pool *pgxpool.Pool, provider string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `
+		INSERT INTO ohlc (symbol, open, high, low, close, volume, time, provider)
+		SELECT symbol, open, high, low, close, volume, time, 'yahoo'
+		  FROM ohlc WHERE provider = $1`, provider)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `
+		INSERT INTO provider_symbol (instrument_id, provider, symbol, from_date, to_date, evidence)
+		SELECT instrument_id, 'yahoo', symbol, from_date, to_date, evidence
+		  FROM provider_symbol WHERE provider = $1`, provider)
+	require.NoError(t, err)
+}
+
 func requireSymbolAt(t *testing.T, pool *pgxpool.Pool, isin string, day time.Time, symbol string) {
 	t.Helper()
 	instruments := repository.Instruments{Conn: pool}
@@ -348,13 +365,23 @@ func TestStooqAndAlpacaSplitRenameStaysOnTheISIN(t *testing.T) {
 			}, storedCloses(t, pool, provider, "FB"))
 			require.Equal(t, map[string]float64{metaAfter.day: metaAfter.c}, storedCloses(t, pool, provider, "META"))
 			require.Equal(t, map[string]float64{otherOld.day: otherOld.c}, storedCloses(t, pool, provider, "NNN"))
-
-			// Copy onto yahoo so the three providers are read the same way.
-			_, err := pool.Exec(context.Background(), `
-				INSERT INTO ohlc (symbol, open, high, low, close, volume, time, provider)
-				SELECT symbol, open, high, low, close, volume, time, 'yahoo'
-				  FROM ohlc WHERE provider = $1`, provider)
+			var metaFBTo, otherFBFrom string
+			var otherFBTo *time.Time
+			err := pool.QueryRow(context.Background(), `
+				SELECT to_date::text FROM provider_symbol
+				 WHERE provider = $1 AND instrument_id = $2 AND symbol = 'FB'`,
+				provider, renameMetaISIN).Scan(&metaFBTo)
 			require.NoError(t, err)
+			require.Equal(t, "2021-10-31", metaFBTo)
+			err = pool.QueryRow(context.Background(), `
+				SELECT from_date::text, to_date FROM provider_symbol
+				 WHERE provider = $1 AND instrument_id = $2 AND symbol = 'FB'`,
+				provider, otherISIN).Scan(&otherFBFrom, &otherFBTo)
+			require.NoError(t, err)
+			require.Equal(t, reusedFB.day, otherFBFrom)
+			require.Nil(t, otherFBTo)
+
+			copyReadToYahoo(t, pool, provider)
 
 			// asOf is after both renames. META is Meta's history, including the
 			// October bar stored under FB. FB is the other company's history,
@@ -405,18 +432,64 @@ func TestStooqAndAlpacaCurrentTickerCoversTheRename(t *testing.T) {
 			require.Equal(t, map[string]float64{
 				metaBefore.day: metaBefore.c, metaAfter.day: metaAfter.c,
 			}, storedCloses(t, pool, provider, "META"))
-
-			_, err := pool.Exec(context.Background(), `
-				INSERT INTO ohlc (symbol, open, high, low, close, volume, time, provider)
-				SELECT symbol, open, high, low, close, volume, time, 'yahoo'
-				  FROM ohlc WHERE provider = $1`, provider)
+			var from string
+			var to *time.Time
+			err := pool.QueryRow(context.Background(), `
+				SELECT from_date::text, to_date FROM provider_symbol
+				 WHERE provider = $1 AND instrument_id = $2 AND symbol = 'META'`,
+				provider, renameMetaISIN).Scan(&from, &to)
 			require.NoError(t, err)
+			require.Equal(t, metaBefore.day, from)
+			require.Nil(t, to)
+
+			copyReadToYahoo(t, pool, provider)
 			for _, name := range []string{provider, "yahoo"} {
 				requireResolved(t, pool, name, "FB", before, []renameQuote{metaBefore})
 				requireResolved(t, pool, name, "META", after, []renameQuote{metaBefore, metaAfter})
 			}
 			requireSymbolAt(t, pool, renameMetaISIN, time.Date(2021, 10, 15, 0, 0, 0, 0, time.UTC), "FB")
 			requireSymbolAt(t, pool, renameMetaISIN, time.Date(2021, 11, 1, 0, 0, 0, 0, time.UTC), "META")
+		})
+	}
+}
+
+// An FB bar after Meta's window, with no later company holding FB, is not
+// a series. The download names the ticker and the day and stores nothing,
+// including the bar that did fall in the window.
+func TestFBBarOutsideEveryWindowStoresNothing(t *testing.T) {
+	gap := renameQuote{"2022-03-01", 7, 8, 6, 7.5, 1005}
+	quotes := map[string][]renameQuote{"FB": {metaBefore, gap}}
+	feeds := map[string]supplier.Marketdata{
+		"stooq": func() supplier.Marketdata {
+			_, client := stooqRenameFeed(t, map[string]string{"fb.us": stooqCSV(quotes["FB"])})
+			return client
+		}(),
+		"alpaca": alpacaRenameFeed(t, quotes),
+	}
+	pool := renamePool(t)
+	start, end := renameSpan()
+	for _, provider := range []string{"stooq", "alpaca"} {
+		t.Run(provider, func(t *testing.T) {
+			require.NoError(t, repository.Recreate(context.Background(), pool))
+			seedRename(t, pool, false)
+			stream := &countingStream{}
+			blocked := NewMarketdataServer(pool, renameMetadata(t)).downloadSymbol(
+				context.Background(), newDownloadSender(stream, func() {}),
+				"FB", start, &end, provider,
+				repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, feeds[provider],
+			)
+			require.Nil(t, blocked)
+			require.Len(t, stream.sent, 1)
+			msg := stream.sent[0]
+			require.Equal(t, servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+			require.Equal(t, "no ticker window covers FB on 2022-03-01", msg.GetError())
+			var bars, mapped int
+			require.NoError(t, pool.QueryRow(context.Background(),
+				`SELECT count(*) FROM ohlc WHERE provider = $1`, provider).Scan(&bars))
+			require.NoError(t, pool.QueryRow(context.Background(),
+				`SELECT count(*) FROM provider_symbol WHERE provider = $1`, provider).Scan(&mapped))
+			require.Zero(t, bars)
+			require.Zero(t, mapped)
 		})
 	}
 }

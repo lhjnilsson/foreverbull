@@ -42,10 +42,11 @@ func (test *OHLCTests) SetupTest() {
 	err = assetStorage.Store(context.TODO(), test.asset.Symbol, test.asset.Name)
 	test.Require().NoError(err)
 
-	_, err = test.conn.Exec(context.TODO(), "DROP TABLE IF EXISTS ohlc;")
+	_, err = test.conn.Exec(context.TODO(), "DROP VIEW IF EXISTS instrument_ohlc; DROP TABLE IF EXISTS ohlc;")
 	test.Require().NoError(err)
 	_, err = test.conn.Exec(context.TODO(), repository.OHLCTable)
 	test.Require().NoError(err)
+	test.Require().NoError(repository.MigrateProviderSymbol(context.TODO(), test.conn))
 	test.ohlcStorage = repository.OHLC{Conn: test.conn}
 }
 
@@ -162,7 +163,7 @@ func (test *OHLCTests) TestMinMaxNothingStored() {
 
 func (test *OHLCTests) TestYahooReadReturnsOnlyYahooClose() {
 	ctx := context.Background()
-	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	_, err := test.conn.Exec(ctx, `DROP VIEW IF EXISTS instrument_ohlc; DROP TABLE ohlc`)
 	test.Require().NoError(err)
 	_, err = test.conn.Exec(ctx, `
 		CREATE TABLE ohlc (
@@ -232,7 +233,7 @@ func (test *OHLCTests) TestInsertWithoutProviderFails() {
 
 func (test *OHLCTests) TestMigrateDropsSymbolTimeUC() {
 	ctx := context.Background()
-	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	_, err := test.conn.Exec(ctx, `DROP VIEW IF EXISTS instrument_ohlc; DROP TABLE ohlc`)
 	test.Require().NoError(err)
 	_, err = test.conn.Exec(ctx, `
 		CREATE TABLE ohlc (
@@ -305,7 +306,7 @@ func (test *OHLCTests) TestBarsRejectInvalidRows() {
 
 func (test *OHLCTests) TestMigrateOHLCBarsUpgradesOldTable() {
 	ctx := context.Background()
-	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	_, err := test.conn.Exec(ctx, `DROP VIEW IF EXISTS instrument_ohlc; DROP TABLE ohlc`)
 	test.Require().NoError(err)
 	_, err = test.conn.Exec(ctx, `
 		CREATE TABLE ohlc (
@@ -340,7 +341,7 @@ func (test *OHLCTests) TestMigrateOHLCBarsUpgradesOldTable() {
 
 func (test *OHLCTests) TestMigrateOHLCBarsLeavesViolatingRows() {
 	ctx := context.Background()
-	_, err := test.conn.Exec(ctx, `DROP TABLE ohlc`)
+	_, err := test.conn.Exec(ctx, `DROP VIEW IF EXISTS instrument_ohlc; DROP TABLE ohlc`)
 	test.Require().NoError(err)
 	_, err = test.conn.Exec(ctx, `
 		CREATE TABLE ohlc (
@@ -566,6 +567,11 @@ func (test *OHLCTests) TestListResolvedFollowsTickerAliases() {
 		($1, 'FB', '2021-07-01', '2021-10-31'),
 		($1, 'META', '2021-10-31', NULL)`, "US30303M1027")
 	test.Require().NoError(err)
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO provider_symbol (instrument_id, provider, symbol, from_date, to_date, evidence) VALUES
+		($1, 'yahoo', 'FB', '2021-07-01', '2021-10-31', 'download'),
+		($1, 'yahoo', 'META', '2021-10-31', NULL, 'download')`, "US30303M1027")
+	test.Require().NoError(err)
 
 	oct := time.Date(2021, 10, 1, 21, 0, 0, 0, time.UTC)
 	nov := time.Date(2021, 11, 1, 21, 0, 0, 0, time.UTC)
@@ -625,6 +631,52 @@ func (test *OHLCTests) TestListResolvedRefusesAnAmbiguousTicker() {
 	test.Require().ErrorIs(err, repository.ErrAmbiguousSymbol)
 	test.Require().ErrorContains(err, "symbol FB maps to 2 instruments at 2021-10-15")
 	test.NotContains(err.Error(), "postgres://")
+}
+
+func (test *OHLCTests) TestListResolvedFailsWhenTwoInstrumentsHoldTheTicker() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: test.conn}
+	_, err := instruments.Store(ctx, "US30303M1027", "Meta")
+	test.Require().NoError(err)
+	_, err = instruments.Store(ctx, "US0000000002", "Next")
+	test.Require().NoError(err)
+	assets := repository.Asset{Conn: test.conn}
+	test.Require().NoError(assets.Store(ctx, "FB", "Facebook"))
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		('US30303M1027', 'FB', '2012-05-18', '2022-06-09'),
+		('US0000000002', 'FB', '2020-01-01', NULL)`)
+	test.Require().NoError(err)
+	asOf := time.Date(2021, 10, 15, 0, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "FB", asOf, 1, 1, 1, 10, 1))
+
+	bars, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{"FB"}, asOf, 10)
+	test.Require().ErrorIs(err, repository.ErrAmbiguousSymbol)
+	test.Require().EqualError(err, "symbol FB maps to 2 instruments at 2021-10-15: symbol maps to more than one instrument")
+	test.Nil(bars)
+}
+
+func (test *OHLCTests) TestListResolvedReadsNothingInTheGapBetweenHolders() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: test.conn}
+	_, err := instruments.Store(ctx, "US30303M1027", "Meta")
+	test.Require().NoError(err)
+	_, err = instruments.Store(ctx, "US0000000002", "Next")
+	test.Require().NoError(err)
+	assets := repository.Asset{Conn: test.conn}
+	test.Require().NoError(assets.Store(ctx, "FB", "Facebook"))
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		('US30303M1027', 'FB', '2021-07-01', '2021-10-31'),
+		('US0000000002', 'FB', '2022-06-01', NULL)`)
+	test.Require().NoError(err)
+	gap := time.Date(2022, 3, 1, 0, 0, 0, 0, time.UTC)
+	test.Require().NoError(test.ohlcStorage.Store(ctx, "yahoo", "FB", gap, 1, 1, 1, 10, 1))
+
+	asOf := time.Date(2022, 3, 15, 21, 0, 0, 0, time.UTC)
+	bars, err := test.ohlcStorage.ListResolved(ctx, "yahoo", []string{"FB"}, asOf, 10)
+	test.Require().NoError(err)
+	test.Empty(bars)
 }
 
 func (test *OHLCTests) TestListRejectsBadInput() {

@@ -58,10 +58,14 @@ class AliasSpec:
 
 @dataclass(frozen=True)
 class InstrumentGroup:
-    """One Zipline sid. FB then META is one group; the final drop sets member_to."""
+    """One Zipline sid. FB then META is one group; the final drop sets member_to.
+
+    instrument_id is empty for a ticker with no ISIN, which keeps its own series.
+    """
 
     aliases: tuple[AliasSpec, ...]
     member_to: date | None = None
+    instrument_id: str = ""
 
 
 def group_label(group: InstrumentGroup) -> str:
@@ -203,7 +207,18 @@ def group_symbols_by_instrument(
         if isin in seen_isins:
             continue
         seen_isins.add(isin)
-        groups.append(InstrumentGroup(aliases=tuple(by_isin[isin]), member_to=final_drop(drops[isin])))
+        instrument_id = isin
+        if "instrument_id" in aliases.columns:
+            ids = aliases.loc[aliases["isin"].astype(str) == isin, "instrument_id"]
+            if len(ids):
+                instrument_id = str(ids.iloc[0])
+        groups.append(
+            InstrumentGroup(
+                aliases=tuple(by_isin[isin]),
+                member_to=final_drop(drops[isin]),
+                instrument_id=instrument_id,
+            )
+        )
     return groups
 
 
@@ -273,9 +288,113 @@ def alias_windows(aliases: tuple[AliasSpec, ...], from_date: date, to_date: date
     return windows
 
 
+class DuplicateDay(PlainSentence):
+    """A provider sent two prices for one ticker on one day."""
+
+
+def repeated_price_day(frame: pd.DataFrame, symbol: str) -> None:
+    """Fail when one ticker has two rows on one day. Neither row is kept."""
+    if frame.empty or not frame.index.has_duplicates:
+        return
+    duplicated = frame.index[frame.index.duplicated()].to_numpy()
+    day = cast(date, pd.Timestamp(str(duplicated[0])).date())
+    raise DuplicateDay(f"{symbol} has two prices on {day.isoformat()}")
+
+
+# A sid that owns an old ticker after its window. It has no bars, so a
+# lookup of that ticker after the window does not return the continuing sid.
+# Zipline extends the last owner of a symbol to the end of time.
+_EXPIRED_SID = 2**31 - 1
+
+
+def _stamp(value: object) -> pd.Timestamp:
+    return cast(pd.Timestamp, pd.Timestamp(str(value)))
+
+
+def _ranges_touch(start: pd.Timestamp, end: pd.Timestamp, other_start: pd.Timestamp, other_end: pd.Timestamp) -> bool:
+    """Zipline treats two symbol rows as overlapping when each end reaches the other's start."""
+    return bool(end >= other_start and other_end >= start)
+
+
+def close_expired_tickers(metadata: pd.DataFrame) -> pd.DataFrame:
+    """Give each old ticker a later owner so lookup after its window misses the sid.
+
+    A real owner that already holds the ticker that day is the later owner.
+    The placeholder is not written over that owner. A placeholder that would
+    still touch a real owner fails the ingest.
+    """
+    if metadata.empty or "sid" not in metadata.columns:
+        return metadata
+    extra: list[dict[str, object]] = []
+    for sid, group in metadata.groupby("sid"):
+        if int(str(sid)) == _EXPIRED_SID:
+            continue
+        ordered = group.sort_values("end_date")
+        last_end = _stamp(ordered.iloc[-1]["end_date"])
+        for _, row in ordered.iterrows():
+            end = _stamp(row["end_date"])
+            if end >= last_end:
+                continue
+            symbol = str(row["symbol"])
+            start = _stamp(end + pd.Timedelta(days=1))
+            owners = metadata.loc[(metadata["symbol"] == symbol) & (metadata["sid"] != sid)]
+            covered = False
+            next_start: pd.Timestamp | None = None
+            for _, owner in owners.iterrows():
+                owner_start = _stamp(owner["start_date"])
+                owner_end = _stamp(owner["end_date"])
+                if owner_start <= start <= owner_end:
+                    covered = True
+                    break
+                if owner_start > start and (next_start is None or owner_start < next_start):
+                    next_start = owner_start
+            if covered:
+                continue
+            placeholder_end = start
+            if next_start is not None:
+                placeholder_end = _stamp(pd.Timestamp(int(next_start.value) - 1))
+            for _, owner in owners.iterrows():
+                if _ranges_touch(start, placeholder_end, _stamp(owner["start_date"]), _stamp(owner["end_date"])):
+                    raise PlainSentence(
+                        f"{symbol} after {end.date().isoformat()} belongs to another company "
+                        "and also to the expired-ticker placeholder. The bundle wasn't written."
+                    )
+            extra.append(
+                {
+                    "sid": _EXPIRED_SID,
+                    "start_date": start,
+                    "end_date": placeholder_end,
+                    "auto_close_date": placeholder_end,
+                    "symbol": symbol,
+                    "exchange": row["exchange"],
+                }
+            )
+    if not extra:
+        return metadata
+    return pd.concat([metadata, pd.DataFrame(extra)], ignore_index=True)
+
+
 def _in_window(frame: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
     days = frame.index.date  # type: ignore[attr-defined]
     return cast(pd.DataFrame, frame[(days >= start) & (days <= end)])
+
+
+def bars_outside_windows(frame: pd.DataFrame, windows: list[tuple[AliasSpec, date, date]]) -> list[date]:
+    """Dates in frame that fall in none of windows. windows are inclusive."""
+    if frame.empty:
+        return []
+    outside: list[date] = []
+    seen: set[date] = set()
+    for raw in frame.index:
+        day = cast(date, pd.Timestamp(str(raw)).date())
+        if day in seen:
+            continue
+        seen.add(day)
+        if any(start <= day <= end for _, start, end in windows):
+            continue
+        outside.append(day)
+    outside.sort()
+    return outside
 
 
 def resolve_group_bars(
@@ -286,30 +405,47 @@ def resolve_group_bars(
 ) -> tuple[pd.DataFrame | None, list[tuple[str, pd.Timestamp, pd.Timestamp]]]:
     """Bars and symbol mappings of one sid, alias by alias.
 
-    Inside an alias's dates the bars stored under that ticker win. A
-    session it has no bar for takes the bar another ticker of the ISIN
-    has: Yahoo serves FB's history only under META. Each ticker maps to
-    the sid from its first to its last bar inside its own dates, so a
-    lookup on a date finds the ticker the universe lists on it.
+    One instrument is one series. A session another ticker also stored is
+    not filled in. Each ticker's written mapping is the bars inside its
+    asset_symbol dates. A lookup after that written end does not return
+    this sid: the next day is owned by a sid that has no bars.
     """
-    pieces: list[pd.DataFrame] = []
     mapping_rows: list[tuple[str, pd.Timestamp, pd.Timestamp]] = []
+    instrument = frames.get("__instrument__")
+    if instrument is not None:
+        combined = cast(pd.DataFrame, instrument.sort_index())
+        repeated_price_day(combined, group.aliases[-1].symbol)
+        for alias, start, end in alias_windows(group.aliases, from_date, to_date):
+            bars = _in_window(combined, start, end)
+            if len(bars) == 0:
+                continue
+            mapping_rows.append((alias.symbol, _index_timestamp(bars.index, 0), _index_timestamp(bars.index, -1)))
+        if len(combined) == 0:
+            return None, mapping_rows
+        # The series is the mapped bars. A bar in none of the alias windows,
+        # including the first alias's reach back to the backtest start, is
+        # not a price of this company. Name every such day and write nothing.
+        windows = alias_windows(group.aliases, from_date, to_date)
+        outside = bars_outside_windows(combined, windows)
+        if outside:
+            latest = max(group.aliases, key=lambda alias: alias.from_date or date.min).symbol
+            days = ", ".join(day.isoformat() for day in outside)
+            noun = "a price" if len(outside) == 1 else "prices"
+            raise PlainSentence(f"{latest} has {noun} on {days} outside its ticker windows")
+        return combined, mapping_rows
+    pieces: list[pd.DataFrame] = []
     for alias, start, end in alias_windows(group.aliases, from_date, to_date):
         bars = _in_window(frames[alias.symbol], start, end)
-        for other in group.aliases:
-            if other.symbol == alias.symbol:
-                continue
-            fill = _in_window(frames[other.symbol], start, end)
-            bars = pd.concat([bars, fill[~fill.index.isin(bars.index)]])
         if len(bars) == 0:
             continue
         bars = cast(pd.DataFrame, bars.sort_index())
+        repeated_price_day(bars, alias.symbol)
         pieces.append(bars)
         mapping_rows.append((alias.symbol, _index_timestamp(bars.index, 0), _index_timestamp(bars.index, -1)))
     if not pieces:
         return None, mapping_rows
     combined = pd.concat(pieces).sort_index()
-    combined = combined[~combined.index.duplicated(keep="first")]
+    repeated_price_day(combined, group.aliases[-1].symbol)
     if not isinstance(combined, pd.DataFrame):
         combined = pd.DataFrame(combined)
     return combined, mapping_rows
@@ -589,6 +725,58 @@ def fetched_span_problems(
     return problems
 
 
+def overlapping_holders(aliases: pd.DataFrame | None, start: date, end: date) -> str | None:
+    """A ticker two instruments both hold on a day of the backtest."""
+    if aliases is None or aliases.empty:
+        return None
+    rows = list(cast(Iterable[Any], aliases.itertuples(index=False)))
+    for index, row in enumerate(rows):
+        for other in rows[index + 1 :]:
+            if str(row.symbol) != str(other.symbol) or str(row.isin) == str(other.isin):
+                continue
+            if _ranges_overlap(row, other, start, end):
+                return str(row.symbol)
+    return None
+
+
+def _ranges_overlap(row, other, start: date, end: date) -> bool:
+    def window(item) -> tuple[date, date]:
+        opened = _as_date(getattr(item, "from_date", None)) or start
+        closed = _as_date(getattr(item, "to_date", None))
+        last = end if closed is None else closed - timedelta(days=1)
+        return max(opened, start), min(last, end)
+
+    left_start, left_end = window(row)
+    right_start, right_end = window(other)
+    return left_start <= right_end and right_start <= left_end
+
+
+def conflicting_symbol(
+    groups: list[InstrumentGroup], group: InstrumentGroup, from_date: date, to_date: date
+) -> str | None:
+    """A ticker of group that another instrument also holds inside the window."""
+    if not group.instrument_id:
+        return None
+    for alias, start, end in alias_windows(group.aliases, from_date, to_date):
+        for other in groups:
+            if not other.instrument_id or other.instrument_id == group.instrument_id:
+                continue
+            for other_alias, other_start, other_end in alias_windows(other.aliases, from_date, to_date):
+                if other_alias.symbol != alias.symbol:
+                    continue
+                if start <= other_end and other_start <= end:
+                    return alias.symbol
+    return None
+
+
+def symbol_held_line(backtest: str, symbol: str) -> str:
+    return (
+        f"Couldn't load data for backtest '{backtest}': {symbol} belongs to another company "
+        "in this window. The backtest wasn't saved. "
+        "Remove one of the companies, then run `fbull backtest create` again."
+    )
+
+
 def ticker_on_day(group: InstrumentGroup, from_date: date, to_date: date, day: pd.Timestamp) -> str:
     """The ticker of the group whose dates hold day, else the last one."""
     windows = alias_windows(group.aliases, from_date, to_date)
@@ -635,6 +823,51 @@ class DatabaseEngine:
                 raise KeyError("DATABASE_URL environment variable not set")
             self._engine = get_engine(database_url)
         self.provider = ohlc_provider()
+
+    def get_instrument_bars(self, instrument_id: str, from_date, to_date) -> pd.DataFrame:
+        """Mapped bars of one instrument, both dates included."""
+        query = text(
+            """SELECT open, high, low, close, volume, time FROM instrument_ohlc
+            WHERE instrument_id = :instrument_id AND provider = :provider
+              AND time >= :from_date AND time < :after_to_date
+            ORDER BY time asc"""
+        )
+        return read_sql_query(
+            query,
+            self._engine,
+            params={
+                "instrument_id": instrument_id,
+                "provider": self.provider,
+                "from_date": _as_date(from_date),
+                "after_to_date": cast(date, _as_date(to_date)) + timedelta(days=1),
+            },
+        )
+
+    def symbol_holder(self, symbol: str, start: date, end: date, instrument_id: str) -> str | None:
+        """Another instrument that holds symbol on a day of [start, end]."""
+        query = text(
+            """SELECT i.id
+                 FROM asset_symbol s
+                 JOIN instrument i ON i.isin = s.isin
+                WHERE s.symbol = :symbol
+                  AND i.id <> :instrument_id
+                  AND daterange(s.from_date, s.to_date, '[)')
+                      && daterange(:start, :stop, '[)')
+                LIMIT 1"""
+        )
+        frame = read_sql_query(
+            query,
+            self._engine,
+            params={
+                "symbol": symbol,
+                "instrument_id": instrument_id,
+                "start": start,
+                "stop": end + timedelta(days=1),
+            },
+        )
+        if frame.empty:
+            return None
+        return str(frame.iloc[0, 0])
 
     def get_data(self, symbol, from_date, to_date):
         """Bars stored on any UTC day from from_date to to_date, both included.
@@ -784,12 +1017,17 @@ class SQLIngester:
         if self._aliases is not None:
             return self._aliases
         try:
-            query = f"""SELECT s.isin, s.symbol, s.from_date, s.to_date, m.to_date AS member_to
+            query = f"""SELECT i.id AS instrument_id, s.isin, s.symbol, s.from_date, s.to_date,
+                   m.to_date AS member_to
             FROM universe_member m
+            JOIN instrument i ON i.isin = m.isin
             JOIN asset_symbol s ON s.isin = m.isin
             WHERE m.backtest_name = '{self.backtest.name}'
             ORDER BY s.isin, s.from_date"""
-            return read_sql_query(query, self.engine._engine)
+            frame = read_sql_query(query, self.engine._engine)
+            if frame is not None and not frame.empty:
+                return frame
+            return self._symbol_list_aliases()
         except SQLAlchemyError as exc:
             # The cause can quote the database URL, so it is logged redacted
             # and kept out of the message and the exception chain.
@@ -799,6 +1037,39 @@ class SQLIngester:
                 describe_exception(exc),
             )
             raise PlainSentence(ticker_history_line(self.backtest.name)) from None
+
+    def _symbol_list_aliases(self) -> pd.DataFrame:
+        """asset_symbol of a symbol-list backtest, which has no members."""
+        symbols = ingest_symbols(self.backtest)
+        if not symbols:
+            return pd.DataFrame()
+        query = text(
+            """SELECT i.id AS instrument_id, s.isin, s.symbol, s.from_date, s.to_date,
+                      NULL::date AS member_to
+                 FROM asset_symbol s
+                 JOIN instrument i ON i.isin = s.isin
+                WHERE s.isin IN (SELECT isin FROM asset_symbol WHERE symbol IN :symbols)
+                ORDER BY s.isin, s.from_date"""
+        ).bindparams(bindparam("symbols", expanding=True))
+        return read_sql_query(query, self.engine._engine, params={"symbols": symbols})
+
+    def _group_frames(self, group: InstrumentGroup, from_date: date, to_date: date) -> dict[str, pd.DataFrame]:
+        if group.instrument_id and hasattr(self.engine, "get_instrument_bars"):
+            data = self.engine.get_instrument_bars(group.instrument_id, from_date, to_date)
+            data["time"] = session_labels(data["time"])
+            data.rename(columns={"time": "Date"}, inplace=True, copy=False)
+            data.set_index("Date", inplace=True)
+            return {"__instrument__": data}
+        return {
+            symbol: self._bars(symbol, from_date, to_date)
+            for symbol in dict.fromkeys(alias.symbol for alias in group.aliases)
+        }
+
+    def _stored_conflict(self, group: InstrumentGroup, from_date: date, to_date: date) -> str | None:
+        for alias, start, end in alias_windows(group.aliases, from_date, to_date):
+            if self.engine.symbol_holder(alias.symbol, start, end, group.instrument_id):
+                return alias.symbol
+        return None
 
     def load_events(self) -> pd.DataFrame:
         """Confirmed listings and delistings create stored for this backtest.
@@ -844,6 +1115,10 @@ class SQLIngester:
         from_date = pb_utils.from_proto_date_to_pydate(self.backtest.periods[0].start_date)
         to_date = pb_utils.from_proto_date_to_pydate(self.backtest.periods[-1].end_date)
         groups = self.ingest_groups()
+        alias_rows = self._aliases if self._aliases is not None else self.load_aliases()
+        held = overlapping_holders(alias_rows, from_date, to_date)
+        if held is not None:
+            raise PlainSentence(symbol_held_line(self.backtest.name, held))
         calendar = calendar if calendar is not None else get_calendar("XNYS")
         sessions = calendar.sessions_in_range(from_date, to_date)
 
@@ -857,14 +1132,16 @@ class SQLIngester:
         empty: list[InstrumentGroup] = []
         with maybe_show_progress(groups, show_progress, label="Ingesting from SQL"):
             for group in groups:
-                frames = {
-                    symbol: self._bars(symbol, from_date, to_date)
-                    for symbol in dict.fromkeys(alias.symbol for alias in group.aliases)
-                }
+                clash = conflicting_symbol(groups, group, from_date, to_date)
+                if clash is None and hasattr(self.engine, "symbol_holder") and group.instrument_id:
+                    clash = self._stored_conflict(group, from_date, to_date)
+                if clash is not None:
+                    raise PlainSentence(symbol_held_line(self.backtest.name, clash))
+                frames = self._group_frames(group, from_date, to_date)
                 # Unpriced rows are taken out of what can be written, but the
                 # stored frames still bound the span, so a bad first or last
-                # row is named. Another ticker of the ISIN can still fill a
-                # session it does have a price for.
+                # row is named. The written series is not filled from another
+                # ticker.
                 priced = {symbol: without_unpriced(frame) for symbol, frame in frames.items()}
                 combined, mapping_rows = resolve_group_bars(group, priced, from_date, to_date)
                 missing = sessions_missing_a_price(list(frames.values()), combined, sessions)
@@ -916,6 +1193,7 @@ class SQLIngester:
                     }
                 )
                 self._df_metadata = pd.concat([self._df_metadata, asset_row], ignore_index=True)
+        self._df_metadata = close_expired_tickers(self._df_metadata)
 
     def bundle_dividends(
         self,

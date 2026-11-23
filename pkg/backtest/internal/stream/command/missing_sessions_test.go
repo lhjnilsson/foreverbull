@@ -111,6 +111,7 @@ func useEngine(msg *stream.MockMessage, ziplineEngine engine.Engine) {
 // rebuilds the backtest tables, and the finance module owns this one.
 func (test *BacktestCommandTest) resetBars() {
 	_, err := test.db.Exec(context.Background(), `
+		DROP VIEW IF EXISTS instrument_ohlc;
 		DROP TABLE IF EXISTS ohlc;
 		DROP TABLE IF EXISTS asset;
 		CREATE TABLE asset (symbol text primary key, name text);
@@ -122,6 +123,7 @@ func (test *BacktestCommandTest) resetBars() {
 			provider text NOT NULL,
 			UNIQUE (provider, symbol, time));`)
 	test.Require().NoError(err)
+	test.Require().NoError(repository.MigrateProviderSymbol(context.Background(), test.db))
 }
 
 // storeBars stores a yahoo bar for symbol on every session from first to
@@ -595,6 +597,18 @@ func (test *BacktestCommandTest) TestMissingSessionsWithNoCommonPeriodOfferRemov
 	test.requireNothingSaved()
 }
 
+func (test *BacktestCommandTest) mapSymbol(instrumentID, provider, symbol, from, to string) {
+	var end any
+	if to != "" {
+		end = to
+	}
+	_, err := test.db.Exec(context.TODO(), `
+		INSERT INTO provider_symbol (instrument_id, provider, symbol, from_date, to_date, evidence)
+		VALUES ($1, $2, $3, $4::date, $5::date, 'download')`,
+		instrumentID, provider, symbol, from, end)
+	test.Require().NoError(err)
+}
+
 // fbIsMeta records FB and META as one instrument's tickers.
 func (test *BacktestCommandTest) fbIsMeta() {
 	_, err := test.db.Exec(context.TODO(), `
@@ -623,6 +637,7 @@ func (test *BacktestCommandTest) TestMissingSessionsNameAnInstrumentWithNoBarsOn
 func (test *BacktestCommandTest) TestMissingSessionsReadEveryTickerOfAnInstrument() {
 	test.createQuarter("FB")
 	test.fbIsMeta()
+	test.mapSymbol("meta", "yahoo", "META", "2012-05-18", "")
 	test.storeBars("META", "2024-01-01", "2024-03-31")
 	_, err := test.downloadQuarter()
 	test.Require().NoError(err)
@@ -886,6 +901,7 @@ func (test *BacktestCommandTest) TestMissingSessionsCountTheLatestTickersBarsBef
 			('US30303M1027', 'FB', '2012-05-18', '2024-02-01'),
 			('US30303M1027', 'META', '2024-02-01', NULL);`)
 	test.Require().NoError(err)
+	test.mapSymbol("m", "yahoo", "META", "2012-05-18", "")
 	test.storeBars("META", "2024-01-01", "2024-03-31")
 
 	_, err = test.downloadQuarter()
@@ -904,6 +920,7 @@ func (test *BacktestCommandTest) TestMissingSessionsBeforeTheFirstTickerWindowAr
 			('US30303M1027', 'FB', '2024-02-01', '2024-03-01'),
 			('US30303M1027', 'META', '2024-03-01', NULL);`)
 	test.Require().NoError(err)
+	test.mapSymbol("meta", "yahoo", "META", "2024-02-01", "")
 	test.storeBars("META", "2024-01-01", "2024-03-31")
 	test.storeBars("FB", "2024-01-01", "2024-01-31")
 
@@ -925,6 +942,7 @@ func (test *BacktestCommandTest) TestMissingSessionsAfterTheLastTickerWindowAreN
 			('US30303M1027', 'FB', '2024-01-02', '2024-03-01'),
 			('US30303M1027', 'META', '2024-03-01', '2024-03-15');`)
 	test.Require().NoError(err)
+	test.mapSymbol("meta", "yahoo", "META", "2024-01-02", "2024-03-15")
 	test.storeBars("META", "2024-01-01", "2024-03-31")
 	test.storeBars("FB", "2024-03-15", "2024-03-31")
 

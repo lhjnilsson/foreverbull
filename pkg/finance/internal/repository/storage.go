@@ -24,6 +24,12 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to drop dividend table: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, `DROP VIEW IF EXISTS instrument_ohlc`); err != nil {
+		return fmt.Errorf("failed to drop instrument_ohlc view: %w", err)
+	}
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS provider_symbol`); err != nil {
+		return fmt.Errorf("failed to drop provider_symbol table: %w", err)
+	}
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS ohlc`); err != nil {
 		return fmt.Errorf("failed to drop ohlc table: %w", err)
 	}
@@ -138,5 +144,11 @@ func migrateFinanceSchema(ctx context.Context, conn *pgxpool.Pool) error {
 	if err := MigrateOHLCBars(ctx, conn); err != nil {
 		return err
 	}
-	return MigrateAssetSymbol(ctx, conn)
+	if err := MigrateAssetSymbol(ctx, conn); err != nil {
+		return err
+	}
+	if err := MigrateProviderSymbol(ctx, conn); err != nil {
+		return err
+	}
+	return BackfillProviderSymbols(ctx, conn)
 }

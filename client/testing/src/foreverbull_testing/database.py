@@ -47,6 +47,23 @@ class OHLC(Base):
     __table_args__ = (UniqueConstraint("provider", "symbol", "time", name="ohlc_provider_symbol_time_key"),)
 
 
+class Instrument(Base):
+    __tablename__ = "instrument"
+    id = Column(String(), primary_key=True)
+    isin = Column(String(), unique=True)
+    name = Column(String())
+
+
+class ProviderSymbol(Base):
+    __tablename__ = "provider_symbol"
+    instrument_id = Column(String(), primary_key=True)
+    provider = Column(String(), primary_key=True)
+    symbol = Column(String(), nullable=False)
+    from_date = Column(Date(), primary_key=True)
+    to_date = Column(Date())
+    evidence = Column(String(), nullable=False, server_default="download")
+
+
 class AssetSymbol(Base):
     """The broker's dated ticker alias (pkg/backtest/universe.md §4.3), without its constraints.
 
@@ -59,6 +76,7 @@ class AssetSymbol(Base):
     symbol = Column(String(), nullable=False)
     from_date = Column(Date(), primary_key=True)
     to_date = Column(Date())
+    evidence = Column(String(), nullable=False, server_default="snapshot")
 
 
 class UniverseMember(Base):
@@ -205,6 +223,19 @@ def prepare(database: engine.Engine) -> None:
         conn.execute(_OHLC_PROVIDER_COLUMN)
         conn.execute(_OHLC_PROVIDER_KEY)
         conn.execute(_SYMBOL_EVENT)
+        conn.execute(
+            text("ALTER TABLE asset_symbol ADD COLUMN IF NOT EXISTS evidence text NOT NULL DEFAULT 'snapshot'")
+        )
+        conn.execute(
+            text(
+                """CREATE OR REPLACE VIEW instrument_ohlc AS
+                SELECT p.instrument_id, o.provider, o.time, o.open, o.high, o.low, o.close, o.volume, o.symbol
+                  FROM provider_symbol p
+                  JOIN ohlc o ON o.provider = p.provider AND o.symbol = p.symbol
+                 WHERE (o.time AT TIME ZONE 'UTC')::date >= p.from_date
+                   AND (p.to_date IS NULL OR (o.time AT TIME ZONE 'UTC')::date < p.to_date)"""
+            )
+        )
 
 
 def _bars_provider(backtest: backtest_pb.Backtest) -> str:

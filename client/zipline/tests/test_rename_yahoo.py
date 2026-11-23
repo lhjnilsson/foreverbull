@@ -65,6 +65,10 @@ class YahooOHLC:
         days = frame["time"].dt.date
         return frame[(days >= from_date) & (days <= to_date)].copy()
 
+    def get_instrument_bars(self, instrument_id, from_date, to_date):
+        """Yahoo keeps the whole history under META. That is the one series."""
+        return self.get_data("META", from_date, to_date)
+
 
 ALIASES = pd.DataFrame(
     {
@@ -179,6 +183,8 @@ def test_yahoo_bars_cover_every_session_and_an_fb_order_fills(yahoo_bundle):
     before = pd.Timestamp("2021-10-01")
     sid = finder.lookup_symbol("META", as_of_date=pd.Timestamp("2021-11-30")).sid
     assert finder.lookup_symbol("FB", as_of_date=before).sid == sid, "FB before the rename is the META asset"
+    after = finder.lookup_symbol("FB", as_of_date=pd.Timestamp("2021-11-01"))
+    assert after.sid != sid, "FB after its window is not the META asset"
 
     meta = _yahoo_bars("META")
     closes = dict(zip(pd.DatetimeIndex(meta["time"].dt.date), meta["close"], strict=True))

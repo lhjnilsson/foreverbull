@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from foreverbull_zipline.data_bundles.dividends import no_dividends
+from foreverbull_zipline.data_bundles.foreverbull import _EXPIRED_SID
 from foreverbull_zipline.data_bundles.foreverbull import MissingSessionsError
 from foreverbull_zipline.data_bundles.foreverbull import SQLIngester
 from foreverbull_zipline.data_bundles.foreverbull import _as_date
@@ -234,9 +235,12 @@ def test_sql_ingester_one_sid_for_a_ticker_change():
     ingested = list(ingester.writer(False))
     metadata = pd.DataFrame(ingester._df_metadata)
 
-    sids = sorted(set(metadata["sid"].tolist()))
+    tradable = metadata.loc[metadata["sid"] != _EXPIRED_SID]
+    sids = sorted(set(tradable["sid"].tolist()))
     assert len(sids) == 3
-    meta_rows = metadata.loc[metadata["symbol"].isin(["FB", "META"])]
+    meta_rows = tradable.loc[tradable["symbol"].isin(["FB", "META"])]
+    expired = metadata.loc[metadata["sid"] == _EXPIRED_SID]
+    assert list(expired["symbol"]) == ["FB"]
     assert sorted(meta_rows["symbol"].tolist()) == ["FB", "META"]
     assert int(meta_rows["sid"].nunique()) == 1
     assert int(meta_rows["auto_close_date"].nunique()) == 1

@@ -498,12 +498,14 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataUsesLaterTickerWhenAskedH
 
 	aliases, err := instruments.ListAliases(ctx, metaISIN)
 	suite.Require().NoError(err)
-	symbols := make([]string, 0, len(aliases))
-	for _, a := range aliases {
-		symbols = append(symbols, a.Symbol)
-	}
-	suite.Contains(symbols, "META")
-	suite.Contains(symbols, "FB")
+	suite.Require().Len(aliases, 1)
+	suite.Equal("FB", aliases[0].Symbol, "the request end is not written into asset_symbol")
+	var mapped string
+	var to *time.Time
+	suite.Require().NoError(suite.pgx.QueryRow(ctx, `
+		SELECT symbol, to_date FROM provider_symbol WHERE instrument_id = $1`, metaISIN).Scan(&mapped, &to))
+	suite.Equal("META", mapped)
+	suite.Nil(to)
 }
 
 // The OK response for FB names the later ticker its bars were read under,
@@ -570,11 +572,10 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataSendsNoLaterTickerForTheA
 	suite.Nil(msg.GetLaterTicker())
 }
 
-// Another ticker of the ISIN already starts on the day META would be written
-// from, so the insert stores nothing. The read-back finds no META, so FB
-// fails instead of reporting a later ticker that isn't recorded, and no META
-// bars are stored.
-func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenTheLaterTickerIsNotStored() {
+// The day after the request end is already another ticker in asset_symbol.
+// The download still stores the bars under META and does not write that day
+// into asset_symbol.
+func (suite *MarketdataTest) TestDownloadHistoricalDataDoesNotWriteAssetSymbolFromTheRequestEnd() {
 	ctx := context.Background()
 	instruments := repository.Instruments{Conn: suite.pgx}
 	_, err := instruments.Store(ctx, metaISIN, "Facebook Inc")
@@ -585,18 +586,19 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataFailsWhenTheLaterTickerIs
 		       ($1, 'FBB', '2021-01-01'::date, NULL)`, metaISIN)
 	suite.Require().NoError(err)
 	suite.metaHasBars()
-	suite.marketdata.On("GetOHLC", mock.Anything, "FBB", mock.Anything, mock.Anything).Return(nil, yahooNotFound("FBB"))
+	suite.marketdata.On("GetOHLC", mock.Anything, "FBB", mock.Anything, mock.Anything).Return(nil, yahooNotFound("FBB")).Maybe()
 
 	rsp := suite.downloadFB(ctx)
 	msg, err := rsp.Recv()
 	suite.Require().NoError(err)
-	suite.requireOnlyText(msg, "FB", downloadFailedText("FB"))
-	suite.Nil(msg.GetLaterTicker())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus())
+	suite.Require().NotNil(msg.GetLaterTicker())
+	suite.Equal("META", msg.GetLaterTicker().GetSymbol())
 
 	var metaBars int
 	suite.Require().NoError(suite.pgx.QueryRow(ctx,
 		`SELECT count(*) FROM ohlc WHERE symbol='META'`).Scan(&metaBars))
-	suite.Zero(metaBars, "no META bars may be stored")
+	suite.Equal(1, metaBars)
 	aliases, err := instruments.ListAliases(ctx, metaISIN)
 	suite.Require().NoError(err)
 	for _, a := range aliases {
@@ -967,9 +969,8 @@ CREATE TRIGGER fail_meta_asset BEFORE INSERT ON asset FOR EACH ROW EXECUTE FUNCT
 	suite.requireNothingStoredForMeta(ctx)
 }
 
-// META has bars, but recording it as FB's later ticker fails. The symbol
-// fails, no bars are stored, and FB's alias is left open (the close and the
-// insert are one transaction).
+// META has bars, but recording the provider mapping fails. The symbol
+// fails and no bars are stored. asset_symbol is left as it was.
 func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterAliasFailureAndStoresNothing() {
 	ctx := context.Background()
 	suite.fbRenamedToMeta(ctx)
@@ -977,11 +978,11 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataReportsLaterAliasFailureA
 CREATE OR REPLACE FUNCTION fail_meta_alias() RETURNS trigger AS $$
 BEGIN
 	IF NEW.symbol = 'META' THEN
-		RAISE EXCEPTION 'postgres://admin:s3cr3t@db/prod: INSERT INTO asset_symbol refused';
+		RAISE EXCEPTION 'postgres://admin:s3cr3t@db/prod: INSERT INTO provider_symbol refused';
 	END IF;
 	RETURN NEW;
 END $$ LANGUAGE plpgsql;
-CREATE TRIGGER fail_meta_alias BEFORE INSERT ON asset_symbol FOR EACH ROW EXECUTE FUNCTION fail_meta_alias();`)
+CREATE TRIGGER fail_meta_alias BEFORE INSERT ON provider_symbol FOR EACH ROW EXECUTE FUNCTION fail_meta_alias();`)
 	suite.Require().NoError(err)
 
 	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(&pb.Asset{Symbol: "FB", Name: "Facebook"}, nil)

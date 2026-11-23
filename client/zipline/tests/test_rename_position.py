@@ -133,7 +133,14 @@ def test_held_position_survives_ticker_rename(rename_bundle):
     engine = Engine(socket_file_path="/tmp/foreverbull_zipline_rename_test.sock")
     engine.log = logging.getLogger(__name__)
 
-    sids = {bundle.asset_finder.lookup_symbol(symbol, as_of_date=None).sid for symbol in ("FB", "META")}
+    finder = bundle.asset_finder
+    before = pd.Timestamp("2021-10-01")
+    during_meta = pd.Timestamp("2021-11-01")
+    fb = finder.lookup_symbol("FB", as_of_date=before).sid
+    meta = finder.lookup_symbol("META", as_of_date=during_meta).sid
+    assert fb == meta
+    assert finder.lookup_symbol("FB", as_of_date=during_meta).sid != meta
+    sids = {fb, meta}
     assert len(sids) == 1, "FB and META are one Zipline asset"
     sid = sids.pop()
 
