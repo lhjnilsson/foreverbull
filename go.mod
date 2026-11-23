@@ -4,15 +4,15 @@ go 1.27.4
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
-	buf.build/go/protovalidate v1.4.0
+	buf.build/go/protovalidate v1.4.1
 	github.com/alpacahq/alpaca-trade-api-go/v3 v3.11.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/minio/minio-go/v7 v7.4.1
-	github.com/moby/moby/api v1.56.1
-	github.com/nats-io/nats.go v1.55.0
+	github.com/moby/moby/api v1.57.0
+	github.com/nats-io/nats.go v1.56.0
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.45.0
@@ -37,7 +37,7 @@ require (
 )
 
 require (
-	cel.dev/cel-go v0.32.0 // indirect
+	cel.dev/cel-go v0.33.2 // indirect
 	cel.dev/expr v0.25.3 // indirect
 	cloud.google.com/go v0.118.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
