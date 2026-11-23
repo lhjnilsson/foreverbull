@@ -103,7 +103,8 @@ def fb_database():
     """Postgres Testcontainer plus verify_or_populate for OHLC data.
 
     Not autouse. Request this only from tests that execute SQL. Reuses a named
-    container (`fbull_client_testing_pg`) when one is already running.
+    container (`fbull_client_testing_pg`) when one is already running. Yields
+    the SQLAlchemy engine and verify_or_populate. Does not set DATABASE_URL.
     """
     from docker.models.containers import Container
     from sqlalchemy import create_engine
@@ -135,8 +136,6 @@ def fb_database():
         postgres.start()
         engine = create_engine(postgres.get_connection_url())
     database.prepare(engine)
-
-    os.environ["DATABASE_URL"] = postgres.get_connection_url()
 
     def verify_or_populate(
         entity: backtest_pb.Backtest | None = None,

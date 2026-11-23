@@ -66,13 +66,17 @@ def logging_thread(q: Queue):
 
 @pytest.fixture(scope="session")
 def ensure_ingestion(backtest_entity, fb_database):
-    _, verify = fb_database
+    connection, verify = fb_database
     verify(backtest_entity)
-    bundles.register(backtest_entity.name, SQLIngester(backtest_entity), calendar_name="XNYS")
+    bundles.register(
+        backtest_entity.name,
+        SQLIngester(backtest_entity, connection=connection),
+        calendar_name="XNYS",
+    )
     try:
         bundles.load(backtest_entity.name, os.environ, None)
     except ValueError:
-        service = BacktestService()
+        service = BacktestService(connection=connection)
         service.ingest(engine_service_pb.IngestRequest(backtest=backtest_entity), cast(Any, None))
 
 

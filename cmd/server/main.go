@@ -40,9 +40,9 @@ const (
 func newPostgresPool() (*pgxpool.Pool, error) {
 	ctx := context.Background()
 
-	pool, err := pgxpool.New(ctx, environment.GetPostgresURL())
+	pool, err := openPostgresPool(ctx, environment.GetPostgresURL())
 	if err != nil {
-		return nil, fmt.Errorf("failed to create postgres pool from %s: %w", environment.PostgresURL, err)
+		return nil, err
 	}
 
 	if err := pingPostgres(ctx, pool, postgresPingAttempts, postgresRetryInterval); err != nil {
@@ -50,6 +50,17 @@ func newPostgresPool() (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
+	return pool, nil
+}
+
+// openPostgresPool parses dsn and opens a pool. A parse failure from pgx can
+// quote the whole DSN, password included, so the error names POSTGRES_URL
+// and does not include the driver text.
+func openPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create postgres pool from %s", environment.PostgresURL)
+	}
 	return pool, nil
 }
 

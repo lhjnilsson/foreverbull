@@ -74,8 +74,6 @@ open Postgres.
 - Changing Grafana; it already uses `GetExecution`
 - Auth / multi-tenant row filters (separate security work)
 - Reproducible backtest pins (separate issue)
-- Dropping the unused `foreverbull_worker` role and `WORKER_DATABASE_URL`
-  on the broker pod
 
 ## Checks
 

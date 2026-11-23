@@ -1,5 +1,3 @@
-import os
-
 from collections.abc import Generator
 from datetime import UTC
 
@@ -21,8 +19,11 @@ from foreverbull.pb.foreverbull.service.v1 import worker_pb
 
 
 class Broker:
-    def __init__(self, engine: engine_service_pb_grpc.EngineSessionClientSync):
+    def __init__(self, engine: engine_service_pb_grpc.EngineSessionClientSync, *, connection):
+        if connection is None:
+            raise RuntimeError("broker database connection is not set")
         self.engine = engine
+        self._connection = connection
         self._broker_port = 7878
         self._namespace_port = 7879
         self._worker_socket: pynng.Socket | None = None
@@ -112,7 +113,7 @@ class Broker:
             if self._backtest is None:
                 raise RuntimeError("Backtest not set")
             symbols = [a.symbol for period in self._backtest.periods for a in period.assets if a.enabled]
-            bars = _bars_from_database(symbols, rsp.portfolio)
+            bars = _bars_from_database(symbols, rsp.portfolio, self._connection)
             for symbol in symbols:
                 worker_request = worker_service_pb.WorkerRequest(
                     task="handle_data",
@@ -140,25 +141,22 @@ class Broker:
         return session_service_pb.StopServerResponse()
 
 
-def _bars_from_database(symbols: list[str], portfolio) -> list[marketdata_pb.OHLC]:
+def _bars_from_database(symbols: list[str], portfolio, connection) -> list[marketdata_pb.OHLC]:
     """Symbol-exact bars for the integration fake broker.
 
-    The client package does not import a database driver. This test helper
-    does, and only when DATABASE_URL is set.
+    The client package does not import a database driver. This helper does,
+    on the engine the caller passes in.
     """
-    url = os.getenv("DATABASE_URL")
-    if not url or not symbols or portfolio is None or portfolio.timestamp is None:
+    if connection is None:
+        raise RuntimeError("broker database connection is not set")
+    if not symbols or portfolio is None or portfolio.timestamp is None:
         return []
     from sqlalchemy import bindparam
-    from sqlalchemy import create_engine
     from sqlalchemy import text
 
     as_of = pb_utils.from_proto_timestamp(portfolio.timestamp)
     if as_of.tzinfo is not None:
         as_of = as_of.astimezone(UTC).replace(tzinfo=None)
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://") :]
-    engine = create_engine(url)
     statement = text(
         """
         SELECT symbol, time, open, high, low, close, volume
@@ -172,7 +170,7 @@ def _bars_from_database(symbols: list[str], portfolio) -> list[marketdata_pb.OHL
         ORDER BY symbol ASC, time ASC
         """
     ).bindparams(bindparam("symbols", expanding=True))
-    with engine.connect() as conn:
+    with connection.connect() as conn:
         rows = conn.execute(statement, {"symbols": symbols, "as_of": as_of})
         bars = []
         for row in rows:

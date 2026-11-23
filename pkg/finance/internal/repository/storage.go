@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/lhjnilsson/foreverbull/internal/auth"
 )
 
 func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
@@ -86,7 +84,7 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create trading_calendar table: %w", err)
 	}
 
-	return auth.EnsureWorkerRole(ctx, conn)
+	return nil
 }
 
 func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
@@ -130,7 +128,7 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create trading_calendar table: %w", err)
 	}
 
-	return auth.EnsureWorkerRole(ctx, conn)
+	return nil
 }
 
 func migrateFinanceSchema(ctx context.Context, conn *pgxpool.Pool) error {

@@ -218,8 +218,8 @@ func workerLabels(name string) map[string]string {
 }
 
 func serviceEnv(ohlcProvider string) []corev1.EnvVar {
-	// No database URL and no object-store keys. The worker reads bars through
-	// the execution configuration, as the reader role, and does not use MinIO.
+	// No database URL and no object-store keys. Bars arrive on the worker
+	// request. The worker does not use MinIO.
 	env := []corev1.EnvVar{
 		{Name: "BROKER_HOSTNAME", Value: environment.GetServerAddress()},
 		{Name: "BROKER_PORT", Value: environment.GetGRPCPort()},

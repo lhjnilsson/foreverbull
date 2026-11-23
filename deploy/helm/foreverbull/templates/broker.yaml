@@ -100,13 +100,6 @@ spec:
                 secretKeyRef:
                   name: foreverbull-nats
                   key: password
-            - name: WORKER_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: foreverbull-worker
-                  key: password
-            - name: WORKER_DATABASE_URL
-              value: "postgres://foreverbull_worker:$(WORKER_DB_PASSWORD)@postgres:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}"
             - name: MINIO_URL
               value: {{ printf "minio:%v" .Values.minio.port | quote }}
             - name: MINIO_ACCESS_KEY
