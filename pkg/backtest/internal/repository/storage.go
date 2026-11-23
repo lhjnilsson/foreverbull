@@ -18,6 +18,12 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return fmt.Errorf("failed to drop table universe_member: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, `DROP VIEW IF EXISTS instrument_ohlc;`); err != nil {
+		return fmt.Errorf("failed to drop view instrument_ohlc: %w", err)
+	}
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS provider_symbol;`); err != nil {
+		return fmt.Errorf("failed to drop table provider_symbol: %w", err)
+	}
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS asset_symbol;`); err != nil {
 		return fmt.Errorf("failed to drop table asset_symbol: %w", err)
 	}
@@ -120,6 +126,9 @@ func createIdentityTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create table asset_symbol: %w", err)
 	}
 	if err := MigrateAssetSymbol(ctx, conn); err != nil {
+		return err
+	}
+	if err := MigrateProviderSymbol(ctx, conn); err != nil {
 		return err
 	}
 	if _, err := conn.Exec(ctx, UniverseMemberTable); err != nil {

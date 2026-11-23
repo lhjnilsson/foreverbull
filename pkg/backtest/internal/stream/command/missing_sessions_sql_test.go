@@ -24,6 +24,7 @@ func TestSQLGapsMatchTheInMemoryCheck(t *testing.T) {
 	t.Cleanup(pool.Close)
 	require.NoError(t, repository.Recreate(ctx, pool))
 	_, err = pool.Exec(ctx, `
+		DROP VIEW IF EXISTS instrument_ohlc;
 		DROP TABLE IF EXISTS ohlc;
 		DROP TABLE IF EXISTS asset;
 		CREATE TABLE asset (symbol text primary key, name text);
@@ -35,6 +36,7 @@ func TestSQLGapsMatchTheInMemoryCheck(t *testing.T) {
 			provider text NOT NULL,
 			UNIQUE (provider, symbol, time));`)
 	require.NoError(t, err)
+	require.NoError(t, repository.MigrateProviderSymbol(ctx, pool))
 
 	// Checked sessions stop at the cap, 2024-03-28. 2024-04-01 is the next
 	// session and is not checked. 2024-03-29 is Good Friday, not a session.
@@ -56,7 +58,9 @@ func TestSQLGapsMatchTheInMemoryCheck(t *testing.T) {
 			('US30303M1027', 'META', '2024-03-26', NULL),
 			('XX0000000001', 'OLDX', '2010-01-04', '2020-01-02'),
 			('XX0000000001', 'NEWX', '2020-01-02', NULL),
-			('YY0000000001', 'OLDX', '2021-01-04', NULL);`)
+			('YY0000000001', 'OLDX', '2021-01-04', NULL);
+		INSERT INTO provider_symbol (instrument_id, provider, symbol, from_date, evidence)
+		VALUES ('meta', 'yahoo', 'META', '2024-03-25', 'download');`)
 	require.NoError(t, err)
 
 	bars := map[string][]string{
@@ -85,16 +89,14 @@ func TestSQLGapsMatchTheInMemoryCheck(t *testing.T) {
 	tickers, err := barDays.Tickers(ctx, stored)
 	require.NoError(t, err)
 	units, _ := checkUnits(order, tickers)
-	read := make([]repository.Ticker, 0)
 	names := make([]string, len(units))
 	for i, unit := range units {
 		names[i] = unit.name
-		read = append(read, unit.tickers...)
 	}
-
-	loaded, err := barDays.List(ctx, "yahoo", read, start, end)
+	windows := unitWindows(units)
+	loaded, err := barDays.ListWindows(ctx, "yahoo", windows, start, end)
 	require.NoError(t, err)
-	_, oracle := missingSessions(sessions, names, unitBars(units, loaded), nil, true)
+	_, oracle := missingSessions(sessions, names, loaded, nil, true)
 
 	found, err := barDays.Gaps(ctx, "yahoo", unitWindows(units), sessions)
 	require.NoError(t, err)

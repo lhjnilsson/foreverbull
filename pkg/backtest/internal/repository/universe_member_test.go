@@ -368,7 +368,7 @@ func (test *UniverseMemberTest) TestDeleteBacktestCascadesMembers() {
 // resetFinanceBars drops the bars an earlier test stored; Recreate only
 // rebuilds the backtest tables.
 func (test *UniverseMemberTest) resetFinanceBars() {
-	_, err := test.conn.Exec(context.Background(), `DROP TABLE IF EXISTS ohlc; DROP TABLE IF EXISTS asset`)
+	_, err := test.conn.Exec(context.Background(), `DROP VIEW IF EXISTS instrument_ohlc; DROP TABLE IF EXISTS ohlc; DROP TABLE IF EXISTS asset`)
 	test.Require().NoError(err)
 }
 
@@ -384,6 +384,7 @@ func (test *UniverseMemberTest) financeBars(provider, symbol string, times ...ti
 			provider text NOT NULL,
 			UNIQUE (provider, symbol, time));`)
 	test.Require().NoError(err)
+	test.Require().NoError(repository.MigrateProviderSymbol(ctx, test.conn))
 	_, err = test.conn.Exec(ctx, `INSERT INTO asset (symbol, name) VALUES ($1, $1) ON CONFLICT DO NOTHING`, symbol)
 	test.Require().NoError(err)
 	for _, at := range times {
@@ -418,6 +419,12 @@ func (test *UniverseMemberTest) TestLastBarsGivesEachAliasItsISINsLastBar() {
 	}
 
 	open := func(s string) time.Time { return test.date(s).Add(13*time.Hour + 30*time.Minute) }
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO provider_symbol (instrument_id, provider, symbol, from_date, evidence) VALUES
+		($1, 'yahoo', 'AAPL', '2026-01-01', 'migration'),
+		($2, 'yahoo', 'META', '2026-01-01', 'migration'),
+		($3, 'yahoo', 'MSFT', '2026-01-01', 'migration')`, aaplISIN, metaISIN, msftISIN)
+	test.Require().NoError(err)
 	test.financeBars("yahoo", "AAPL", open("2026-03-30"), open("2026-03-31"), open("2026-04-30"))
 	// Yahoo stores the whole history of the renamed ISIN under META.
 	test.financeBars("yahoo", "META", open("2026-01-05"), open("2026-04-29"))
@@ -494,6 +501,10 @@ func (test *UniverseMemberTest) TestPeriodLastBarsReadsASymbolListByISINAndOwnBa
 	test.financeBars("yahoo", "AAPL", open("2026-04-30"), open("2026-05-04"))
 	test.financeBars("yahoo", "ABC", open("2026-03-31"))
 	test.financeBars("stooq", "ABC", open("2026-04-20"))
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO provider_symbol (instrument_id, provider, symbol, from_date, evidence)
+		VALUES ($1, 'yahoo', 'META', '2026-01-01', 'migration')`, metaISIN)
+	test.Require().NoError(err)
 	// Yahoo stores the renamed ISIN under META. FB itself has no bars.
 	test.financeBars("yahoo", "META", open("2026-01-05"), open("2026-04-29"))
 	test.financeBars("yahoo", "SKIP", open("2026-04-30"))

@@ -398,6 +398,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	}
 
 	storeSymbol := asset.Symbol
+	ownerID := ""
 	// The provider may answer for another ticker than the one asked, such as
 	// a renamed company's current one (FB answered as META), and the bars are
 	// then fetched and stored under that ticker. It is named as a later
@@ -485,26 +486,43 @@ func (fs *MarketdataServer) downloadSymbol(
 		}
 		storeSymbol = fetched.symbol
 		ohlcs = fetched.bars
+		ownerID = fetched.instrumentID
 		// The client records this on the backtest and shows it, so the
 		// later ticker is never used without a word. No day is sent: the
 		// provider doesn't say when the ticker changed.
 		rsp.LaterTicker = &servicePb.DownloadHistoricalDataResponse_LaterTicker{Symbol: fetched.symbol}
 	}
 
-	// The same overlap and re-scale rule as ingest, in one locked transaction
-	// per symbol: a refused bar or a DB error stores none of them, and stored
-	// days after a split are re-scaled instead of left next to new ones. Only
-	// the refused-bar sentence goes to the client as is. The asset row above
-	// and a later ticker's asset and asset_symbol rows are written outside
-	// this transaction and stay when the bars roll back; a retry finds them
-	// and stores the bars again.
+	// The mapping is written in the sync transaction, after the bars. A
+	// refused sync commits neither. The asset row above and a later ticker's
+	// asset row stay when the bars roll back; a retry finds them and stores
+	// the bars again.
 	fetch := prefetchedBars(ctx, bars, storeSymbol, start, end, ohlcs)
-	if err := ohlcRepo.SyncSource(ctx, provider, storeSymbol, start, end, fetch, bars); err != nil {
+	if err := ohlcRepo.SyncSourceThen(ctx, provider, storeSymbol, start, end, fetch, bars,
+		func(ctx context.Context, tx pgx.Tx) error {
+			id := ownerID
+			if id == "" && !sameTicker(symbol, storeSymbol) {
+				instruments := repository.Instruments{Conn: tx}
+				inst, err := instruments.Resolve(ctx, symbol, start)
+				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					return err
+				}
+				if err == nil {
+					id = inst.ID
+				}
+			}
+			return fs.mapDownloadedBars(ctx, tx, id, symbol, provider, storeSymbol, ohlcs)
+		}); err != nil {
 		var blocked *marketdata.BlockedError
 		if errors.As(err, &blocked) {
 			return blocked
 		}
 		var invalid *repository.InvalidPriceError
+		var duplicate *repository.DuplicateDayError
+		var overlap *repository.ProviderOverlapError
+		var uncovered *repository.UncoveredBarsError
+		var overlapped *repository.MappingOverlapError
+		var held *repository.HeldByError
 		var stored *repository.StoreError
 		var status *marketdata.AlpacaBarsError
 		var dividendFetch *financeapi.DividendFetchError
@@ -519,7 +537,9 @@ func (fs *MarketdataServer) downloadSymbol(
 			// the transaction's idle timeout, so it is told as the provider's
 			// delay, not as a failure to store.
 			err = &marketdata.TimeoutError{Provider: provider, Symbol: symbol}
-		case errors.As(err, &invalid):
+		case errors.Is(err, repository.ErrAmbiguousSymbol):
+			err = ambiguousSymbolError(provider, symbol)
+		case errors.As(err, &invalid), errors.As(err, &duplicate), errors.As(err, &overlap), errors.As(err, &uncovered), errors.As(err, &overlapped), errors.As(err, &held):
 		case errors.Is(err, marketdata.ErrStooqExchange):
 			// The client's sentence, for an unsupported suffix or for
 			// errStooqInvalidTicker. Leave it.
@@ -712,21 +732,34 @@ func withinSpan(start time.Time, end *time.Time, from time.Time, to *time.Time) 
 	return to != nil && day(*to) <= day(*end)
 }
 
+// mapDownloadedBars writes one provider_symbol row per company and window
+// for the ticker the bars are stored under. The request start does not
+// choose the company: each bar's day does. A bar no window covers fails
+// the symbol, and the sync transaction stores nothing.
+func (fs *MarketdataServer) mapDownloadedBars(ctx context.Context, tx pgx.Tx, instrumentID, asked, provider, storeSymbol string, bars []*pb.OHLC) error {
+	if len(bars) == 0 {
+		return nil
+	}
+	return repository.MapDownloadedBars(ctx, tx, instrumentID, asked, provider, storeSymbol, bars)
+}
+
 type fetchedBars struct {
-	symbol string
-	bars   []*pb.OHLC
+	symbol       string
+	instrumentID string
+	bars         []*pb.OHLC
 }
 
 // fetchBarsViaLaterTicker loads bars under another ticker of the same instrument
 // when the asked ticker has none. Yahoo keeps a renamed company's history only
 // under the current ticker. Candidates come from asset_symbol, then from a
 // search by the instrument's identity. Bars are stored under the ticker that
-// returned them; asset_symbol gains that ticker when it was not stored yet.
+// returned them. provider_symbol records that ticker. This download does not
+// write asset_symbol.
 //
 // Only a no-bars answer (ErrNoBars or an empty slice) moves on to the next
-// candidate. A failed search, GetOHLC, GetAsset, asset store or alias write
-// returns its error and no bars, so the symbol fails instead of being
-// reported as having no prices.
+// candidate. A failed search, GetOHLC, GetAsset, or asset store returns its
+// error and no bars, so the symbol fails instead of being reported as having
+// no prices.
 func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 	ctx context.Context,
 	symbol string,
@@ -789,17 +822,10 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		if err := assetRepo.Store(ctx, a.Symbol, a.Name); err != nil {
 			return nil, fmt.Errorf("store asset for later ticker %s: %w", candidate, err)
 		}
-
-		var laterFrom time.Time
-		if end != nil {
-			laterFrom = end.AddDate(0, 0, 1)
-		} else {
-			laterFrom = time.Now().UTC().AddDate(0, 0, 1)
-		}
-		if err := instruments.EnsureLaterAlias(ctx, inst.ISIN, symbol, candidate, laterFrom); err != nil {
-			return nil, fmt.Errorf("record later ticker %s for %s: %w", candidate, inst.ISIN, err)
-		}
-		return &fetchedBars{symbol: candidate, bars: ohlcs}, nil
+		// Bars are stored under the ticker that answered. provider_symbol
+		// records that from the dates of the bars. asset_symbol is the
+		// market name and is not written from the request end.
+		return &fetchedBars{symbol: candidate, instrumentID: inst.ID, bars: ohlcs}, nil
 	}
 	return nil, noPriceDataError(symbol)
 }

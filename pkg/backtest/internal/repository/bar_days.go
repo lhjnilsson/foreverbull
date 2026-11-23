@@ -30,13 +30,14 @@ type SymbolBars struct {
 	Absent []time.Time
 }
 
-// UnitWindow is one ticker window of a named unit. Several windows share a
-// unit when an instrument's tickers are read together. A zero From or To
-// leaves that side open.
+// UnitWindow is one read of a named unit. InstrumentID set means the bars
+// come from instrument_ohlc. An empty InstrumentID reads ohlc for Symbol
+// inside [From, To). A zero From or To leaves that side open.
 type UnitWindow struct {
-	Unit     string
-	Symbol   string
-	From, To time.Time
+	Unit         string
+	Symbol       string
+	InstrumentID string
+	From, To     time.Time
 }
 
 // SessionGap is one unit's span and the checked sessions inside it that
@@ -46,11 +47,12 @@ type SessionGap struct {
 	Missing     []time.Time
 }
 
-// Ticker is a symbol whose bars are read only from From up to, not
-// including, To, both UTC dates. A zero From or To leaves that side open.
+// Ticker is one asset_symbol interval. InstrumentID is set when the symbol
+// belongs to exactly one instrument. Bars are read from instrument_ohlc.
 type Ticker struct {
-	Symbol   string
-	From, To time.Time
+	Symbol       string
+	InstrumentID string
+	From, To     time.Time
 }
 
 // Fixed queries, so no caller can put its own text into the SQL. Each
@@ -82,11 +84,7 @@ const (
 )
 
 // tickersQuery lists the tickers of the instrument each symbol belongs to,
-// oldest first, with the dates each was that instrument's ticker: a bar of
-// the instrument may be stored under any of them (universe.md §7.4). A
-// symbol held by more than one instrument is never part of a group, neither
-// as the symbol asked for, which then has no entry and is read alone, nor
-// as another ticker of an instrument. A NULL to_date means still in use.
+// oldest first. A symbol held by more than one instrument is not grouped.
 const tickersQuery = `
 	WITH owner AS (
 		SELECT symbol, min(isin) AS isin
@@ -94,26 +92,22 @@ const tickersQuery = `
 		 WHERE symbol = ANY($1)
 		 GROUP BY symbol
 		HAVING count(DISTINCT isin) = 1)
-	SELECT o.symbol, s.symbol, min(s.from_date) AS since,
+	SELECT o.symbol, i.id, s.symbol, min(s.from_date) AS since,
 	       CASE WHEN bool_or(s.to_date IS NULL) THEN NULL ELSE max(s.to_date) END
 	  FROM owner o
+	  JOIN instrument i ON i.isin = o.isin
 	  JOIN asset_symbol s ON s.isin = o.isin
 	 WHERE NOT EXISTS (
 		SELECT 1
 		  FROM asset_symbol x
 		 WHERE x.symbol = s.symbol
 		   AND x.isin <> s.isin)
-	 GROUP BY o.symbol, s.symbol
+	 GROUP BY o.symbol, i.id, s.symbol
 	 ORDER BY o.symbol, since, s.symbol`
 
-// Tickers returns, for each symbol that belongs to one instrument in
-// asset_symbol, that instrument's tickers held by no other instrument,
-// oldest first, each with the dates it was the instrument's ticker. The
-// symbol is one of them. The latest ticker also covers the instrument's
-// earlier dates, since a provider keeps a renamed instrument's history
-// under its current ticker (Yahoo keeps FB's under META); no other
-// instrument ever held it. A symbol with no row, or with rows for two
-// instruments, has no entry.
+// Tickers returns, for each symbol that belongs to one instrument, that
+// instrument's tickers held by no other instrument, oldest first. The latest
+// ticker does not cover earlier dates: bars come from instrument_ohlc.
 func (db *BarDays) Tickers(ctx context.Context, symbols []string) (map[string][]Ticker, error) {
 	rows, err := db.Conn.Query(ctx, tickersQuery, symbols)
 	if err != nil {
@@ -125,7 +119,7 @@ func (db *BarDays) Tickers(ctx context.Context, symbols []string) (map[string][]
 		var symbol string
 		var ticker Ticker
 		var to *time.Time
-		if err := rows.Scan(&symbol, &ticker.Symbol, &ticker.From, &to); err != nil {
+		if err := rows.Scan(&symbol, &ticker.InstrumentID, &ticker.Symbol, &ticker.From, &to); err != nil {
 			return nil, fmt.Errorf("failed to scan ticker: %w", err)
 		}
 		ticker.From = dateOnly(ticker.From)
@@ -136,9 +130,6 @@ func (db *BarDays) Tickers(ctx context.Context, symbols []string) (map[string][]
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to query tickers: %w", err)
-	}
-	for _, group := range tickers {
-		group[len(group)-1].From = group[0].From
 	}
 	return tickers, nil
 }
@@ -192,20 +183,32 @@ func (db *BarDays) List(ctx context.Context, provider string, tickers []Ticker, 
 // dateOnly(time.UTC()) in Go. A unit with no positive bar is not returned.
 const gapQuery = `
 WITH w AS (
-	SELECT unit, symbol,
+	SELECT unit, symbol, instrument_id,
 	       lo::timestamp AT TIME ZONE 'UTC' AS lo,
 	       hi::timestamp AT TIME ZONE 'UTC' AS hi
-	  FROM unnest($2::text[], $3::text[], $4::text[]::date[], $5::text[]::date[])
-	    AS t(unit, symbol, lo, hi)),
-positive AS (
-	SELECT DISTINCT w.unit,
-	       ((o.time AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::date AS day
+	  FROM unnest($2::text[], $3::text[], $7::text[], $4::text[]::date[], $5::text[]::date[])
+	    AS t(unit, symbol, instrument_id, lo, hi)),
+src AS (
+	SELECT w.unit, o.time, o.open, o.high, o.low, o.close
 	  FROM w
-	  JOIN ohlc o ON o.symbol = w.symbol
-	 WHERE o.provider = $1
+	  JOIN instrument_ohlc o ON o.instrument_id = w.instrument_id
+	 WHERE w.instrument_id <> ''
+	   AND o.provider = $1
 	   AND (w.lo IS NULL OR o.time >= w.lo)
 	   AND (w.hi IS NULL OR o.time < w.hi)
-	   AND o.open > 0 AND o.high > 0 AND o.low > 0 AND o.close > 0),
+	UNION ALL
+	SELECT w.unit, o.time, o.open, o.high, o.low, o.close
+	  FROM w
+	  JOIN ohlc o ON o.symbol = w.symbol
+	 WHERE w.instrument_id = ''
+	   AND o.provider = $1
+	   AND (w.lo IS NULL OR o.time >= w.lo)
+	   AND (w.hi IS NULL OR o.time < w.hi)),
+positive AS (
+	SELECT DISTINCT unit,
+	       ((time AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::date AS day
+	  FROM src
+	 WHERE open > 0 AND high > 0 AND low > 0 AND close > 0),
 span AS (
 	SELECT unit, min(day) AS first, max(day) AS last
 	  FROM positive
@@ -231,21 +234,12 @@ func (db *BarDays) Gaps(ctx context.Context, provider string, windows []UnitWind
 	if len(windows) == 0 {
 		return map[string]*SessionGap{}, nil
 	}
-	units := make([]string, len(windows))
-	symbols := make([]string, len(windows))
-	from := make([]*string, len(windows))
-	to := make([]*string, len(windows))
-	for i, window := range windows {
-		units[i] = window.Unit
-		symbols[i] = window.Symbol
-		from[i] = windowDate(window.From)
-		to[i] = windowDate(window.To)
-	}
+	units, symbols, ids, from, to := windowColumns(windows)
 	days := make([]string, len(sessions))
 	for i, session := range sessions {
 		days[i] = dateString(session)
 	}
-	rows, err := db.Conn.Query(ctx, gapQuery, provider, units, symbols, from, to, days)
+	rows, err := db.Conn.Query(ctx, gapQuery, provider, units, symbols, from, to, days, ids)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query bar gaps: %w", err)
 	}
@@ -273,6 +267,96 @@ func (db *BarDays) Gaps(ctx context.Context, provider string, windows []UnitWind
 	}
 	return gaps, nil
 }
+
+func windowColumns(windows []UnitWindow) (units, symbols, ids []string, from, to []*string) {
+	units = make([]string, len(windows))
+	symbols = make([]string, len(windows))
+	ids = make([]string, len(windows))
+	from = make([]*string, len(windows))
+	to = make([]*string, len(windows))
+	for i, window := range windows {
+		units[i] = window.Unit
+		symbols[i] = window.Symbol
+		ids[i] = window.InstrumentID
+		from[i] = windowDate(window.From)
+		to[i] = windowDate(window.To)
+	}
+	return units, symbols, ids, from, to
+}
+
+// ListWindows returns each window's span and the bar days from start to end.
+// The span is every positive bar in the window, not only the checked dates.
+// The map is keyed by Unit.
+func (db *BarDays) ListWindows(ctx context.Context, provider string, windows []UnitWindow, start, end time.Time) (map[string]*SymbolBars, error) {
+	if len(windows) == 0 {
+		return map[string]*SymbolBars{}, nil
+	}
+	units, symbols, ids, from, to := windowColumns(windows)
+	rows, err := db.Conn.Query(ctx, listWindowsQuery, provider, units, symbols, from, to, ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query bar windows: %w", err)
+	}
+	defer rows.Close()
+	bars := make(map[string]*SymbolBars)
+	lo, hi := dateOnly(start), dateOnly(end)
+	for rows.Next() {
+		var unit string
+		var at time.Time
+		if err := rows.Scan(&unit, &at); err != nil {
+			return nil, fmt.Errorf("failed to scan bar window: %w", err)
+		}
+		day := dateOnly(at.UTC())
+		entry := bars[unit]
+		if entry == nil {
+			entry = &SymbolBars{First: day, Last: day}
+			bars[unit] = entry
+		}
+		if day.Before(entry.First) {
+			entry.First = day
+		}
+		if day.After(entry.Last) {
+			entry.Last = day
+		}
+		if day.Before(lo) || day.After(hi) {
+			continue
+		}
+		if n := len(entry.Days); n > 0 && entry.Days[n-1].Equal(day) {
+			continue
+		}
+		entry.Days = append(entry.Days, day)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to query bar windows: %w", err)
+	}
+	return bars, nil
+}
+
+const listWindowsQuery = `
+WITH w AS (
+	SELECT unit, symbol, instrument_id,
+	       lo::timestamp AT TIME ZONE 'UTC' AS lo,
+	       hi::timestamp AT TIME ZONE 'UTC' AS hi
+	  FROM unnest($2::text[], $3::text[], $6::text[], $4::text[]::date[], $5::text[]::date[])
+	    AS t(unit, symbol, instrument_id, lo, hi)),
+src AS (
+	SELECT w.unit, o.time, o.open, o.high, o.low, o.close
+	  FROM w
+	  JOIN instrument_ohlc o ON o.instrument_id = w.instrument_id
+	 WHERE w.instrument_id <> ''
+	   AND o.provider = $1
+	   AND (w.lo IS NULL OR o.time >= w.lo)
+	   AND (w.hi IS NULL OR o.time < w.hi)
+	UNION ALL
+	SELECT w.unit, o.time, o.open, o.high, o.low, o.close
+	  FROM w
+	  JOIN ohlc o ON o.symbol = w.symbol
+	 WHERE w.instrument_id = ''
+	   AND o.provider = $1
+	   AND (w.lo IS NULL OR o.time >= w.lo)
+	   AND (w.hi IS NULL OR o.time < w.hi))
+SELECT unit, time FROM src
+ WHERE open > 0 AND high > 0 AND low > 0 AND close > 0
+ ORDER BY unit, time`
 
 // windowDate is a window side as the queries read it: NULL when open.
 func windowDate(day time.Time) *string {

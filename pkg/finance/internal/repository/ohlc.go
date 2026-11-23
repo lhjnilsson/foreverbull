@@ -203,6 +203,17 @@ func (e *InvalidPriceError) Error() string {
 
 func (e *InvalidPriceError) Unwrap() error { return ErrInvalidPrice }
 
+// DuplicateDayError is two bars for one ticker on one UTC day. Neither bar
+// is stored. The text names the ticker and the day.
+type DuplicateDayError struct {
+	Symbol string
+	Day    time.Time
+}
+
+func (e *DuplicateDayError) Error() string {
+	return fmt.Sprintf("%s has two prices on %s", e.Symbol, e.Day.UTC().Format("2006-01-02"))
+}
+
 // Store upserts one bar. Every price must be a real positive number: a 0
 // price is how a missing provider bar used to arrive, and it reads as a
 // -100% day, so it is refused here as well as in the provider adapter. A
@@ -288,7 +299,15 @@ func (db *OHLC) storeEach(ctx context.Context, provider, symbol string, bars []*
 // bars are cached per provider and symbol, and a gap there would be served to
 // every later backtest.
 func ValidateBars(provider, symbol string, bars []*financepb.OHLC) error {
+	seen := make(map[string]struct{}, len(bars))
 	for _, bar := range bars {
+		if bar.GetTimestamp() != nil {
+			day := tradingDay(bar.GetTimestamp().AsTime())
+			if _, ok := seen[day]; ok {
+				return &DuplicateDayError{Symbol: symbol, Day: bar.GetTimestamp().AsTime()}
+			}
+			seen[day] = struct{}{}
+		}
 		err := validateBar(provider, symbol, bar.GetTimestamp().AsTime(),
 			bar.GetOpen(), bar.GetHigh(), bar.GetLow(), bar.GetClose(), bar.GetVolume())
 		if err != nil {
@@ -368,14 +387,28 @@ func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, start
 		return fmt.Errorf("failed to replace ohlc: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+	if err := replaceStoredBars(ctx, tx, provider, symbol, start, end, bars); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	return nil
+}
 
+// replaceStoredBars deletes the stored span and writes bars on an open
+// transaction. The caller commits, so a later step in that transaction can
+// still roll the replacement back.
+func replaceStoredBars(ctx context.Context, tx pgx.Tx, provider, symbol string, start time.Time, end *time.Time,
+	bars []*financepb.OHLC,
+) error {
 	spanStart, _ := dayBounds(start)
 	var spanEnd *time.Time
 	if end != nil {
 		_, next := dayBounds(*end)
 		spanEnd = &next
 	}
-	_, err = tx.Exec(ctx,
+	_, err := tx.Exec(ctx,
 		`DELETE FROM ohlc WHERE provider = $1 AND symbol = $2
 		 AND time >= $3 AND ($4::timestamp IS NULL OR time < $4::timestamp)`,
 		priceProvider(provider), symbol, spanStart, spanEnd)
@@ -389,9 +422,6 @@ func (db *OHLC) ReplaceRange(ctx context.Context, provider, symbol string, start
 		if err != nil {
 			return fmt.Errorf("failed to replace ohlc: %w", err)
 		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to replace ohlc: %w", err)
 	}
 	return nil
 }
@@ -583,61 +613,17 @@ func (db *OHLC) List(ctx context.Context, provider string, symbols []string, asO
 // span about a year, and twice that plus a month covers holidays and halts.
 const stockDataWindow = time.Duration(defaultOHLCListLimit*2+30) * 24 * time.Hour
 
-// ambiguousSymbolQuery finds asked tickers that two instruments both hold
-// on the as-of date. ListResolved refuses those instead of picking one.
-const ambiguousSymbolQuery = `
-SELECT symbol, count(DISTINCT isin)::int
-  FROM asset_symbol
- WHERE symbol = ANY($1::text[])
-   AND from_date <= $2::date
-   AND (to_date IS NULL OR $2::date < to_date)
- GROUP BY symbol
-HAVING count(DISTINCT isin) > 1
- ORDER BY symbol`
-
-// refuseAmbiguous is ErrAmbiguousSymbol when any asked ticker belongs to
-// more than one instrument on asOf. Every such ticker is named.
-func (db *OHLC) refuseAmbiguous(ctx context.Context, symbols []string, asOf time.Time) error {
-	rows, err := db.Conn.Query(ctx, ambiguousSymbolQuery, symbols, asOf.Format(time.DateOnly))
-	if err != nil {
-		return fmt.Errorf("failed to resolve symbol: %w", err)
-	}
-	defer rows.Close()
-
-	day := asOf.Format(time.DateOnly)
-	parts := make([]string, 0)
-	for rows.Next() {
-		var symbol string
-		var n int
-		if err := rows.Scan(&symbol, &n); err != nil {
-			return fmt.Errorf("failed to resolve symbol: %w", err)
-		}
-		parts = append(parts, fmt.Sprintf("symbol %s maps to %d instruments at %s", symbol, n, day))
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("failed to resolve symbol: %w", err)
-	}
-	if len(parts) == 0 {
-		return nil
-	}
-	return fmt.Errorf("%s: %w", strings.Join(parts, "; "), ErrAmbiguousSymbol)
-}
-
 // ListResolved returns stored bars for the tickers the algorithm asked for.
-// A renamed ticker (FB then META, one ISIN) is labeled with the asked symbol.
-// time is inside (asOf-window, asOf], at most limit bars per symbol. limit 0
-// means 252. An empty symbol list returns no bars. A listed share class is
-// read under its stored name (BRK.B reads BRKB). Errors do not include a
-// database URL.
-//
-// A bar counts for the instrument that holds the asked ticker on asOf only
-// when that instrument's alias covers the bar's date, or the bar is stored
-// under the instrument's latest ticker on an earlier date of the same
-// instrument and no other instrument held that ticker then. Yahoo keeps
-// FB's history under META; a later company that reuses FB does not receive
-// those bars, and its own FB bars do not fill META. Two instruments holding
-// the asked ticker on asOf is an error. A symbol with no asset_symbol row
-// is read on its own bars.
+// A ticker that asset_symbol gives to one instrument on asOf is that
+// instrument's mapped series, labeled with the asked symbol. A session the
+// mapping does not cover is absent. A ticker with no alias is read on its
+// own bars. A ticker that has an asset_symbol row is never read from raw
+// ohlc, including a day in the gap between two holders. A ticker that two
+// instruments hold on asOf fails before any bar is read, with
+// ErrAmbiguousSymbol, and returns no bars. time is inside
+// (asOf-window, asOf], at most limit bars per symbol. limit 0 means 252.
+// An empty symbol list returns no bars. A listed share class is read under
+// its stored name (BRK.B reads BRKB). Errors do not include a database URL.
 func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []string, asOf time.Time, limit int) ([]*financepb.OHLC, error) {
 	if len(symbols) == 0 {
 		return nil, nil
@@ -654,67 +640,37 @@ func (db *OHLC) ListResolved(ctx context.Context, provider string, symbols []str
 	symbols = storedSymbols(symbols)
 	provider = priceProvider(provider)
 	asOf = asOf.UTC()
-	if err := db.refuseAmbiguous(ctx, symbols, asOf); err != nil {
+	instruments := Instruments{Conn: db.Conn}
+	for _, symbol := range symbols {
+		_, err := instruments.Resolve(ctx, symbol, asOf)
+		if err == nil || errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
 		return nil, err
 	}
 	since := asOf.Add(-stockDataWindow)
 
 	rows, err := db.Conn.Query(ctx, `
 		WITH owner AS (
-			SELECT DISTINCT ON (a.symbol) a.symbol AS wanted, a.isin
+			SELECT a.symbol AS wanted, min(i.id) AS instrument_id
 			FROM asset_symbol a
+			JOIN instrument i ON i.isin = a.isin
 			WHERE a.symbol = ANY($1::text[])
-			ORDER BY a.symbol,
-			         (a.from_date <= $5::date AND (a.to_date IS NULL OR a.to_date > $5::date)) DESC,
-			         (a.from_date <= $5::date) DESC,
-			         a.from_date DESC
+			  AND a.from_date <= $5::date
+			  AND (a.to_date IS NULL OR a.to_date > $5::date)
+			GROUP BY a.symbol
+			HAVING count(DISTINCT i.id) = 1
 		),
-		span AS (
-			SELECT isin,
-			       min(from_date) AS first_from,
-			       (array_agg(symbol ORDER BY from_date DESC))[1] AS latest
-			  FROM asset_symbol
-			 WHERE isin IN (SELECT isin FROM owner)
-			 GROUP BY isin
-		),
-		candidate AS (
-			SELECT o.symbol AS wanted, o.symbol AS ticker, NULL::date AS from_date, NULL::date AS to_date,
-			       o.time, o.high, o.low, o.open, o.close, o.volume
+		chosen AS (
+			SELECT w.wanted AS symbol, o.time, o.high, o.low, o.open, o.close, o.volume
+			FROM owner w
+			JOIN instrument_ohlc o ON o.instrument_id = w.instrument_id
+			WHERE o.provider = $2 AND o.time > $3 AND o.time <= $4
+			UNION ALL
+			SELECT o.symbol, o.time, o.high, o.low, o.open, o.close, o.volume
 			FROM ohlc o
 			WHERE o.symbol = ANY($1::text[]) AND o.provider = $2 AND o.time > $3 AND o.time <= $4
 			  AND NOT EXISTS (SELECT 1 FROM asset_symbol a WHERE a.symbol = o.symbol)
-			UNION ALL
-			SELECT w.wanted, o.symbol, s.from_date, s.to_date, o.time, o.high, o.low, o.open, o.close, o.volume
-			FROM owner w
-			JOIN asset_symbol s ON s.isin = w.isin
-			JOIN span sp ON sp.isin = w.isin
-			JOIN ohlc o ON o.symbol = s.symbol
-			WHERE o.provider = $2 AND o.time > $3 AND o.time <= $4
-			  AND (
-			    (s.from_date <= o.time::date AND (s.to_date IS NULL OR o.time::date < s.to_date))
-			    OR (
-			      o.symbol = sp.latest
-			      AND o.time::date >= sp.first_from
-			      AND o.time::date < s.from_date
-			      AND NOT EXISTS (
-			        SELECT 1 FROM asset_symbol other
-			         WHERE other.symbol = o.symbol
-			           AND other.isin <> w.isin
-			           AND other.from_date <= o.time::date
-			           AND (other.to_date IS NULL OR o.time::date < other.to_date)
-			      )
-			    )
-			  )
-		),
-		chosen AS (
-			SELECT DISTINCT ON (wanted, time) wanted AS symbol, time, high, low, open, close, volume
-			FROM candidate
-			ORDER BY wanted, time,
-			         CASE
-			             WHEN from_date <= time::date AND (to_date IS NULL OR time::date < to_date) THEN 0
-			             WHEN ticker = wanted THEN 1
-			             ELSE 2
-			         END
 		)
 		SELECT symbol, time, open::float8, high::float8, low::float8, close::float8, volume
 		FROM (

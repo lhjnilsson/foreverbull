@@ -495,11 +495,12 @@ func periodSession(days []time.Time, first bool) time.Time {
 // sessionClock is the clock the check caps the period with.
 var sessionClock = time.Now
 
-// checkUnit is one instrument the check reads: the name the user sees and
-// every ticker its bars may be stored under.
+// checkUnit is one instrument the check reads. instrumentID set means the
+// bars are instrument_ohlc. tickers name the unit ("META (earlier FB)").
 type checkUnit struct {
-	name    string
-	tickers []repository.Ticker
+	name         string
+	instrumentID string
+	tickers      []repository.Ticker
 }
 
 // checkUnits groups the request symbols by instrument. A symbol that
@@ -523,21 +524,24 @@ func checkUnits(symbols []string, tickers map[string][]repository.Ticker) ([]che
 		}
 		group := tickers[stored]
 		name := symbol
+		instrumentID := ""
 		if len(group) > 1 {
 			earlier := make([]string, 0, len(group)-1)
 			for _, ticker := range group[:len(group)-1] {
 				earlier = append(earlier, ticker.Symbol)
 			}
 			name = fmt.Sprintf("%s (earlier %s)", group[len(group)-1].Symbol, strings.Join(earlier, ", "))
+			instrumentID = group[0].InstrumentID
+		} else if len(group) == 1 {
+			instrumentID = group[0].InstrumentID
 		} else {
-			// Alone, a symbol's own bars count on every date.
 			group = []repository.Ticker{{Symbol: stored}}
 		}
 		for _, ticker := range group {
 			owner[ticker.Symbol] = name
 		}
 		alias[symbol] = name
-		units = append(units, checkUnit{name: name, tickers: group})
+		units = append(units, checkUnit{name: name, instrumentID: instrumentID, tickers: group})
 	}
 	return units, alias
 }
@@ -546,6 +550,12 @@ func checkUnits(symbols []string, tickers map[string][]repository.Ticker) ([]che
 func unitWindows(units []checkUnit) []repository.UnitWindow {
 	windows := make([]repository.UnitWindow, 0)
 	for _, unit := range units {
+		if unit.instrumentID != "" {
+			windows = append(windows, repository.UnitWindow{
+				Unit: unit.name, InstrumentID: unit.instrumentID,
+			})
+			continue
+		}
 		for _, ticker := range unit.tickers {
 			windows = append(windows, repository.UnitWindow{
 				Unit: unit.name, Symbol: ticker.Symbol, From: ticker.From, To: ticker.To,
@@ -566,38 +576,6 @@ func barsFromSessionGaps(found map[string]*repository.SessionGap) map[string]*re
 			absent = []time.Time{}
 		}
 		joined[name] = &repository.SymbolBars{First: gap.First, Last: gap.Last, Absent: absent}
-	}
-	return joined
-}
-
-// unitBars joins the bars of each unit's tickers: the earliest first bar,
-// the latest last bar, and every bar day once, oldest first. A unit with no
-// bar under any ticker has no entry.
-func unitBars(units []checkUnit, bars map[string]*repository.SymbolBars) map[string]*repository.SymbolBars {
-	joined := make(map[string]*repository.SymbolBars, len(units))
-	for _, unit := range units {
-		var out *repository.SymbolBars
-		for _, ticker := range unit.tickers {
-			stored := bars[ticker.Symbol]
-			if stored == nil {
-				continue
-			}
-			if out == nil {
-				out = &repository.SymbolBars{First: stored.First, Last: stored.Last}
-			}
-			if stored.First.Before(out.First) {
-				out.First = stored.First
-			}
-			if stored.Last.After(out.Last) {
-				out.Last = stored.Last
-			}
-			out.Days = append(out.Days, stored.Days...)
-		}
-		if out != nil {
-			slices.SortFunc(out.Days, func(a, b time.Time) int { return a.Compare(b) })
-			out.Days = slices.CompactFunc(out.Days, func(a, b time.Time) bool { return a.Equal(b) })
-			joined[unit.name] = out
-		}
 	}
 	return joined
 }

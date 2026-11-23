@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
@@ -129,7 +130,7 @@ const rescaleTolerance = 0.005
 func (db *OHLC) Sync(ctx context.Context, provider, symbol string, start time.Time, end *time.Time,
 	fetch FetchBars,
 ) error {
-	return db.sync(ctx, provider, symbol, start, end, fetch, nil)
+	return db.sync(ctx, provider, symbol, start, end, fetch, nil, nil)
 }
 
 // FetchDividends returns the provider's cash dividends with an ex-date from
@@ -167,11 +168,11 @@ func (db *OHLC) SyncWithDividends(ctx context.Context, provider, symbol string, 
 	if fetchDividends == nil {
 		return &StoreError{Symbol: symbol, Err: errors.New("no dividend fetch")}
 	}
-	return db.sync(ctx, provider, symbol, start, end, fetch, fetchDividends)
+	return db.sync(ctx, provider, symbol, start, end, fetch, fetchDividends, nil)
 }
 
 func (db *OHLC) sync(ctx context.Context, provider, symbol string, start time.Time, end *time.Time,
-	fetch FetchBars, fetchDividends FetchDividends,
+	fetch FetchBars, fetchDividends FetchDividends, then func(context.Context, pgx.Tx) error,
 ) error {
 	begin, ok := db.Conn.(txBeginner)
 	if !ok {
@@ -225,6 +226,11 @@ func (db *OHLC) sync(ctx context.Context, provider, symbol string, start time.Ti
 	}
 	if dividends != nil {
 		if err := inTx.replaceDividends(ctx, provider, symbol, dividends); err != nil {
+			return err
+		}
+	}
+	if then != nil {
+		if err := then(ctx, tx); err != nil {
 			return err
 		}
 	}
@@ -322,9 +328,12 @@ func (db *OHLC) classify(symbol string, err error) error {
 		return fetched.err
 	}
 	var invalid *InvalidPriceError
+	var duplicate *DuplicateDayError
+	var mapped *MappedSpanError
 	var noBars *NoBarsError
 	var stored *StoreError
-	if errors.As(err, &invalid) || errors.As(err, &noBars) || errors.As(err, &stored) {
+	if errors.As(err, &invalid) || errors.As(err, &duplicate) || errors.As(err, &mapped) ||
+		errors.As(err, &noBars) || errors.As(err, &stored) {
 		return err
 	}
 	return &StoreError{Symbol: symbol, Err: err}
@@ -342,19 +351,6 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		}
 		return db.StoreBars(ctx, provider, symbol, bars)
 	}
-	refetchAndReplace := func(from time.Time, to *time.Time) error {
-		bars, err := fetch(from, to)
-		if err != nil {
-			return &fetchError{err: err}
-		}
-		if !apply {
-			return nil
-		}
-		// The batch is validated first, so a bad bar never turns into a
-		// missing day.
-		return db.ReplaceRange(ctx, provider, symbol, from, to, bars)
-	}
-
 	first, last, stored, err := db.Range(ctx, provider, symbol)
 	if err != nil {
 		return err
@@ -373,7 +369,11 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 		if end != nil && end.Before(last) {
 			spanEnd = &last
 		}
-		return refetchAndReplace(start, spanEnd)
+		bars, err := fetch(start, spanEnd)
+		if err != nil {
+			return &fetchError{err: err}
+		}
+		return db.replaceAndScale(ctx, provider, symbol, first, start, spanEnd, bars, apply)
 	}
 
 	if end != nil && !end.After(last) {
@@ -405,10 +405,198 @@ func (db *OHLC) decide(ctx context.Context, provider, symbol string,
 			return err
 		}
 		if !matches {
-			return refetchAndReplace(first, end)
+			fresh, err := fetch(first, end)
+			if err != nil {
+				return &fetchError{err: err}
+			}
+			return db.replaceAndScale(ctx, provider, symbol, day, first, end, fresh, apply)
 		}
 	}
 	return storeBars(newDaysOnly(bars, plan.from, last, storedDays))
+}
+
+// replaceAndScale replaces symbol and, in the same transaction, multiplies
+// every other mapped ticker of that provider and instrument by the factor
+// on day (fetched close over stored close). With no other ticker this is
+// the replace Sync already did. A day with no comparable close fails when
+// another ticker exists, and nothing is stored.
+func (db *OHLC) replaceAndScale(ctx context.Context, provider, symbol string, day, from time.Time, to *time.Time,
+	bars []*financepb.OHLC, apply bool,
+) error {
+	factor, older, err := db.oldTickerFactor(ctx, provider, symbol, day, from, to, bars)
+	if err != nil {
+		return err
+	}
+	if !apply {
+		return nil
+	}
+	if !older {
+		return db.ReplaceRange(ctx, provider, symbol, from, to, bars)
+	}
+	if len(bars) == 0 {
+		return &NoBarsError{Provider: provider, Symbol: symbol, Start: from, End: to}
+	}
+	if err := ValidateBars(provider, symbol, bars); err != nil {
+		return err
+	}
+	begin, ok := db.Conn.(txBeginner)
+	if !ok {
+		return ErrNoTransaction
+	}
+	tx, err := begin.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
+	if err := replaceStoredBars(ctx, tx, provider, symbol, from, to, bars); err != nil {
+		return err
+	}
+	if err := scaleOldTickers(ctx, tx, provider, symbol, from, to, factor); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to replace ohlc: %w", err)
+	}
+	return nil
+}
+
+// MappedSpanError is one ticker mapped to more than one instrument inside
+// the dates being written. Nothing is stored.
+type MappedSpanError struct {
+	Symbol   string
+	Provider string
+}
+
+func (e *MappedSpanError) Error() string {
+	return fmt.Sprintf("%s on %s is mapped for more than one instrument in the dates being written",
+		e.Symbol, e.Provider)
+}
+
+func (db *OHLC) oldTickerFactor(ctx context.Context, provider, symbol string, day, from time.Time, to *time.Time, bars []*financepb.OHLC) (float64, bool, error) {
+	older, err := db.hasOlderTicker(ctx, provider, symbol, from, to)
+	if err != nil {
+		return 0, false, err
+	}
+	if !older {
+		return 0, false, nil
+	}
+	want := tradingDay(day)
+	var fetched float64
+	found := false
+	for _, bar := range bars {
+		if tradingDay(bar.GetTimestamp().AsTime()) != want {
+			continue
+		}
+		fetched = bar.GetClose()
+		found = true
+		break
+	}
+	if !found || !positivePrice(fetched) {
+		return 0, true, fmt.Errorf("can't re-scale %s: %s has no close on %s to compare with the stored one",
+			symbol, priceProvider(provider), want)
+	}
+	stored, err := db.Close(ctx, provider, symbol, day)
+	if err != nil {
+		return 0, true, err
+	}
+	if !positivePrice(stored) {
+		return 0, true, fmt.Errorf("can't re-scale %s: %s has no stored close on %s", symbol, priceProvider(provider), want)
+	}
+	factor := fetched / stored
+	if !positivePrice(factor) {
+		return 0, true, fmt.Errorf("can't re-scale %s: the factor on %s is not a price", symbol, want)
+	}
+	return factor, true, nil
+}
+
+// hasOlderTicker reports whether the mapping that covers the dates being
+// written has an older ticker of the same instrument. mine is that one
+// mapping: the provider, the symbol, and the written range. Another
+// company's row for the same ticker is not mine, and a newer ticker of
+// this instrument is not scaled.
+func (db *OHLC) hasOlderTicker(ctx context.Context, provider, symbol string, from time.Time, to *time.Time) (bool, error) {
+	mineID, mineFrom, ok, err := db.mineMapping(ctx, provider, symbol, from, to)
+	if err != nil || !ok {
+		return false, err
+	}
+	var older bool
+	err = db.Conn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			  FROM provider_symbol
+			 WHERE instrument_id = $1 AND provider = $2
+			   AND symbol <> $3 AND from_date < $4::date
+		)`, mineID, priceProvider(provider), symbol, tradingDay(mineFrom)).Scan(&older)
+	if err != nil {
+		return false, fmt.Errorf("failed to read older tickers: %w", err)
+	}
+	return older, nil
+}
+
+func (db *OHLC) mineMapping(ctx context.Context, provider, symbol string, from time.Time, to *time.Time) (string, time.Time, bool, error) {
+	provider = priceProvider(provider)
+	spanEnd := "9999-12-31"
+	if to != nil {
+		spanEnd = tradingDay(*to)
+	}
+	rows, err := db.Conn.Query(ctx, `
+		SELECT instrument_id, from_date
+		  FROM provider_symbol
+		 WHERE provider = $1 AND symbol = $2
+		   AND from_date <= $4::date
+		   AND (to_date IS NULL OR to_date > $3::date)`,
+		provider, symbol, tradingDay(from), spanEnd)
+	if err != nil {
+		return "", time.Time{}, false, fmt.Errorf("failed to read the mapping being written: %w", err)
+	}
+	defer rows.Close()
+	var id string
+	var fromDate time.Time
+	n := 0
+	for rows.Next() {
+		n++
+		if err := rows.Scan(&id, &fromDate); err != nil {
+			return "", time.Time{}, false, fmt.Errorf("failed to read the mapping being written: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", time.Time{}, false, fmt.Errorf("failed to read the mapping being written: %w", err)
+	}
+	if n == 0 {
+		return "", time.Time{}, false, nil
+	}
+	if n > 1 {
+		return "", time.Time{}, false, &MappedSpanError{Symbol: symbol, Provider: provider}
+	}
+	return id, dateOnly(fromDate), true, nil
+}
+
+func scaleOldTickers(ctx context.Context, tx pgx.Tx, provider, symbol string, from time.Time, to *time.Time, factor float64) error {
+	provider = priceProvider(provider)
+	spanEnd := "9999-12-31"
+	if to != nil {
+		spanEnd = tradingDay(*to)
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE ohlc o
+		   SET open = open * $3, high = high * $3, low = low * $3, close = close * $3
+		  FROM provider_symbol mine
+		  JOIN provider_symbol other
+		    ON other.instrument_id = mine.instrument_id
+		   AND other.provider = mine.provider
+		   AND other.symbol <> mine.symbol
+		   AND other.from_date < mine.from_date
+		 WHERE mine.provider = $1 AND mine.symbol = $2
+		   AND mine.from_date <= $5::date
+		   AND (mine.to_date IS NULL OR mine.to_date > $4::date)
+		   AND o.provider = other.provider AND o.symbol = other.symbol
+		   AND (o.time AT TIME ZONE 'UTC')::date >= other.from_date
+		   AND (other.to_date IS NULL OR (o.time AT TIME ZONE 'UTC')::date < other.to_date)`,
+		provider, symbol, factor, tradingDay(from), spanEnd)
+	if err != nil {
+		return fmt.Errorf("failed to re-scale older tickers of %s: %w", symbol, err)
+	}
+	return nil
 }
 
 // gapScanDays is how many calendar days before the last stored day an
@@ -659,22 +847,30 @@ func (db *OHLC) replaceDividends(ctx context.Context, provider, symbol string, c
 func (db *OHLC) SyncSource(ctx context.Context, provider, symbol string, start time.Time, end *time.Time,
 	fetch FetchBars, source supplier.Marketdata,
 ) error {
+	return db.SyncSourceThen(ctx, provider, symbol, start, end, fetch, source, nil)
+}
+
+// SyncSourceThen is SyncSource, and then runs in the same transaction before
+// commit. A refusal in either rolls the bars and then back.
+func (db *OHLC) SyncSourceThen(ctx context.Context, provider, symbol string, start time.Time, end *time.Time,
+	fetch FetchBars, source supplier.Marketdata, then func(context.Context, pgx.Tx) error,
+) error {
 	switch priceProvider(provider) {
 	case "stooq":
-		return db.Sync(ctx, provider, symbol, start, end, fetch)
+		return db.sync(ctx, provider, symbol, start, end, fetch, nil, then)
 	case "yahoo", "alpaca":
 		dividends, ok := source.(supplier.Dividends)
 		if !ok {
 			return &StoreError{Symbol: symbol, Err: fmt.Errorf("%s price source can't fetch dividends", provider)}
 		}
-		return db.SyncWithDividends(ctx, provider, symbol, start, end, fetch,
+		return db.sync(ctx, provider, symbol, start, end, fetch,
 			func(from time.Time, to *time.Time) ([]supplier.Dividend, error) {
 				found, err := dividends.GetDividends(ctx, symbol, from, to)
 				if err != nil {
 					return nil, DividendFetchFailure(provider, symbol, err)
 				}
 				return found, nil
-			})
+			}, then)
 	default:
 		return &StoreError{Symbol: symbol, Err: fmt.Errorf("unknown price provider %q", provider)}
 	}

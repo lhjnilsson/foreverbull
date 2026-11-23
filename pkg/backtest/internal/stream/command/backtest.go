@@ -72,6 +72,9 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 	}
 
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
+	if err := refuseSameCompany(ctx, db, &b); err != nil {
+		return err
+	}
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktest(repository.WithCreateMessage(ctx, command.CreateMessageID), backtests, command.OwnerID, &b); err != nil {
 		if errors.Is(err, repository.ErrProviderMissing) {
@@ -763,6 +766,7 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	// Days the provider sent no price for, anywhere in the range, per
 	// request symbol. They join the stored-bar check, so create fails once.
 	reported := make(map[string][]time.Time)
+	var overlaps []string
 	// Symbols the provider answered with an HTTP error status. Every one is
 	// collected, then create fails once and names each cause.
 	var downloads []downloadMiss
@@ -819,6 +823,11 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 				progress.symbolDone()
 				continue
 			}
+			if isPriceOverlap(msg.GetError()) {
+				overlaps = append(overlaps, msg.GetError())
+				progress.symbolDone()
+				continue
+			}
 			// Any per-symbol download failure must fail create. Disabling the
 			// member and exiting 0 left an incomplete universe with no warning.
 			return discardSymbolDownloadError(ctx, backtests, command.BacktestName, backtestID,
@@ -834,6 +843,9 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 		progress.symbolDone()
 	}
 
+	if len(overlaps) > 0 {
+		return discardPriceOverlaps(ctx, backtests, command.BacktestName, backtestID, overlaps)
+	}
 	err = checkMissingSessions(ctx, msg, db, backtests, command.BacktestName, backtestID,
 		strings.ToLower(provider), b.GetProfile(), symbols, reported, period, downloads)
 	if err != nil {

@@ -514,6 +514,9 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETF() {
 	// Yahoo keeps FB's whole history under META, so FB has no bars of its
 	// own. FB and META are one instrument in asset_symbol, so the check
 	// reads them together and the create passes.
+	test.mapSymbol(aaplISIN, "yahoo", "AAPL", "2021-12-31", "")
+	test.mapSymbol(metaISIN, "yahoo", "META", "2021-12-31", "")
+	test.mapSymbol(msftISIN, "yahoo", "MSFT", "2021-12-31", "")
 	test.coverDays(download, []string{"2022-01-03", "2022-01-04"}, "OEF", "AAPL", "META", "MSFT")
 
 	err = command.DownloadFinancialData(ctx, download)

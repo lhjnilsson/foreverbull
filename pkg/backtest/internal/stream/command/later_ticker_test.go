@@ -26,6 +26,7 @@ func (test *BacktestCommandTest) fbReadAsMeta() {
 		VALUES ($1, 'FB', '2012-05-18', '2022-06-09'), ($1, 'META', '2022-06-09', NULL)`, fbISIN)
 	test.Require().NoError(err)
 	test.storeBars("META", "2024-01-01", "2024-03-31")
+	test.mapSymbol(fbISIN, "yahoo", "META", "2012-05-18", "")
 }
 
 func readAs(symbol, later string) *financeServicePB.DownloadHistoricalDataResponse {

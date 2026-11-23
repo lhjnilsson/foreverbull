@@ -46,6 +46,12 @@ EXCLUDE USING gist (
 
 Index `asset_symbol (symbol, from_date)`.
 
+`asset_symbol.evidence` is `snapshot` or `later_ticker`. Existing rows stay `snapshot` until startup marks an alias whose `from_date` is the day after a backtest end and is not a month-end.
+
+`provider_symbol` maps an instrument and a provider to the ticker its bars are stored under. `ohlc` stays on `(provider, symbol, time)`. `instrument_ohlc` joins them into one series. Intervals are half-open. One instrument and one provider cannot hold two tickers on the same day, and one provider and ticker cannot belong to two instruments on the same day. `evidence` is `download`, `snapshot`, or `migration`.
+
+Startup writes `migration` rows from bars that fall inside each `asset_symbol` window, and deletes nothing. One ticker is an open row from its first in-window bar. A closed window ends the row at that window. An instrument that already has a mapping is left as it is. An overlap is a day both of the company's tickers have a bar, unless another company held the stored ticker that day. The instrument is left unmapped and the tickers and dates are named in one error log. The broker still starts. The next create that downloads the instrument writes the mapping.
+
 ## Runs
 
 While `AUTH_ENABLED` is false, `session.backtest` is `NOT NULL` and references `backtest(name)`.
