@@ -210,17 +210,82 @@ func trapBOM(fileBytes []byte) []byte {
 	return bytes.Trim(fileBytes, "\xef\xbb\xbf")
 }
 
-func assetFromRow(row []interface{}) (Asset, bool) {
-	if len(row) < 9 {
-		return Asset{}, false
+const (
+	cellString = "string"
+	cellNull   = "null"
+	cellShort  = "short"
+	cellBad    = "bad"
+	cellAbsent = "absent"
+)
+
+// unusableSnapshot is the create failure for one iShares holdings list.
+// The sentence names every row and column that can't be used. Callers return
+// it before the backtest is stored.
+func unusableSnapshot(etf string, asOf time.Time, problems []usercopy.HoldingsFault) error {
+	if len(problems) == 0 {
+		return nil
 	}
-	symbol, ok0 := row[0].(string)
-	name, ok1 := row[1].(string)
-	sector, ok2 := row[2].(string)
-	assetType, ok3 := row[3].(string)
-	isin, ok8 := row[8].(string)
-	if !ok0 || !ok1 || !ok2 || !ok3 || !ok8 {
-		return Asset{}, false
+	return errors.New(usercopy.HoldingsListUnusable(etf, asOf, problems))
+}
+
+func labelFrom(symbol, symbolKind, name, nameKind string) string {
+	if symbolKind == cellString && symbol != "" {
+		return symbol
+	}
+	if nameKind == cellString && name != "" {
+		return name
+	}
+	return ""
+}
+
+func aaCell(row []interface{}, index int) (string, string) {
+	if index >= len(row) || row[index] == nil {
+		return "", cellNull
+	}
+	text, ok := row[index].(string)
+	if !ok {
+		return "", cellBad
+	}
+	return text, cellString
+}
+
+// usableISIN is false for a missing, blank, or "-" ISIN. "-" is the placeholder
+// iShares uses when it has no ISIN.
+func usableISIN(isin, kind string) bool {
+	if kind != cellString {
+		return false
+	}
+	isin = strings.TrimSpace(isin)
+	return isin != "" && isin != "-"
+}
+
+// holdingFromAARow classifies one aaData row. A class other than Equity is
+// left out. A null sector is allowed. A row shorter than 9 cells couldn't be
+// read, even when the ISIN cell is the one that's missing. keep is true only
+// for an Equity row with an ISIN.
+func holdingFromAARow(row []interface{}, rowNum int) (Asset, usercopy.HoldingsFault, bool) {
+	symbol, symbolKind := aaCell(row, 0)
+	name, nameKind := aaCell(row, 1)
+	sector, sectorKind := aaCell(row, 2)
+	assetType, typeKind := aaCell(row, 3)
+	isin, isinKind := aaCell(row, 8)
+	if typeKind == cellString && assetType != "Equity" {
+		return Asset{}, usercopy.HoldingsFault{}, false
+	}
+	label := labelFrom(symbol, symbolKind, name, nameKind)
+	fault := usercopy.HoldingsFault{Row: rowNum, Label: label, Kind: usercopy.HoldingsUnread}
+	if len(row) < 9 {
+		return Asset{}, fault, false
+	}
+	if symbolKind != cellString || symbol == "" || nameKind != cellString || typeKind != cellString || sectorKind == cellBad || isinKind == cellBad {
+		return Asset{}, fault, false
+	}
+	if !usableISIN(isin, isinKind) {
+		fault.Kind = usercopy.HoldingsNoISIN
+		return Asset{}, fault, false
+	}
+	if sectorKind != cellString {
+		sector = ""
 	}
 	return Asset{
 		Symbol:    symbol,
@@ -228,14 +293,14 @@ func assetFromRow(row []interface{}) (Asset, bool) {
 		Sector:    sector,
 		AssetType: assetType,
 		ISIN:      isin,
-	}, true
+	}, usercopy.HoldingsFault{}, true
 }
 
 // errHoldingsPage means the holdings URL returned the product web page.
 // iShares does that for as-of dates it does not publish.
 var errHoldingsPage = errors.New("iShares returned a web page instead of holdings")
 
-func parseHoldings(body []byte) (assets []Asset, published bool, err error) {
+func parseHoldings(body []byte, etf string, asOf time.Time) (assets []Asset, published bool, err error) {
 	body = bytes.TrimSpace(trapBOM(body))
 	if len(body) == 0 {
 		return nil, false, errors.New("iShares returned an empty holdings response")
@@ -251,12 +316,19 @@ func parseHoldings(body []byte) (assets []Asset, published bool, err error) {
 		return nil, false, nil
 	}
 	assets = make([]Asset, 0, len(data.Data))
-	for _, row := range data.Data {
-		asset, ok := assetFromRow(row)
-		if !ok || asset.AssetType != "Equity" || asset.ISIN == "" {
+	var problems []usercopy.HoldingsFault
+	for i, row := range data.Data {
+		asset, problem, keep := holdingFromAARow(row, i+1)
+		if problem.Kind != "" {
+			problems = append(problems, problem)
 			continue
 		}
-		assets = append(assets, asset)
+		if keep {
+			assets = append(assets, asset)
+		}
+	}
+	if fail := unusableSnapshot(etf, asOf, problems); fail != nil {
+		return nil, false, fail
 	}
 	return assets, true, nil
 }
@@ -327,7 +399,7 @@ func isDigits(s string) bool {
 	return true
 }
 
-func (e *ISharesETFLoopup) fetchHoldings(baseurl string, asOf time.Time) ([]Asset, []byte, bool, error) {
+func (e *ISharesETFLoopup) fetchHoldings(etf, baseurl string, asOf time.Time) ([]Asset, []byte, bool, error) {
 	rawURL, err := holdingsURL(baseurl, asOf)
 	if err != nil {
 		return nil, nil, false, err
@@ -352,7 +424,7 @@ func (e *ISharesETFLoopup) fetchHoldings(baseurl string, asOf time.Time) ([]Asse
 	}
 	body = trapBOM(body)
 	if isProductDataHoldings(body) {
-		assets, gotAsOf, err := parseProductDataHoldings(body)
+		assets, gotAsOf, err := parseProductDataHoldings(body, etf, asOf, true)
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -362,29 +434,36 @@ func (e *ISharesETFLoopup) fetchHoldings(baseurl string, asOf time.Time) ([]Asse
 		}
 		return assets, body, true, nil
 	}
-	assets, published, err := parseHoldings(body)
+	assets, published, err := parseHoldings(body, etf, asOf)
 	if err != nil {
 		return nil, nil, false, err
 	}
 	return assets, body, published, nil
 }
 
-func parseCachedHoldings(body []byte) ([]Asset, bool, error) {
+func parseCachedHoldings(body []byte, etf string, asOf time.Time) ([]Asset, bool, error) {
 	if isProductDataHoldings(body) {
-		assets, _, err := parseProductDataHoldings(body)
+		assets, _, err := parseProductDataHoldings(body, etf, asOf, false)
 		if err != nil {
 			return nil, false, err
 		}
 		return assets, len(assets) > 0, nil
 	}
-	return parseHoldings(body)
+	return parseHoldings(body, etf, asOf)
 }
 
 func isProductDataHoldings(body []byte) bool {
 	return bytes.Contains(body, []byte(`"componentsByNameMap"`))
 }
 
-func parseProductDataHoldings(body []byte) ([]Asset, string, error) {
+// parseProductDataHoldings reads one product-data holdings reply.
+// matchAsOf is set on a live fetch. An as-of that is not the requested day
+// returns before the columns are read. A reply whose columns are all null
+// is that same unpublished day. Both are nil assets and a nil error, so the
+// caller can walk back. A cached file is read with matchAsOf false: it was
+// stored under the requested day, and its own as-of can be the earlier
+// session it came from.
+func parseProductDataHoldings(body []byte, etf string, asOf time.Time, matchAsOf bool) ([]Asset, string, error) {
 	var payload struct {
 		Components map[string]struct {
 			Containers map[string]struct {
@@ -397,71 +476,188 @@ func parseProductDataHoldings(body []byte) ([]Asset, string, error) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, "", fmt.Errorf("iShares holdings were not valid JSON: %w", err)
 	}
-	all := payload.Components["holdings"].Containers["all"].Points
-	asOf := rawScalar(all["asOfDate"].Value)
-	tickers := rawStrings(all["ticker"].Value)
-	names := rawStrings(all["issueName"].Value)
-	sectors := rawStrings(all["sectorName"].Value)
-	classes := rawStrings(all["assetClass"].Value)
-	isins := rawStrings(all["isin"].Value)
-	assets := make([]Asset, 0, len(tickers))
-	for i, ticker := range tickers {
-		if ticker == "" || fieldAt(classes, i) != "Equity" {
-			continue
-		}
-		isin := fieldAt(isins, i)
-		if isin == "" {
-			continue
-		}
-		assets = append(assets, Asset{
-			Symbol:    ticker,
-			Name:      fieldAt(names, i),
-			Sector:    fieldAt(sectors, i),
-			AssetType: "Equity",
-			ISIN:      isin,
-		})
+	points := payload.Components["holdings"].Containers["all"].Points
+	publishedAsOf := rawScalar(points["asOfDate"].Value)
+	if matchAsOf && publishedAsOf != dateOnly(asOf).Format("20060102") {
+		return nil, publishedAsOf, nil
 	}
-	return assets, asOf, nil
+
+	names := []string{"ticker", "issueName", "sectorName", "assetClass", "isin"}
+	if columnsBlank(points["ticker"].Value, points["issueName"].Value, points["sectorName"].Value, points["assetClass"].Value, points["isin"].Value) {
+		return nil, publishedAsOf, nil
+	}
+	decoded := make(map[string][]json.RawMessage, len(names))
+	decodedOK := make(map[string]bool, len(names))
+	columnProblems := make([]usercopy.HoldingsFault, 0)
+	for _, name := range names {
+		items, ok := decodeColumn(points[name].Value)
+		decoded[name] = items
+		decodedOK[name] = ok
+		if !ok {
+			columnProblems = append(columnProblems, usercopy.HoldingsFault{Column: name, Kind: usercopy.HoldingsUnread})
+		}
+	}
+	assets, rowProblems := equityRows(decoded, decodedOK)
+	if fail := unusableSnapshot(etf, asOf, append(rowProblems, columnProblems...)); fail != nil {
+		return nil, publishedAsOf, fail
+	}
+	return assets, publishedAsOf, nil
 }
 
-func fieldAt(values []string, i int) string {
-	if i < 0 || i >= len(values) {
-		return ""
+func columnsBlank(values ...json.RawMessage) bool {
+	for _, raw := range values {
+		if !rawBlank(raw) {
+			return false
+		}
 	}
-	return values[i]
+	return true
 }
 
-func rawStrings(raw json.RawMessage) []string {
-	if len(bytes.TrimSpace(raw)) == 0 || string(raw) == "null" {
-		return nil
+// equityRows reads every column's rows, using the longest column. A missing
+// ticker, name, asset class, or ISIN cell couldn't be read. sectorName may
+// be null or short and is not required. A class other than Equity is left
+// out. A blank or null ticker, and a null asset class, couldn't be read.
+func equityRows(cols map[string][]json.RawMessage, okCol map[string]bool) ([]Asset, []usercopy.HoldingsFault) {
+	n := 0
+	for _, name := range []string{"ticker", "issueName", "sectorName", "assetClass", "isin"} {
+		if okCol[name] && len(cols[name]) > n {
+			n = len(cols[name])
+		}
+	}
+	assets := make([]Asset, 0, n)
+	var problems []usercopy.HoldingsFault
+	for i := 0; i < n; i++ {
+		asset, problem, keep := equityAt(cols, okCol, i)
+		if problem.Kind != "" {
+			problems = append(problems, problem)
+			continue
+		}
+		if keep {
+			assets = append(assets, asset)
+		}
+	}
+	return assets, problems
+}
+
+func equityAt(cols map[string][]json.RawMessage, okCol map[string]bool, index int) (Asset, usercopy.HoldingsFault, bool) {
+	ticker, tickerKind := locatedCell(cols, okCol, "ticker", index)
+	class, classKind := locatedCell(cols, okCol, "assetClass", index)
+	name, nameKind := locatedCell(cols, okCol, "issueName", index)
+	sector, sectorKind := locatedCell(cols, okCol, "sectorName", index)
+	isin, isinKind := locatedCell(cols, okCol, "isin", index)
+	if classKind == cellString && class != "Equity" {
+		return Asset{}, usercopy.HoldingsFault{}, false
+	}
+	label := labelFrom(ticker, tickerKind, name, nameKind)
+	rowNum := index + 1
+	if rowUnreadable(ticker, tickerKind, classKind, nameKind, sectorKind, isinKind) {
+		return Asset{}, usercopy.HoldingsFault{Row: rowNum, Label: label, Kind: usercopy.HoldingsUnread}, false
+	}
+	if classKind != cellString {
+		return Asset{}, usercopy.HoldingsFault{}, false
+	}
+	if isinKind == cellAbsent {
+		return Asset{}, usercopy.HoldingsFault{}, false
+	}
+	if !usableISIN(isin, isinKind) {
+		return Asset{}, usercopy.HoldingsFault{Row: rowNum, Label: label, Kind: usercopy.HoldingsNoISIN}, false
+	}
+	if sectorKind != cellString {
+		sector = ""
+	}
+	if nameKind != cellString {
+		name = ""
+	}
+	return Asset{
+		Symbol:    ticker,
+		Name:      name,
+		Sector:    sector,
+		AssetType: "Equity",
+		ISIN:      isin,
+	}, usercopy.HoldingsFault{}, true
+}
+
+func rowUnreadable(ticker, tickerKind, classKind, nameKind, sectorKind, isinKind string) bool {
+	if tickerKind != cellAbsent && (tickerKind != cellString || ticker == "") {
+		return true
+	}
+	if classKind == cellNull || classKind == cellShort || classKind == cellBad {
+		return true
+	}
+	if nameKind == cellShort || nameKind == cellBad {
+		return true
+	}
+	if sectorKind == cellBad {
+		return true
+	}
+	return isinKind == cellShort || isinKind == cellBad
+}
+
+func locatedCell(cols map[string][]json.RawMessage, okCol map[string]bool, name string, index int) (string, string) {
+	if !okCol[name] {
+		return "", cellAbsent
+	}
+	items := cols[name]
+	if index >= len(items) {
+		return "", cellShort
+	}
+	return rawCell(items[index])
+}
+
+func decodeColumn(raw json.RawMessage) ([]json.RawMessage, bool) {
+	if rawBlank(raw) {
+		return nil, false
 	}
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil {
-		return nil
+		return nil, false
 	}
-	out := make([]string, len(items))
-	for i, item := range items {
-		out[i] = rawScalar(item)
+	return items, true
+}
+
+func rawCell(raw json.RawMessage) (string, string) {
+	if rawBlank(raw) {
+		return "", cellNull
 	}
-	return out
+	text, ok := scalarText(raw)
+	if !ok {
+		return "", cellBad
+	}
+	return text, cellString
+}
+
+func rawBlank(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) == 0 || string(trimmed) == "null"
 }
 
 func rawScalar(raw json.RawMessage) string {
+	text, ok := scalarText(raw)
+	if !ok {
+		return ""
+	}
+	return text
+}
+
+func scalarText(raw json.RawMessage) (string, bool) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
-		return ""
+		return "", true
 	}
 	var text string
 	if err := json.Unmarshal(raw, &text); err == nil {
-		return text
+		return text, true
 	}
-	var number json.Number
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	if err := dec.Decode(&number); err == nil {
-		return number.String()
+	var number json.Number
+	if err := dec.Decode(&number); err != nil {
+		return "", false
 	}
-	return ""
+	if dec.Decode(new(json.RawMessage)) != io.EOF {
+		return "", false
+	}
+	return number.String(), true
 }
 
 func (e *ISharesETFLoopup) loadCached(etf string, asOf time.Time) ([]byte, bool, error) {
@@ -486,7 +682,11 @@ func (e *ISharesETFLoopup) storeCached(etf string, asOf time.Time, body []byte) 
 }
 
 // GetSnapshot returns Equity holdings (with ISIN) for etf as of asOf.
-// Empty aaData is unpublished and is not cached; the previous 6 calendar days are tried.
+// A row that couldn't be read, an Equity row with no ISIN, or a column that
+// couldn't be read fails this snapshot. The error names each of them.
+// Empty aaData, a product-data as-of that is not this day, and a product-data
+// reply whose columns are all null are unpublished and are not cached; the
+// previous 6 calendar days are tried.
 // An HTML product page means that day has no holdings file. It is not cached and is not an error.
 // A sampled month that stays empty fails create; it is not filled from another list.
 func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, error) {
@@ -498,7 +698,7 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 	if body, ok, err := e.loadCached(etf, asOf); err != nil {
 		return nil, err
 	} else if ok {
-		assets, _, err := parseCachedHoldings(body)
+		assets, _, err := parseCachedHoldings(body, etf, asOf)
 		if !errors.Is(err, errHoldingsPage) {
 			return assets, err
 		}
@@ -509,7 +709,7 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 			if body, ok, err := e.loadCached(etf, day); err != nil {
 				return nil, err
 			} else if ok {
-				assets, published, err := parseCachedHoldings(body)
+				assets, published, err := parseCachedHoldings(body, etf, day)
 				if errors.Is(err, errHoldingsPage) {
 					err = nil
 					published = false
@@ -525,7 +725,7 @@ func (e *ISharesETFLoopup) GetSnapshot(etf string, asOf time.Time) ([]Asset, err
 				}
 			}
 		}
-		assets, body, published, err := e.fetchHoldings(baseurl, day)
+		assets, body, published, err := e.fetchHoldings(etf, baseurl, day)
 		if errors.Is(err, errHoldingsPage) {
 			// The product page is not a file for this day. The requested as-of is a gap;
 			// a lookback day is just unpublished, so keep walking.

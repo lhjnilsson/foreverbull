@@ -155,7 +155,7 @@ Ingest unions `DISTINCT symbol` for every ISIN that appears in `universe_member`
 
 ### 4.4 Missing ISIN
 
-A holdings row with empty `ISIN` is skipped. It does not create an `instrument` and does not get a synthetic id. Do not match or merge rows by ticker or issuer name. FB and META are one instrument only when iShares supplies the same ISIN.
+A holdings list that can't be used fails create. The error names the ETF, the date, and every row or column. An Equity row with no ISIN is empty or `-`. A row that couldn't be read includes a blank ticker, a null ticker, a null asset class, and a row that isn't a complete record. A column that isn't a list of cells couldn't be read. Asset class must be exactly `Equity`; every other class is left out. A null sector on an Equity row stays in the list. Those rows are not stored, and the backtest is not left half created. Do not match or merge rows by ticker or issuer name. FB and META are one instrument only when iShares supplies the same ISIN.
 
 ## 5. Snapshots
 
