@@ -749,6 +749,10 @@ def get(
     executions = broker.backtest.list_executions(name, None)
 
     _print_backtest("Backtest", entity, show_disabled=True)
+    # The same plain lines create prints and the run summary indents. Nothing
+    # when every symbol was read under its own ticker. YAML stays the file shape.
+    for line in later_ticker_lines(later_tickers(entity)):
+        console.print(line, markup=False, highlight=False, soft_wrap=True)
     _print_periods(entity)
     console.line()
     _print_executions(executions)

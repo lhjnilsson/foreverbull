@@ -134,7 +134,7 @@ def backtest_starts_before_calendar(message: str, *, start_flag: bool) -> str:
 
 
 def later_ticker_lines(resolutions: Sequence[LaterTicker]) -> list[str]:
-    """The lines `fbull backtest create` and the run summary print for later tickers.
+    """The lines `fbull backtest create`, `get`, and the run summary print for later tickers.
 
     One line per resolution up to LATER_TICKERS_SHOWN, then one line counting
     the rest. No resolution prints nothing. The exact strings are pinned in

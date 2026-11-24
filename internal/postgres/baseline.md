@@ -84,6 +84,7 @@ Child foreign keys move onto `backtest.id`:
 
 - `session.backtest_id` replaces `session.backtest`.
 - `universe_member.backtest_id`. Primary key `(backtest_id, isin, from_date)`. `universe_member_no_overlap` keeps its name and uses `backtest_id`.
+- `backtest_symbol_event.backtest_id`. Primary key `(backtest_id, symbol, kind)`, referencing `backtest(id)` on delete cascade. `backtest_name` is dropped. While `AUTH_ENABLED` is false the primary key stays `(backtest_name, symbol, kind)`.
 - `strategy_experiment.backtest_id` replaces `backtest_name`.
 - `backtest_period` primary key `(backtest_id, start_date, end_date)`.
 - `backtest_period_asset` primary key `(backtest_id, start_date, end_date, symbol)`, referencing that period key.

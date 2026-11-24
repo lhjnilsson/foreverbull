@@ -1901,6 +1901,44 @@ def test_backtest_get_verbose_lists_every_symbol_breaking_between_tickers(monkey
     assert shown == "99: " + ", ".join(_OEF_2024Q1)
 
 
+def test_backtest_get_names_a_symbol_read_under_a_later_ticker(monkeypatch):
+    stored = _sample_backtest()
+    stored.ticker_resolutions.extend(_resolutions(("FB", "META")))
+    lines = _get_lines(monkeypatch, stored, columns=80)
+    provider = lines.index("  Provider   yahoo")
+    assert lines[provider + 1] == "Prices for FB come from META, the company's later ticker."
+    assert lines[provider + 2] == ""
+
+
+def test_backtest_get_names_five_later_tickers_then_counts_the_rest(monkeypatch):
+    stored = _sample_backtest()
+    stored.ticker_resolutions.extend(_resolutions(*_many(6)))
+    lines = _get_lines(monkeypatch, stored, columns=120)
+    provider = lines.index("  Provider   yahoo")
+    assert lines[provider + 1 : provider + 7] == [*_FIRST_FIVE, _ONE_MORE]
+
+
+def test_backtest_get_without_a_later_ticker_prints_no_line(monkeypatch):
+    lines = _get_lines(monkeypatch, _sample_backtest(), columns=80)
+    assert not any("come from" in line or "later ticker" in line for line in lines)
+
+
+def test_backtest_get_yaml_does_not_print_later_tickers(monkeypatch):
+    stored = _sample_backtest()
+    stored.ticker_resolutions.extend(_resolutions(("FB", "META")))
+    with (
+        patch("foreverbull.broker.backtest.get", return_value=stored),
+        patch("foreverbull.broker.backtest.list_executions", return_value=[]),
+    ):
+        result = CliRunner().invoke(backtest, ["get", stored.name, "--output", "yaml"])
+    assert result.exit_code == 0, result.stdout
+    assert "later ticker" not in result.stdout
+    assert "come from" not in result.stdout
+    dumped = yaml.safe_load(result.stdout)
+    assert dumped["name"] == "test_name"
+    assert "ticker_resolutions" not in dumped
+
+
 def test_backtest_get_shows_one_period_disabled_symbols_in_the_record(monkeypatch):
     lines = _get_lines(monkeypatch, _sample_backtest(), columns=80)
     assert lines[:8] == [

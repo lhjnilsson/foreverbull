@@ -368,6 +368,22 @@ func readSymbolEvents(ctx context.Context, backtests BacktestReader, name string
 	return events, nil
 }
 
+type symbolEventsByID interface {
+	SymbolEventsByID(ctx context.Context, id string) ([]repository.SymbolEvent, error)
+}
+
+func readSymbolEventsByID(ctx context.Context, backtests BacktestReader, id string) ([]repository.SymbolEvent, error) {
+	lister, ok := backtests.(symbolEventsByID)
+	if !ok {
+		return nil, errors.New("backtest symbol events are not readable")
+	}
+	events, err := lister.SymbolEventsByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("error reading symbol events of %s: %w", id, err)
+	}
+	return events, nil
+}
+
 func confirmedDelistings(events []repository.SymbolEvent) map[string]bool {
 	confirmed := make(map[string]bool)
 	for _, event := range events {
@@ -402,7 +418,7 @@ func runPlanOwned(ctx context.Context, backtests BacktestReader, members MemberS
 	if err != nil {
 		return nil, sessionSymbols{}, nil, fmt.Errorf("error getting backtest %s: %w", backtestID, err)
 	}
-	events, err := readSymbolEvents(ctx, backtests, stored.GetName())
+	events, err := readSymbolEventsByID(ctx, backtests, backtestID)
 	if err != nil {
 		return nil, sessionSymbols{}, nil, err
 	}

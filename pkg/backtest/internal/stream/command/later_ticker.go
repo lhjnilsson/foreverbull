@@ -55,6 +55,16 @@ func saveTickerResolutions(ctx context.Context, backtests repository.Backtest, n
 	return backtests.SaveTickerResolutions(ctx, name, resolutions)
 }
 
+// saveSymbolEvents stores the listing and delisting rows on the backtest
+// this create stored, by id when AUTH_ENABLED is on. That is the same key
+// the resolutions use.
+func saveSymbolEvents(ctx context.Context, backtests repository.Backtest, name, id string, events []repository.SymbolEvent) error {
+	if environment.GetAuthEnabled() {
+		return backtests.SaveSymbolEventsByID(ctx, id, events)
+	}
+	return backtests.SaveSymbolEvents(ctx, name, events)
+}
+
 // discardUnrecordedResolutions deletes the backtest when a later-ticker
 // resolution couldn't be read or stored, so no backtest reads one company
 // under another ticker without saying so. The cause goes to the log.

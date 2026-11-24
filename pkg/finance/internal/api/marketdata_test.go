@@ -146,6 +146,30 @@ func (suite *MarketdataTest) TestGetAssetFailedISINRequestIsNotNotFound() {
 	}
 }
 
+type yahooUnknown struct{ text string }
+
+func (e yahooUnknown) Error() string { return e.text }
+
+func (e yahooUnknown) Is(target error) bool { return target == marketdata.ErrUnknownSymbol }
+
+// Yahoo answered that the ticker has no quote. The caller gets NotFound with
+// the shared prefix, not Yahoo's description.
+func (suite *MarketdataTest) TestGetAssetUnknownSymbolIsNotFound() {
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(nil, yahooUnknown{text: "Quote not found for symbol: FB"})
+
+	rsp, err := suite.client.GetAsset(context.Background(), &servicePb.GetAssetRequest{
+		Identifier: &servicePb.GetAssetRequest_Symbol{Symbol: "FB"},
+	})
+	suite.Require().Error(err)
+	suite.Nil(rsp)
+	st, ok := status.FromError(err)
+	suite.Require().True(ok)
+	suite.Equal(codes.NotFound, st.Code())
+	suite.Equal("unknown symbol FB", st.Message())
+	suite.True(financeapi.IsUnknownSymbol(st.Message()))
+	suite.NotContains(st.Message(), "Quote not found")
+}
+
 func (suite *MarketdataTest) TestGetIndex() {
 	suite.marketdata.On("GetIndex", mock.Anything, "^GDAXI").Return([]*pb.Asset{
 		{Symbol: "ADS.DE", Name: "Adidas AG"},
@@ -397,6 +421,42 @@ func (suite *MarketdataTest) TestDownloadAssetsNoEndDate() {
 	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, result["NOCORP"])
 }
 
+// Yahoo's not-found answer is the unknown-symbol text. A transport error, a
+// non-404, and a timeout stay the generic download failure.
+func (suite *MarketdataTest) TestDownloadUnknownSymbolUsesThePrefix() {
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(nil, yahooUnknown{text: "Quote not found for symbol: FB"})
+	suite.marketdata.On("GetAsset", mock.Anything, "GONE").Return(nil, errors.New("Get \"https://query2.finance.yahoo.com/v10/finance/quoteSummary/GONE\": connection reset"))
+	suite.marketdata.On("GetAsset", mock.Anything, "DOWN").Return(nil, errors.New("fail to get asset for symbol DOWN: HTTP 500 Internal Server Error"))
+	suite.marketdata.On("GetAsset", mock.Anything, "SLOW").Return(nil, context.DeadlineExceeded)
+	suite.marketdata.On("GetAsset", mock.Anything, "EMPTY").Return(nil, errors.New("no results found"))
+
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB", "GONE", "DOWN", "SLOW", "EMPTY"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2019, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	})
+	suite.Require().NoError(err)
+
+	got := map[string]string{}
+	for {
+		msg, err := rsp.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err)
+		got[msg.GetSymbol()] = msg.GetError()
+	}
+	suite.Equal("unknown symbol FB", got["FB"])
+	suite.Equal("couldn't download prices for GONE. Try again in a few minutes, or use another provider with --provider.", got["GONE"])
+	suite.Equal("couldn't download prices for DOWN. Try again in a few minutes, or use another provider with --provider.", got["DOWN"])
+	suite.Equal("yahoo took too long to respond for SLOW", got["SLOW"])
+	suite.Equal("couldn't download prices for EMPTY. Try again in a few minutes, or use another provider with --provider.", got["EMPTY"])
+	for _, symbol := range []string{"GONE", "DOWN", "SLOW", "EMPTY"} {
+		suite.NotContains(got[symbol], "unknown symbol")
+	}
+}
+
 func (suite *MarketdataTest) TestDownloadHistoricalDataStopsOnBlockedProvider() {
 	symbols := []string{"AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "TSLA", "AVGO", "COST", "NFLX", "AMD", "PEP"}
 	for _, symbol := range symbols {
@@ -506,6 +566,98 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataUsesLaterTickerWhenAskedH
 		SELECT symbol, to_date FROM provider_symbol WHERE instrument_id = $1`, metaISIN).Scan(&mapped, &to))
 	suite.Equal("META", mapped)
 	suite.Nil(to)
+}
+
+// Yahoo answers that it does not know FB. asset_symbol already gives FB to
+// Meta on the download dates, so the download continues to META instead of
+// the unknown-symbol sentence.
+func (suite *MarketdataTest) TestDownloadUnknownSymbolWithAKnownAliasResolvesThroughMETA() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, metaISIN, "Meta Platforms, Inc.")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		($1, 'FB', '2019-01-01'::date, '2022-06-09'::date),
+		($1, 'META', '2022-06-09'::date, NULL)`, metaISIN)
+	suite.Require().NoError(err)
+
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(nil, yahooUnknown{text: "Quote not found for symbol: FB"})
+	suite.marketdata.On("GetAsset", mock.Anything, "META").Return(&pb.Asset{
+		Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN,
+	}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "META", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+		{
+			Timestamp: timestamppb.New(mustTime("2019-06-03")),
+			Open:      10, High: 11, Low: 9, Close: 10.5, Volume: 1000,
+		},
+	}, nil)
+	suite.marketdata.On("SearchAsset", mock.Anything, metaISIN).Return([]*pb.Asset{
+		{Symbol: "META", Name: "Meta Platforms, Inc.", ISIN: metaISIN},
+	}, nil)
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("FB", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_OK, msg.GetStatus())
+	suite.Equal("META", msg.GetLaterTicker().GetSymbol())
+	suite.NotContains(msg.GetError(), "unknown symbol")
+	suite.NotContains(msg.GetError(), "Remove")
+	_, err = rsp.Recv()
+	suite.Require().ErrorIs(err, io.EOF)
+
+	var metaBars int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx,
+		`SELECT count(*) FROM ohlc WHERE provider='yahoo' AND symbol='META'`).Scan(&metaBars))
+	suite.Equal(1, metaBars)
+}
+
+// Yahoo doesn't know FB, and two companies each held FB on part of the
+// window. The symbol is refused and nothing is stored.
+func (suite *MarketdataTest) TestDownloadUnknownSymbolHeldByTwoCompaniesIsAmbiguous() {
+	ctx := context.Background()
+	instruments := repository.Instruments{Conn: suite.pgx}
+	_, err := instruments.Store(ctx, "US1111111111", "One Inc")
+	suite.Require().NoError(err)
+	_, err = instruments.Store(ctx, "US2222222222", "Two Inc")
+	suite.Require().NoError(err)
+	_, err = suite.pgx.Exec(ctx, `
+		INSERT INTO asset_symbol (isin, symbol, from_date, to_date) VALUES
+		('US1111111111', 'FB', '2019-01-01'::date, '2020-06-01'::date),
+		('US2222222222', 'FB', '2020-06-01'::date, NULL)`)
+	suite.Require().NoError(err)
+	suite.marketdata.On("GetAsset", mock.Anything, "FB").Return(nil, yahooUnknown{text: "Quote not found for symbol: FB"})
+
+	req := &servicePb.DownloadHistoricalDataRequest{
+		Symbols:   []string{"FB"},
+		StartDate: &internal_pb.Date{Year: 2019, Month: 1, Day: 1},
+		EndDate:   &internal_pb.Date{Year: 2020, Month: 12, Day: 31},
+		Provider:  "yahoo",
+	}
+	rsp, err := suite.client.DownloadHistoricalData(context.Background(), req)
+	suite.Require().NoError(err)
+	msg, err := rsp.Recv()
+	suite.Require().NoError(err)
+	suite.Equal("FB", msg.GetSymbol())
+	suite.Equal(servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, msg.GetStatus())
+	suite.Equal("more than one company used FB", msg.GetError())
+	_, err = rsp.Recv()
+	suite.Require().ErrorIs(err, io.EOF)
+
+	var bars, mapped int
+	suite.Require().NoError(suite.pgx.QueryRow(ctx, `SELECT count(*) FROM ohlc`).Scan(&bars))
+	suite.Require().NoError(suite.pgx.QueryRow(ctx, `SELECT count(*) FROM provider_symbol`).Scan(&mapped))
+	suite.Zero(bars)
+	suite.Zero(mapped)
 }
 
 // The OK response for FB names the later ticker its bars were read under,

@@ -116,6 +116,33 @@ def no_stored_prices_line(
     return "\n".join(lines)
 
 
+def symbol_event_where(use_id: bool, backtest_id: str, name: str) -> tuple[str, dict[str, str]]:
+    """The predicate that selects one backtest's symbol events.
+
+    use_id is true when the table is keyed by backtest id. The name is not
+    a substitute then: two owners can share it. A missing id fails the read.
+    """
+    if use_id:
+        key = backtest_id.strip()
+        if not key:
+            raise PlainSentence(listings_unread_line(name))
+        return "backtest_id = :key", {"key": key}
+    return "backtest_name = :key", {"key": name}
+
+
+def _symbol_events_use_id(engine) -> bool:
+    """True when backtest_symbol_event is keyed by backtest id."""
+    query = text(
+        """SELECT 1
+             FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'backtest_symbol_event'
+              AND column_name = 'backtest_id'"""
+    )
+    with engine.connect() as conn:
+        return conn.execute(query).first() is not None
+
+
 def listings_unread_line(backtest: str) -> str:
     """Ingest's failure when listing and delisting evidence can't be read."""
     return (
@@ -963,6 +990,7 @@ class SQLIngester:
         corporate_actions: pd.DataFrame | None = None,
         database_url: str | None = None,
         connection=None,
+        backtest_id: str | None = None,
     ):
         if engine is not None and (database_url is not None or connection is not None):
             raise ValueError("SQLIngester takes an engine or a database URL, not both")
@@ -983,6 +1011,9 @@ class SQLIngester:
         # None loads backtest_symbol_event. A frame, including an empty one,
         # is the caller's list and is not read from the database.
         self._events = events
+        # Set when the broker keys the rows by backtest id (AUTH_ENABLED).
+        # Empty while the table is still keyed by name.
+        self._backtest_id = (backtest_id or "").strip()
         # The same for dividends (DIVIDEND_COLUMNS). A caller's frame is the
         # complete list; only a database read checks the fetched spans.
         self._dividends = dividends
@@ -1082,14 +1113,24 @@ class SQLIngester:
             engine = getattr(self.engine, "_engine", None)
             if engine is None:
                 raise PlainSentence(listings_unread_line(self.backtest.name))
-            query = text(
-                """SELECT symbol, kind, on_date, evidence
-                     FROM backtest_symbol_event
-                    WHERE backtest_name = :name
-                    ORDER BY on_date, symbol"""
-            )
+            use_id = _symbol_events_use_id(engine)
+            _, params = symbol_event_where(use_id, self._backtest_id, self.backtest.name)
+            if use_id:
+                query = text(
+                    """SELECT symbol, kind, on_date, evidence
+                         FROM backtest_symbol_event
+                        WHERE backtest_id = :key
+                        ORDER BY on_date, symbol"""
+                )
+            else:
+                query = text(
+                    """SELECT symbol, kind, on_date, evidence
+                         FROM backtest_symbol_event
+                        WHERE backtest_name = :key
+                        ORDER BY on_date, symbol"""
+                )
             try:
-                frame = read_sql_query(query, engine, params={"name": self.backtest.name})
+                frame = read_sql_query(query, engine, params=params)
             except SQLAlchemyError as exc:
                 _logger.error(
                     "Couldn't read listing and delisting evidence of backtest %r: %s",

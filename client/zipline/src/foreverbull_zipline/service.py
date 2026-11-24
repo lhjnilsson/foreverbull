@@ -181,13 +181,19 @@ class BacktestService(engine_service_pb_grpc.EngineServiceSync, health_pb2_grpc.
         backtest = request.backtest
         if backtest is None:
             raise ValueError("ingest request has no backtest")
+        # Only when the broker sent the backtest id. Callers that replace
+        # SQLIngester with a one-argument function keep working, and a name
+        # key is not used as a stand-in for a missing id.
+        extra = {}
+        if request.has_field("object") and request.object.strip():
+            extra["backtest_id"] = request.object.strip()
         try:
             if self._connection is not None:
-                ingester = SQLIngester(backtest, connection=self._connection)
+                ingester = SQLIngester(backtest, connection=self._connection, **extra)
             elif self._database_url is not None:
-                ingester = SQLIngester(backtest, database_url=self._database_url)
+                ingester = SQLIngester(backtest, database_url=self._database_url, **extra)
             else:
-                ingester = SQLIngester(backtest)
+                ingester = SQLIngester(backtest, **extra)
             bundles.register(backtest.name, ingester, calendar_name="XNYS")
             bundles.ingest(backtest.name, os.environ, pd.Timestamp.utcnow(), [], True)
         except Exception as exc:

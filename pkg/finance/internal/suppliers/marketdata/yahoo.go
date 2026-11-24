@@ -231,17 +231,38 @@ func (y *YahooClient) GetAsset(ctx context.Context, symbol string) (*pb.Asset, e
 	}
 	defer resp.Body.Close()
 
-	data := AssetResponse{}
-
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, isinBodyLimit))
 	if err != nil {
-		return nil, fmt.Errorf("error decoding response: %w", err)
+		return nil, fmt.Errorf("error reading response: %w", err)
+	}
+	// A bot-check page is a failed request, including when the status is 200
+	// or the body mentions a missing quote. It is not "Yahoo doesn't know
+	// this ticker".
+	if err := blockedError("yahoo", symbol, resp.Header.Get("Content-Type"), body); err != nil {
+		return nil, err
+	}
+	// Only 200 and 404 can be Yahoo's answer that the ticker is unknown.
+	// Any other status is a failed request, whatever the body says.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return nil, fmt.Errorf("fail to get asset for symbol %s: HTTP %s", symbol, resp.Status)
 	}
 
+	data := AssetResponse{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		// A 404 is Yahoo's answer that the ticker is unknown even when the
+		// body is not the quote summary. Any other status that will not
+		// decode is a failed request.
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, unknownSymbol("")
+		}
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+	if unknown, text := unknownQuoteSummary(resp.StatusCode, data); unknown {
+		return nil, unknownSymbol(text)
+	}
 	if data.QuoteSummary.Error.Code != "" {
 		return nil, fmt.Errorf("%v", data.QuoteSummary.Error.Description)
 	}
-
 	if len(data.QuoteSummary.Result) == 0 {
 		return nil, fmt.Errorf("no results found")
 	}

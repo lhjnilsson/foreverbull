@@ -289,6 +289,55 @@ func (db *Instruments) Resolve(ctx context.Context, symbol string, t time.Time) 
 	return &inst, nil
 }
 
+// Overlapping returns the instrument whose asset_symbol window overlaps
+// [start, end]. A nil end is open. Windows are half-open, and end is the
+// last calendar day of the backtest, so a window that starts after end or
+// ends on start does not overlap. None is pgx.ErrNoRows. More than one ISIN
+// is ErrAmbiguousSymbol: the caller must not pick one.
+func (db *Instruments) Overlapping(ctx context.Context, symbol string, start time.Time, end *time.Time) (*Instrument, error) {
+	symbol = strings.TrimSpace(symbol)
+	if symbol == "" {
+		return nil, fmt.Errorf("missing symbol")
+	}
+	start = dateOnly(start)
+	var endDay any
+	if end != nil {
+		endDay = dateOnly(*end).Format("2006-01-02")
+	}
+	rows, err := db.Conn.Query(ctx, `
+		SELECT DISTINCT i.id, i.isin, i.name
+		  FROM asset_symbol s
+		  JOIN instrument i ON i.isin = s.isin
+		 WHERE s.symbol = $1
+		   AND ($3::date IS NULL OR s.from_date <= $3::date)
+		   AND (s.to_date IS NULL OR s.to_date > $2::date)`,
+		symbol, start.Format("2006-01-02"), endDay)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve symbol: %w", err)
+	}
+	defer rows.Close()
+
+	var found []Instrument
+	for rows.Next() {
+		var inst Instrument
+		if err := rows.Scan(&inst.ID, &inst.ISIN, &inst.Name); err != nil {
+			return nil, fmt.Errorf("failed to scan instrument: %w", err)
+		}
+		found = append(found, inst)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to resolve symbol: %w", err)
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("failed to resolve symbol: %w", pgx.ErrNoRows)
+	}
+	if len(found) > 1 {
+		return nil, fmt.Errorf("symbol %s maps to %d instruments: %w", symbol, len(found), ErrAmbiguousSymbol)
+	}
+	inst := found[0]
+	return &inst, nil
+}
+
 // Symbols returns the ticker of instrument at t. Adds/drops are membership, not identity.
 func (db *Instruments) Symbols(ctx context.Context, inst *Instrument, t time.Time) (string, error) {
 	if inst == nil {
