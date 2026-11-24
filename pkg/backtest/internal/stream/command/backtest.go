@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/numfmt"
+	"github.com/lhjnilsson/foreverbull/internal/postgres"
 	"github.com/lhjnilsson/foreverbull/internal/storage"
 	"github.com/lhjnilsson/foreverbull/internal/stream"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
@@ -152,14 +153,17 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	if err := tooManySymbols(command.BacktestName, append([]string{benchmark}, symbols...)); err != nil {
 		return err
 	}
+	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	// Every member must resolve before anything is stored. A member that
-	// is left out instead changes the universe without a word.
-	failures, err := lookupMemberAssets(ctx, marketdataClient, symbols)
+	// is left out instead changes the universe without a word. A ticker
+	// asset_symbol already ties to one ISIN on these dates is not unknown:
+	// the download looks up its later ticker.
+	failures, err := lookupMemberAssets(ctx, db, marketdataClient, symbols, memberISINBySymbol(result.Aliases), start, end)
 	if err != nil {
 		return err
 	}
 	if len(failures) > 0 {
-		return memberLookupError(command.BacktestName, failures)
+		return memberLookupError(command.BacktestName, failures, start, end)
 	}
 
 	b := backtest.Backtest{
@@ -175,7 +179,6 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	if err := requireStoredOwner(command.OwnerID, ""); err != nil {
 		return err
 	}
-	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
 	// Instrument and alias rows are shared by every ETF backtest. They are
 	// written before the backtest transaction and stay if it rolls back; a
 	// retry finds them. The backtest, its periods, its assets, and its
@@ -416,6 +419,32 @@ func calendarYearPeriods(start, end time.Time) []*backtest.Backtest_Period {
 	return periods
 }
 
+// memberISINBySymbol is the snapshot ISIN of a ticker that belongs to one
+// company in the ETF result. A ticker used by two companies is left out:
+// there is no single member ISIN to match.
+func memberISINBySymbol(aliases []universe.Alias) map[string]string {
+	seen := make(map[string]map[string]struct{})
+	for _, alias := range aliases {
+		if alias.Symbol == "" || alias.ISIN == "" {
+			continue
+		}
+		if seen[alias.Symbol] == nil {
+			seen[alias.Symbol] = make(map[string]struct{})
+		}
+		seen[alias.Symbol][alias.ISIN] = struct{}{}
+	}
+	out := make(map[string]string, len(seen))
+	for symbol, isins := range seen {
+		if len(isins) != 1 {
+			continue
+		}
+		for isin := range isins {
+			out[symbol] = isin
+		}
+	}
+	return out
+}
+
 func uniqueAliasSymbols(aliases []universe.Alias) []string {
 	seen := make(map[string]struct{}, len(aliases))
 	symbols := make([]string, 0, len(aliases))
@@ -441,19 +470,37 @@ func uniqueAliasSymbols(aliases []universe.Alias) []string {
 const memberLookupProvider = "yahoo"
 
 // memberLookupFailure is a member symbol whose GetAsset failed. noISIN is
-// set only when the provider answered that the equity has no ISIN; any
-// other error is a failed lookup.
+// set only when the provider answered that the equity has no ISIN.
+// unknown is set only when Yahoo answered that it has no quote for the
+// ticker and asset_symbol does not give that ticker to the member's ISIN.
+// ambiguous is set when asset_symbol gives the ticker to more than one
+// company on the backtest dates. unread is a failed read of asset_symbol.
+// Any other error is a failed lookup.
 type memberLookupFailure struct {
-	symbol string
-	noISIN bool
+	symbol    string
+	noISIN    bool
+	unknown   bool
+	ambiguous bool
+	unread    bool
 }
 
 // lookupMemberAssets asks the finance service for every member symbol and
 // returns each one that failed, in the order of symbols. The loop is
 // bounded by symbols. A canceled context returns ctx.Err(). The cause is
 // logged with any URL query removed; it never reaches the user.
-func lookupMemberAssets(ctx context.Context, client financeServicePB.MarketdataClient, symbols []string) ([]memberLookupFailure, error) {
+//
+// Yahoo answering that it does not know a ticker is not a failure when
+// asset_symbol gives that ticker to the member's own ISIN on [start, end].
+// The download then looks up the later ticker. A different ISIN is not that
+// case. More than one company is collected with the other failures. A
+// failed read is collected too: the database error is logged, and the user
+// is asked to report it.
+func lookupMemberAssets(ctx context.Context, db *pgxpool.Pool, client financeServicePB.MarketdataClient, symbols []string, memberISIN map[string]string, start, end time.Time) ([]memberLookupFailure, error) {
 	failures := make([]memberLookupFailure, 0)
+	var conn postgres.Query
+	if db != nil {
+		conn = db
+	}
 	for _, symbol := range symbols {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -467,9 +514,31 @@ func lookupMemberAssets(ctx context.Context, client financeServicePB.MarketdataC
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
+		if isUnknownSymbolLookupError(err) {
+			isin, knownErr := finance.SymbolHasInstrument(ctx, conn, symbol, start, &end)
+			if errors.Is(knownErr, finance.ErrAmbiguousSymbol) {
+				log.Error().Err(knownErr).Str("symbol", symbol).
+					Msg("member ticker belongs to more than one company on the backtest dates")
+				failures = append(failures, memberLookupFailure{symbol: symbol, ambiguous: true})
+				continue
+			}
+			if knownErr != nil {
+				log.Error().Err(knownErr).Str("symbol", symbol).
+					Msg("couldn't read ticker history")
+				failures = append(failures, memberLookupFailure{symbol: symbol, unread: true})
+				continue
+			}
+			if isin != "" && isin == memberISIN[symbol] {
+				log.Info().Str("symbol", symbol).Str("isin", isin).
+					Msg("yahoo doesn't know the ticker; asset_symbol has its instrument, so the later-ticker download will run")
+				continue
+			}
+		}
 		log.Error().Str("symbol", symbol).Str("code", status.Code(err).String()).
 			Str("error", redactURLQuery(rpcErrorText(err))).Msg("member asset lookup failed")
-		failures = append(failures, memberLookupFailure{symbol: symbol, noISIN: isNoISINLookupError(err)})
+		failures = append(failures, memberLookupFailure{
+			symbol: symbol, noISIN: isNoISINLookupError(err), unknown: isUnknownSymbolLookupError(err),
+		})
 	}
 	return failures, nil
 }
@@ -485,6 +554,19 @@ func isNoISINLookupError(err error) bool {
 		return false
 	}
 	return st.Code() == codes.NotFound && financeapi.IsNoISIN(st.Message())
+}
+
+// isUnknownSymbolLookupError reports whether a GetAsset error is Yahoo's
+// answer that it has no quote for the ticker: a NotFound status whose
+// message is the finance service's unknown-symbol text
+// (financeapi.IsUnknownSymbol). Anything else, including Yahoo's own
+// wording on another code, is a failed lookup.
+func isUnknownSymbolLookupError(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return st.Code() == codes.NotFound && financeapi.IsUnknownSymbol(st.Message())
 }
 
 // rpcErrorText is the gRPC status message, or the error text when err
@@ -510,12 +592,22 @@ func redactURLQuery(text string) string {
 // cause with its symbols A-Z, and the next step, so every symbol is named.
 // Nothing was stored yet, so the backtest wasn't saved. The lookup is
 // always Yahoo, so another --provider is not offered.
-func memberLookupError(name string, failures []memberLookupFailure) error {
+func memberLookupError(name string, failures []memberLookupFailure, start, end time.Time) error {
+	from := dateOnly(start).Format("2006-01-02")
+	to := dateOnly(end).Format("2006-01-02")
 	if len(failures) == 1 {
 		symbol := failures[0].symbol
-		if failures[0].noISIN {
+		switch {
+		case failures[0].noISIN:
 			return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s %s %s",
 				name, noISINLead(symbol), notSavedSentence, fmt.Sprintf(noISINNextStep, symbol)))
+		case failures[0].unknown:
+			return plainSentence(fmt.Sprintf("Couldn't load data for backtest '%s': %s %s %s",
+				name, unknownSymbolLead(symbol), notSavedSentence, fmt.Sprintf(noISINNextStep, symbol)))
+		case failures[0].ambiguous:
+			return plainSentence(ambiguousMemberSentence(name, symbol, from, to))
+		case failures[0].unread:
+			return plainSentence(tickerHistorySentence(name, symbol))
 		}
 		return plainSentence(fmt.Sprintf(
 			"Couldn't load data for backtest '%s': %s didn't respond when looking up %s. The backtest wasn't saved. "+
@@ -524,15 +616,28 @@ func memberLookupError(name string, failures []memberLookupFailure) error {
 	}
 	failed := make([]string, 0, len(failures))
 	noISIN := make([]string, 0, len(failures))
+	unknown := make([]string, 0, len(failures))
+	ambiguous := make([]string, 0, len(failures))
+	unread := make([]string, 0, len(failures))
 	for _, failure := range failures {
-		if failure.noISIN {
+		switch {
+		case failure.noISIN:
 			noISIN = append(noISIN, failure.symbol)
-		} else {
+		case failure.unknown:
+			unknown = append(unknown, failure.symbol)
+		case failure.ambiguous:
+			ambiguous = append(ambiguous, failure.symbol)
+		case failure.unread:
+			unread = append(unread, failure.symbol)
+		default:
 			failed = append(failed, failure.symbol)
 		}
 	}
 	sort.Strings(failed)
 	sort.Strings(noISIN)
+	sort.Strings(unknown)
+	sort.Strings(ambiguous)
+	sort.Strings(unread)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Couldn't load data for backtest '%s': %d symbols couldn't be used. The backtest wasn't saved.\n",
 		name, len(failures))
@@ -550,8 +655,50 @@ func memberLookupError(name string, failures []memberLookupFailure) error {
 		fmt.Fprintf(&b, "  %s: %s doesn't identify them well enough to follow ticker changes. Remove them.\n",
 			strings.Join(noISIN, ", "), memberLookupProvider)
 	}
-	b.WriteString("Then run `fbull backtest create` again.")
+	if len(unknown) == 1 {
+		fmt.Fprintf(&b, "  %s: %s doesn't know this symbol. Remove it.\n", unknown[0], memberLookupProvider)
+	} else if len(unknown) > 1 {
+		fmt.Fprintf(&b, "  %s: %s doesn't know these symbols. Remove them.\n",
+			strings.Join(unknown, ", "), memberLookupProvider)
+	}
+	if len(ambiguous) == 1 {
+		fmt.Fprintf(&b, "  %s: yahoo doesn't know this symbol, and more than one company used it between %s and %s. Remove it.\n",
+			ambiguous[0], from, to)
+	} else if len(ambiguous) > 1 {
+		fmt.Fprintf(&b, "  %s: yahoo doesn't know these symbols, and more than one company used each of them between %s and %s. Remove them.\n",
+			strings.Join(ambiguous, ", "), from, to)
+	}
+	if len(unread) == 1 {
+		fmt.Fprintf(&b, "  %s: foreverbull couldn't read its ticker history. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.\n",
+			unread[0])
+	} else if len(unread) > 1 {
+		fmt.Fprintf(&b, "  %s: foreverbull couldn't read their ticker history. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.\n",
+			strings.Join(unread, ", "))
+	}
+	// A message that is only ticker-history lines ends on the report-it
+	// line. Any line that asks the user to do something keeps the footer.
+	if len(failed)+len(noISIN)+len(unknown)+len(ambiguous) > 0 {
+		b.WriteString("Then run `fbull backtest create` again.")
+	}
 	return plainSentence(b.String())
+}
+
+// ambiguousMemberSentence is the create error when Yahoo has no quote and
+// asset_symbol gives the ticker to more than one company on the backtest
+// dates. from and to are YYYY-MM-DD.
+func ambiguousMemberSentence(name, symbol, from, to string) string {
+	return fmt.Sprintf("Couldn't load data for backtest '%s': yahoo doesn't know the symbol %s, "+
+		"and more than one company used %s between %s and %s, so foreverbull can't tell which one to read. "+
+		"The backtest wasn't saved. Remove %s, then run `fbull backtest create` again.",
+		name, symbol, symbol, from, to, symbol)
+}
+
+// tickerHistorySentence is the create error when asset_symbol could not be
+// read. The database error stays in the log.
+func tickerHistorySentence(name, symbol string) string {
+	return fmt.Sprintf("Couldn't load data for backtest '%s': foreverbull couldn't read its ticker history for %s. "+
+		"The backtest wasn't saved. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.",
+		name, symbol)
 }
 
 // fillPeriodAssets lists each member symbol in the periods it overlaps. Every
@@ -882,6 +1029,28 @@ var (
 // that maps to more than one instrument. Only this exact shape is shown.
 var ambiguousSymbolError = regexp.MustCompile(`^(yahoo|stooq|alpaca) has more than one instrument for ([A-Za-z0-9.^=_-]{1,32})$`)
 
+// companiesUsedError matches the finance service's STATUS_ERROR when Yahoo
+// has no quote and asset_symbol gives the ticker to more than one company.
+var companiesUsedError = regexp.MustCompile(`^more than one company used ([A-Za-z0-9.^=_-]{1,32})$`)
+
+// tickerHistoryError matches the finance service's STATUS_ERROR when
+// asset_symbol could not be read. The database error is not in it.
+var tickerHistoryError = regexp.MustCompile(`^couldn't read ticker history for ([A-Za-z0-9.^=_-]{1,32})$`)
+
+// companiesUsedSymbol returns the ticker in text when it is the
+// more-than-one-company sentence for symbol.
+func companiesUsedSymbol(text, symbol string) bool {
+	match := companiesUsedError.FindStringSubmatch(text)
+	return match != nil && match[1] == symbol
+}
+
+// tickerHistorySymbol returns whether text is the unread ticker-history
+// sentence for symbol.
+func tickerHistorySymbol(text, symbol string) bool {
+	match := tickerHistoryError.FindStringSubmatch(text)
+	return match != nil && match[1] == symbol
+}
+
 // ambiguousSymbolProvider returns the provider named in text when it is the
 // ambiguous-ticker sentence for symbol, the ticker this response is about.
 func ambiguousSymbolProvider(text, symbol string) (string, bool) {
@@ -997,6 +1166,18 @@ func noISINLead(symbol string) string {
 // it out can.
 const noISINNextStep = "Remove %s, then run `fbull backtest create` again."
 
+// unknownSymbolLead says Yahoo has no quote for symbol. The asset lookup is
+// Yahoo for every price provider, so the lead does not use --provider.
+func unknownSymbolLead(symbol string) string {
+	return fmt.Sprintf("yahoo doesn't know the symbol %s.", symbol)
+}
+
+// unknownSymbolNextStep ends the sentence when Yahoo answered that it has
+// no quote for the ticker. Another price provider is not offered: the
+// lookup is Yahoo either way.
+const unknownSymbolNextStep = "Check the symbol, or use the company's current ticker if it has changed, " +
+	"then run `fbull backtest create` again."
+
 // discardSymbolDownloadError deletes the backtest when a symbol's download
 // returns STATUS_ERROR. The create must not keep a universe that silently
 // omits a member.
@@ -1024,6 +1205,18 @@ func symbolDownloadMessage(name, provider, symbol string, start, end *pb.Date, e
 	case financeapi.IsNoISIN(errText):
 		lead = noISINLead(symbol)
 		next = fmt.Sprintf(noISINNextStep, symbol)
+	case financeapi.IsUnknownSymbol(errText):
+		// The asset lookup is Yahoo for every --provider, so the lead names
+		// yahoo and the next step does not offer another provider.
+		lead = unknownSymbolLead(symbol)
+		next = unknownSymbolNextStep
+	case companiesUsedSymbol(errText, symbol):
+		lead = fmt.Sprintf("yahoo doesn't know the symbol %s, and more than one company used %s between %s and %s, so foreverbull can't tell which one to read.",
+			symbol, symbol, pb.DateToDateString(start), pb.DateToDateString(end))
+		next = fmt.Sprintf("Remove %s, then run `fbull backtest create` again.", symbol)
+	case tickerHistorySymbol(errText, symbol):
+		lead = fmt.Sprintf("foreverbull couldn't read its ticker history for %s.", symbol)
+		next = "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
 	case isRefusedBarError(errText):
 		lead = errText + "."
 		next = providerFaultNextStep

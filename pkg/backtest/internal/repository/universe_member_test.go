@@ -11,8 +11,10 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/universe"
+	financebars "github.com/lhjnilsson/foreverbull/pkg/finance/bars"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
+	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -563,4 +565,117 @@ func (test *UniverseMemberTest) TestLastBarsLeavesAnISINWithoutBarsNil() {
 	test.Require().Len(aliases, 1)
 	test.Equal("AAPL", aliases[0].Symbol)
 	test.Nil(aliases[0].LastBar)
+}
+
+// A universe member asked under its old ticker reads the same instrument and
+// the same series as the later ticker. The bars are the instrument_ohlc join
+// of provider_symbol, so a bar before that window is absent and a bar the
+// pre-first-window claim already included is present. Two instruments holding
+// the ticker is ErrAmbiguousSymbol and no bars.
+func (test *UniverseMemberTest) TestMemberAskedUnderTheOldTickerReadsTheInstrumentSeries() {
+	ctx := context.Background()
+	test.resetFinanceBars()
+	test.createBacktest("meta-window")
+	test.Require().NoError(test.members.Replace(ctx, "meta-window", []repository.MemberInterval{
+		{ISIN: metaISIN, FromDate: test.date("2021-07-01")},
+	}))
+	instruments := repository.Instrument{Conn: test.conn}
+	test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+		ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-07-01"), ToDate: test.toPtr("2021-10-31"),
+	}))
+	test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+		ISIN: metaISIN, Symbol: "META", FromDate: test.date("2021-10-31"),
+	}))
+
+	open := func(s string) time.Time { return test.date(s).Add(14*time.Hour + 30*time.Minute) }
+	test.financeBars("yahoo", "META", open("2020-12-01"), open("2021-06-01"), open("2021-08-02"), open("2021-11-01"))
+	// provider_symbol starts before FB's asset_symbol window: the download's
+	// pre-first-window claim already stored that. A bar before the mapping is
+	// outside every window.
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO provider_symbol (instrument_id, provider, symbol, from_date, evidence)
+		VALUES ($1, 'yahoo', 'META', '2021-01-04', 'download')`, metaISIN)
+	test.Require().NoError(err)
+
+	symbols, err := test.members.SymbolsAt(ctx, "meta-window", test.date("2021-08-02"))
+	test.Require().NoError(err)
+	test.Equal([]string{"FB"}, symbols)
+
+	asOf := open("2021-08-15")
+	asked, err := financebars.New(test.conn).List(ctx, "yahoo", []string{"FB"}, asOf, 20)
+	test.Require().NoError(err)
+	test.Equal([]string{"FB", "FB"}, barSymbols(asked))
+	test.Equal([]float64{10, 10}, barCloses(asked))
+	test.Equal([]string{"2021-06-01", "2021-08-02"}, barDays(asked))
+
+	var instrumentID string
+	var series int
+	err = test.conn.QueryRow(ctx, `
+		SELECT instrument_id, count(*)
+		  FROM instrument_ohlc
+		 WHERE provider = 'yahoo' AND time <= $1
+		 GROUP BY instrument_id`, asOf).Scan(&instrumentID, &series)
+	test.Require().NoError(err)
+	test.Equal(metaISIN, instrumentID)
+	test.Equal(len(asked), series)
+
+	later, err := financebars.New(test.conn).List(ctx, "yahoo", []string{"META"}, open("2021-11-15"), 20)
+	test.Require().NoError(err)
+	test.Equal([]string{"META", "META", "META"}, barSymbols(later))
+	test.Equal([]string{"2021-06-01", "2021-08-02", "2021-11-01"}, barDays(later))
+	test.Equal(barCloses(asked), barCloses(later)[:len(asked)])
+
+	// The December bar is stored under META and is not in the series.
+	var outside int
+	err = test.conn.QueryRow(ctx, `
+		SELECT count(*) FROM instrument_ohlc
+		 WHERE provider = 'yahoo' AND (time AT TIME ZONE 'UTC')::date = '2020-12-01'`).Scan(&outside)
+	test.Require().NoError(err)
+	test.Zero(outside)
+}
+
+func (test *UniverseMemberTest) TestMemberOldTickerSharedByTwoInstrumentsIsAmbiguous() {
+	ctx := context.Background()
+	test.resetFinanceBars()
+	test.createBacktest("meta-window")
+	test.Require().NoError(test.members.Replace(ctx, "meta-window", []repository.MemberInterval{
+		{ISIN: metaISIN, FromDate: test.date("2021-07-01")},
+	}))
+	instruments := repository.Instrument{Conn: test.conn}
+	test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+		ISIN: metaISIN, Symbol: "FB", FromDate: test.date("2021-07-01"), ToDate: test.toPtr("2021-10-31"),
+	}))
+	test.Require().NoError(instruments.StoreAlias(ctx, repository.AliasInterval{
+		ISIN: aaplISIN, Symbol: "FB", FromDate: test.date("2021-07-01"),
+	}))
+	test.financeBars("yahoo", "FB", test.date("2021-08-02").Add(14*time.Hour+30*time.Minute))
+
+	bars, err := financebars.New(test.conn).List(ctx, "yahoo", []string{"FB"}, test.date("2021-08-15"), 20)
+	test.Require().ErrorContains(err, "symbol FB maps to 2 instruments at 2021-08-15")
+	test.Require().ErrorContains(err, "symbol maps to more than one instrument")
+	test.Nil(bars)
+}
+
+func barSymbols(bars []*financepb.OHLC) []string {
+	out := make([]string, len(bars))
+	for i, bar := range bars {
+		out[i] = bar.GetSymbol()
+	}
+	return out
+}
+
+func barCloses(bars []*financepb.OHLC) []float64 {
+	out := make([]float64, len(bars))
+	for i, bar := range bars {
+		out[i] = bar.GetClose()
+	}
+	return out
+}
+
+func barDays(bars []*financepb.OHLC) []string {
+	out := make([]string, len(bars))
+	for i, bar := range bars {
+		out[i] = bar.GetTimestamp().AsTime().UTC().Format(time.DateOnly)
+	}
+	return out
 }

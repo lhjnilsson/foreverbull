@@ -61,6 +61,14 @@ func (fs *MarketdataServer) GetAsset(ctx context.Context, req *servicePb.GetAsse
 					Msg("getting asset failed: no ISIN")
 				return nil, status.Error(codes.NotFound, financeapi.NoISINMessage(identifier.Symbol))
 			}
+			if errors.Is(err, marketdata.ErrUnknownSymbol) {
+				// Yahoo answered that it has no quote for the ticker. Callers
+				// branch on NotFound plus the shared prefix. Yahoo's own text
+				// stays in the log.
+				log.Error().Err(redact.URLError(err)).Str("symbol", identifier.Symbol).
+					Msg("getting asset failed: yahoo doesn't know the symbol")
+				return nil, status.Error(codes.NotFound, financeapi.UnknownSymbolMessage(identifier.Symbol))
+			}
 			return nil, fmt.Errorf("error getting asset: %w", redact.URLError(err))
 		}
 	case *servicePb.GetAssetRequest_Isin:
@@ -270,6 +278,20 @@ func ambiguousSymbolError(provider, symbol string) error {
 	return fmt.Errorf("%s has more than one instrument for %s", provider, symbol)
 }
 
+// companiesUsedError is the STATUS_ERROR when Yahoo has no quote for symbol
+// and asset_symbol gives it to more than one company on the backtest dates.
+// The backtest command writes the user's sentence from this exact text.
+func companiesUsedError(symbol string) error {
+	return fmt.Errorf("more than one company used %s", symbol)
+}
+
+// tickerHistoryError is the STATUS_ERROR when asset_symbol could not be
+// read. The database error stays in the log. The backtest command writes
+// the user's sentence from this exact text.
+func tickerHistoryError(symbol string) error {
+	return fmt.Errorf("couldn't read ticker history for %s", symbol)
+}
+
 // noISINError is the STATUS_ERROR text when the provider answered that the
 // asked equity has no ISIN, so it can't be followed across ticker changes.
 // DownloadFinancialData matches financeapi.NoISINPrefix for its own
@@ -277,6 +299,15 @@ func ambiguousSymbolError(provider, symbol string) error {
 // provider text.
 func noISINError(symbol string) error {
 	return errors.New(financeapi.NoISINMessage(symbol))
+}
+
+// unknownSymbolError is the STATUS_ERROR text when Yahoo answered that it
+// has no quote for the asked ticker. DownloadFinancialData matches
+// financeapi.UnknownSymbolPrefix. The lookup is Yahoo for every price
+// provider, so the text does not name --provider. symbol is the requested
+// symbol, never Yahoo's own text.
+func unknownSymbolError(symbol string) error {
+	return errors.New(financeapi.UnknownSymbolMessage(symbol))
 }
 
 // providerTimedOut reports a provider call that ran out of time while the
@@ -376,6 +407,37 @@ func (fs *MarketdataServer) downloadSymbol(
 			failSymbol(ctx, sender, rsp, noISINError(symbol))
 			return nil
 		}
+		if errors.Is(err, marketdata.ErrUnknownSymbol) {
+			// Yahoo answered that it has no quote. When asset_symbol already
+			// gives this ticker to one instrument on the backtest dates, that
+			// is a rename: continue to the later-ticker lookup. Anything else
+			// is the unknown-symbol sentence. More than one instrument is not
+			// a choice.
+			inst, knownErr := (&repository.Instruments{Conn: fs.pgx}).Overlapping(ctx, symbol, start, end)
+			if knownErr != nil && !errors.Is(knownErr, pgx.ErrNoRows) {
+				if errors.Is(knownErr, repository.ErrAmbiguousSymbol) {
+					// The clash is asset_symbol, not an exchange suffix.
+					// Yahoo's not-found answer stays in the log.
+					log.Error().Err(knownErr).Str("symbol", symbol).Str("step", "read ticker alias").
+						Msg("historical data download failed: more than one company used the ticker")
+					failSymbol(ctx, sender, rsp, companiesUsedError(symbol))
+					return nil
+				}
+				log.Error().Err(knownErr).Str("symbol", symbol).Str("step", "read ticker alias").
+					Msg("historical data download failed: couldn't read ticker history")
+				failSymbol(ctx, sender, rsp, tickerHistoryError(symbol))
+				return nil
+			}
+			if inst == nil {
+				log.Error().Err(redact.URLError(err)).Str("symbol", symbol).Str("step", "get asset").
+					Msg("historical data download failed: yahoo doesn't know the symbol")
+				failSymbol(ctx, sender, rsp, unknownSymbolError(symbol))
+				return nil
+			}
+			log.Info().Str("symbol", symbol).Str("isin", inst.ISIN).
+				Msg("yahoo doesn't know the ticker; looking up the later ticker of its instrument")
+			return fs.finishLaterTicker(ctx, sender, rsp, symbol, start, end, provider, assetRepo, ohlcRepo, bars, inst)
+		}
 		if providerTimedOut(ctx, err) {
 			failSymbol(ctx, sender, rsp, &marketdata.TimeoutError{Provider: metadataProvider, Symbol: symbol})
 			return nil
@@ -447,56 +509,32 @@ func (fs *MarketdataServer) downloadSymbol(
 			failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
 			return nil
 		}
-		fetched, fetchErr := fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, bars, assetRepo)
-		if fetchErr != nil {
-			var blocked *marketdata.BlockedError
-			if errors.As(fetchErr, &blocked) {
-				return blocked
-			}
-			// Only the no-bars sentinel selects the "no price data for …
-			// between …" sentence. A failed lookup, search, GetOHLC or store
-			// under another ticker, or a DB error in Resolve or ListAliases,
-			// says nothing about the prices, so it is logged and the user gets
-			// the generic download failure.
-			if errors.Is(fetchErr, errNoPriceData) {
-				failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
-				return nil
-			}
-			if errors.Is(fetchErr, repository.ErrAmbiguousSymbol) {
-				failSymbol(ctx, sender, rsp, ambiguousSymbolError(provider, symbol))
-				return nil
-			}
-			// ErrStooqExchange is an unsupported suffix or a suffixed ticker
-			// outside the bound (errStooqInvalidTicker). The sentence names
-			// this later ticker, not the one that was asked, so create shows
-			// the generic download message.
-			if errors.Is(fetchErr, marketdata.ErrStooqExchange) {
-				failSymbol(ctx, sender, rsp, fetchErr)
-				return nil
-			}
-			if ctx.Err() != nil {
-				return nil
-			}
-			if named := barsStatusError(symbol, provider, "find later ticker", fetchErr); named != nil {
-				failSymbol(ctx, sender, rsp, named)
-				return nil
-			}
-			failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "find later ticker", fetchErr))
-			return nil
+		fetched, blocked := fs.takeLaterTicker(ctx, sender, rsp, symbol, start, end, provider, assetRepo, bars, nil)
+		if blocked != nil || fetched == nil {
+			return blocked
 		}
 		storeSymbol = fetched.symbol
 		ohlcs = fetched.bars
 		ownerID = fetched.instrumentID
-		// The client records this on the backtest and shows it, so the
-		// later ticker is never used without a word. No day is sent: the
-		// provider doesn't say when the ticker changed.
-		rsp.LaterTicker = &servicePb.DownloadHistoricalDataResponse_LaterTicker{Symbol: fetched.symbol}
 	}
 
-	// The mapping is written in the sync transaction, after the bars. A
-	// refused sync commits neither. The asset row above and a later ticker's
-	// asset row stay when the bars roll back; a retry finds them and stores
-	// the bars again.
+	return fs.storeFetchedBars(ctx, sender, rsp, symbol, provider, storeSymbol, ownerID, start, end, ohlcs, ohlcRepo, bars)
+}
+
+// storeFetchedBars writes the bars already fetched and reports a store
+// failure on rsp. The mapping is in the sync transaction, after the bars.
+// A refused sync commits neither.
+func (fs *MarketdataServer) storeFetchedBars(
+	ctx context.Context,
+	sender *downloadSender,
+	rsp *servicePb.DownloadHistoricalDataResponse,
+	symbol, provider, storeSymbol, ownerID string,
+	start time.Time,
+	end *time.Time,
+	ohlcs []*pb.OHLC,
+	ohlcRepo repository.OHLC,
+	bars supplier.Marketdata,
+) *marketdata.BlockedError {
 	fetch := prefetchedBars(ctx, bars, storeSymbol, start, end, ohlcs)
 	if err := ohlcRepo.SyncSourceThen(ctx, provider, storeSymbol, start, end, fetch, bars,
 		func(ctx context.Context, tx pgx.Tx) error {
@@ -555,7 +593,6 @@ func (fs *MarketdataServer) downloadSymbol(
 		failSymbol(ctx, sender, rsp, err)
 		return nil
 	}
-
 	sender.send(rsp)
 	return nil
 }
@@ -749,6 +786,97 @@ type fetchedBars struct {
 	bars         []*pb.OHLC
 }
 
+// finishLaterTicker runs the later-ticker lookup for an instrument asset_symbol
+// already gave the asked ticker, then stores what it found. inst is that
+// instrument. A failed lookup is its own error, not the unknown-symbol sentence.
+func (fs *MarketdataServer) finishLaterTicker(
+	ctx context.Context,
+	sender *downloadSender,
+	rsp *servicePb.DownloadHistoricalDataResponse,
+	symbol string,
+	start time.Time,
+	end *time.Time,
+	provider string,
+	assetRepo repository.Asset,
+	ohlcRepo repository.OHLC,
+	bars supplier.Marketdata,
+	inst *repository.Instrument,
+) *marketdata.BlockedError {
+	fetched, blocked := fs.takeLaterTicker(ctx, sender, rsp, symbol, start, end, provider, assetRepo, bars, inst)
+	if blocked != nil || fetched == nil {
+		return blocked
+	}
+	return fs.storeFetchedBars(ctx, sender, rsp, symbol, provider, fetched.symbol, fetched.instrumentID,
+		start, end, fetched.bars, ohlcRepo, bars)
+}
+
+// takeLaterTicker fetches bars under a later ticker and reports a failure on
+// rsp. A nil fetched with a nil block means the symbol was already failed.
+// inst set skips Resolve: the caller already chose the instrument.
+func (fs *MarketdataServer) takeLaterTicker(
+	ctx context.Context,
+	sender *downloadSender,
+	rsp *servicePb.DownloadHistoricalDataResponse,
+	symbol string,
+	start time.Time,
+	end *time.Time,
+	provider string,
+	assetRepo repository.Asset,
+	bars supplier.Marketdata,
+	inst *repository.Instrument,
+) (*fetchedBars, *marketdata.BlockedError) {
+	var (
+		fetched  *fetchedBars
+		fetchErr error
+	)
+	if inst != nil {
+		fetched, fetchErr = fs.fetchBarsOf(ctx, inst, symbol, start, end, bars, assetRepo)
+	} else {
+		fetched, fetchErr = fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, bars, assetRepo)
+	}
+	if fetchErr != nil {
+		var blocked *marketdata.BlockedError
+		if errors.As(fetchErr, &blocked) {
+			return nil, blocked
+		}
+		// Only the no-bars sentinel selects the "no price data for …
+		// between …" sentence. A failed lookup, search, GetOHLC or store
+		// under another ticker, or a DB error in Resolve or ListAliases,
+		// says nothing about the prices, so it is logged and the user gets
+		// the generic download failure.
+		if errors.Is(fetchErr, errNoPriceData) {
+			failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
+			return nil, nil
+		}
+		if errors.Is(fetchErr, repository.ErrAmbiguousSymbol) {
+			failSymbol(ctx, sender, rsp, ambiguousSymbolError(provider, symbol))
+			return nil, nil
+		}
+		// ErrStooqExchange is an unsupported suffix or a suffixed ticker
+		// outside the bound (errStooqInvalidTicker). The sentence names
+		// this later ticker, not the one that was asked, so create shows
+		// the generic download message.
+		if errors.Is(fetchErr, marketdata.ErrStooqExchange) {
+			failSymbol(ctx, sender, rsp, fetchErr)
+			return nil, nil
+		}
+		if ctx.Err() != nil {
+			return nil, nil
+		}
+		if named := barsStatusError(symbol, provider, "find later ticker", fetchErr); named != nil {
+			failSymbol(ctx, sender, rsp, named)
+			return nil, nil
+		}
+		failSymbol(ctx, sender, rsp, internalDownloadError(symbol, "find later ticker", fetchErr))
+		return nil, nil
+	}
+	// The client records this on the backtest and shows it, so the
+	// later ticker is never used without a word. No day is sent: the
+	// provider doesn't say when the ticker changed.
+	rsp.LaterTicker = &servicePb.DownloadHistoricalDataResponse_LaterTicker{Symbol: fetched.symbol}
+	return fetched, nil
+}
+
 // fetchBarsViaLaterTicker loads bars under another ticker of the same instrument
 // when the asked ticker has none. Yahoo keeps a renamed company's history only
 // under the current ticker. Candidates come from asset_symbol, then from a
@@ -776,7 +904,20 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		}
 		return nil, err
 	}
+	return fs.fetchBarsOf(ctx, inst, symbol, start, end, bars, assetRepo)
+}
 
+// fetchBarsOf is the later-ticker fetch once the instrument is known.
+func (fs *MarketdataServer) fetchBarsOf(
+	ctx context.Context,
+	inst *repository.Instrument,
+	symbol string,
+	start time.Time,
+	end *time.Time,
+	bars supplier.Marketdata,
+	assetRepo repository.Asset,
+) (*fetchedBars, error) {
+	instruments := repository.Instruments{Conn: fs.pgx}
 	candidates, searchErr, err := laterTickerCandidates(ctx, instruments, fs.marketdata, inst.ISIN, symbol)
 	if err != nil {
 		return nil, err

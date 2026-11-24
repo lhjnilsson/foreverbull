@@ -48,9 +48,31 @@ func createSymbolEvents(ctx context.Context, conn postgres.Query) error {
 }
 
 // SaveSymbolEvents replaces the backtest's listing and delisting rows.
-// An empty list deletes any rows already stored.
+// An empty list deletes any rows already stored. While AUTH_ENABLED is on
+// the rows are keyed by backtest id, so the name write is refused.
 func (db *Backtest) SaveSymbolEvents(ctx context.Context, name string, events []SymbolEvent) error {
-	if _, err := db.Conn.Exec(ctx, `DELETE FROM backtest_symbol_event WHERE backtest_name = $1`, name); err != nil {
+	if authOn() {
+		return fmt.Errorf("save symbol events by name is refused while AUTH_ENABLED=true")
+	}
+	return db.saveSymbolEvents(ctx, `
+		DELETE FROM backtest_symbol_event WHERE backtest_name = $1`, `
+		INSERT INTO backtest_symbol_event (backtest_name, symbol, kind, on_date, evidence)
+		VALUES ($1, $2, $3, $4, $5)`, name, events)
+}
+
+// SaveSymbolEventsByID is SaveSymbolEvents for one backtest id.
+func (db *Backtest) SaveSymbolEventsByID(ctx context.Context, id string, events []SymbolEvent) error {
+	if id == "" {
+		return fmt.Errorf("backtest id is empty")
+	}
+	return db.saveSymbolEvents(ctx, `
+		DELETE FROM backtest_symbol_event WHERE backtest_id = $1`, `
+		INSERT INTO backtest_symbol_event (backtest_id, symbol, kind, on_date, evidence)
+		VALUES ($1, $2, $3, $4, $5)`, id, events)
+}
+
+func (db *Backtest) saveSymbolEvents(ctx context.Context, clear, insert, key string, events []SymbolEvent) error {
+	if _, err := db.Conn.Exec(ctx, clear, key); err != nil {
 		return fmt.Errorf("failed to clear symbol events: %w", err)
 	}
 	for _, event := range events {
@@ -60,10 +82,8 @@ func (db *Backtest) SaveSymbolEvents(ctx context.Context, name string, events []
 		if event.Symbol == "" || event.Evidence == "" || event.On.IsZero() {
 			return fmt.Errorf("symbol event for %s is incomplete", event.Symbol)
 		}
-		if _, err := db.Conn.Exec(ctx, `
-			INSERT INTO backtest_symbol_event (backtest_name, symbol, kind, on_date, evidence)
-			VALUES ($1, $2, $3, $4, $5)`,
-			name, event.Symbol, event.Kind, event.On.UTC().Format(time.DateOnly), event.Evidence); err != nil {
+		if _, err := db.Conn.Exec(ctx, insert,
+			key, event.Symbol, event.Kind, event.On.UTC().Format(time.DateOnly), event.Evidence); err != nil {
 			return fmt.Errorf("failed to store symbol event for %s: %w", event.Symbol, err)
 		}
 	}
@@ -71,13 +91,33 @@ func (db *Backtest) SaveSymbolEvents(ctx context.Context, name string, events []
 }
 
 // SymbolEvents returns the backtest's confirmed listings and delistings,
-// oldest date first, then symbol.
+// oldest date first, then symbol. While AUTH_ENABLED is on the rows are
+// keyed by backtest id, so the name read is refused.
 func (db *Backtest) SymbolEvents(ctx context.Context, name string) ([]SymbolEvent, error) {
-	rows, err := db.Conn.Query(ctx, `
+	if authOn() {
+		return nil, fmt.Errorf("read symbol events by name is refused while AUTH_ENABLED=true")
+	}
+	return db.symbolEvents(ctx, `
 		SELECT symbol, kind, on_date, evidence
 		  FROM backtest_symbol_event
 		 WHERE backtest_name = $1
 		 ORDER BY on_date, symbol, kind`, name)
+}
+
+// SymbolEventsByID is SymbolEvents for one backtest id.
+func (db *Backtest) SymbolEventsByID(ctx context.Context, id string) ([]SymbolEvent, error) {
+	if id == "" {
+		return nil, fmt.Errorf("backtest id is empty")
+	}
+	return db.symbolEvents(ctx, `
+		SELECT symbol, kind, on_date, evidence
+		  FROM backtest_symbol_event
+		 WHERE backtest_id = $1
+		 ORDER BY on_date, symbol, kind`, id)
+}
+
+func (db *Backtest) symbolEvents(ctx context.Context, query, key string) ([]SymbolEvent, error) {
+	rows, err := db.Conn.Query(ctx, query, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read symbol events: %w", err)
 	}

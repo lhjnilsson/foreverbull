@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,10 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
+	financeServicePB "github.com/lhjnilsson/foreverbull/pkg/pb/finance/service"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -231,6 +236,45 @@ func TestSymbolDownloadMessage(t *testing.T) {
 		require.Equal(t, tc.kept, symbolDownloadMessage("oef-2024q1", "yahoo", "XYZ", start, end, tc.errText, false))
 	}
 
+	// Yahoo doesn't know the ticker. The lead names yahoo even when --provider
+	// is something else, and the next step does not offer another provider.
+	startFB := &pb.Date{Year: 2019, Month: 1, Day: 2}
+	endFB := &pb.Date{Year: 2019, Month: 12, Day: 31}
+	require.EqualError(t, errors.New(symbolDownloadMessage("fb-2019", "alpaca", "FB", startFB, endFB, "unknown symbol FB", true)),
+		"Couldn't load data for backtest 'fb-2019': yahoo doesn't know the symbol FB. The backtest wasn't saved. "+
+			"Check the symbol, or use the company's current ticker if it has changed, then run `fbull backtest create` again.")
+	require.EqualError(t, errors.New(symbolDownloadMessage("fb-2019", "alpaca", "FB", startFB, endFB, "unknown symbol FB", false)),
+		"Couldn't load data for backtest 'fb-2019': yahoo doesn't know the symbol FB. The backtest was partly saved and "+
+			"couldn't be removed. Run `fbull backtest delete fb-2019` first. Check the symbol, or use the company's "+
+			"current ticker if it has changed, then run `fbull backtest create` again.")
+	require.EqualError(t, errors.New(symbolDownloadMessage("fb-2019", "yahoo", "FB", startFB, endFB,
+		`Get "https://query2.finance.yahoo.com/v10/finance/quoteSummary/FB": connection reset`, true)),
+		"Couldn't load data for backtest 'fb-2019': the price download failed for FB. The backtest "+
+			"wasn't saved. Try again in a few minutes, or use another provider with --provider.")
+	require.EqualError(t, errors.New(symbolDownloadMessage("fb-2019", "yahoo", "FB", startFB, endFB,
+		"fail to get asset for symbol FB: HTTP 500 Internal Server Error", true)),
+		"Couldn't load data for backtest 'fb-2019': the price download failed for FB. The backtest "+
+			"wasn't saved. Try again in a few minutes, or use another provider with --provider.")
+	// A 200 with no error code and an empty result is this text, not
+	// "unknown symbol". It stays the failed-download sentence.
+	require.EqualError(t, errors.New(symbolDownloadMessage("fb-2019", "yahoo", "FB", startFB, endFB,
+		"no results found", true)),
+		"Couldn't load data for backtest 'fb-2019': the price download failed for FB. The backtest "+
+			"wasn't saved. Try again in a few minutes, or use another provider with --provider.")
+	require.EqualError(t, errors.New(symbolDownloadMessage("oef-2024q1", "yahoo", "XYZ", start, end,
+		"more than one company used XYZ", true)),
+		"Couldn't load data for backtest 'oef-2024q1': yahoo doesn't know the symbol XYZ, and more than one company "+
+			"used XYZ between 2024-01-01 and 2024-03-31, so foreverbull can't tell which one to read. The backtest "+
+			"wasn't saved. Remove XYZ, then run `fbull backtest create` again.")
+	require.EqualError(t, errors.New(symbolDownloadMessage("fb-window", "yahoo", "XYZ", startFB, endFB,
+		"couldn't read ticker history for XYZ", true)),
+		"Couldn't load data for backtest 'fb-window': foreverbull couldn't read its ticker history for XYZ. "+
+			"The backtest wasn't saved. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+	require.EqualError(t, errors.New(symbolDownloadMessage("fb-2019", "yahoo", "FB", startFB, endFB,
+		"yahoo took too long to respond for FB", true)),
+		"Couldn't load data for backtest 'fb-2019': yahoo took too long to respond for FB. The backtest "+
+			"wasn't saved. Try again later, or use another provider with --provider.")
+
 	require.Equal(t, "Couldn't load data for backtest 'oef-2024q1': symbol 2 of 3 isn't a valid ticker. Use 1 to 32 "+
 		"letters, digits, or . ^ = _ -. The backtest wasn't saved. Fix that symbol and run `fbull backtest create` again.",
 		invalidTickerMessage("oef-2024q1", 2, 3, true))
@@ -448,6 +492,59 @@ func TestIngestFailureMessageKeepsTheLeadWhenARefusalCantSayDeleteFirst(t *testi
 // A row-kept message without the not-removed sentence used to panic.
 // withPricesKept returns the sentinel. The user-facing error is tested
 // on the cleanup path.
+func TestMemberLookupErrorKeepsTheFooterUnlessEveryLineIsUnread(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2021, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2021, 9, 30, 0, 0, 0, 0, time.UTC)
+	const header = "Couldn't load data for backtest 'fb-window': 2 symbols couldn't be used. The backtest wasn't saved.\n"
+	const footer = "Then run `fbull backtest create` again."
+	const oneUnread = "  XYZ: foreverbull couldn't read its ticker history. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.\n"
+	const twoUnread = "  QQQ, XYZ: foreverbull couldn't read their ticker history. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.\n"
+
+	require.EqualError(t, memberLookupError("fb-window", []memberLookupFailure{
+		{symbol: "AAA"},
+		{symbol: "XYZ", unread: true},
+	}, start, end), header+
+		"  AAA: yahoo didn't respond when looking it up. Try again in a few minutes.\n"+
+		oneUnread+footer)
+
+	require.EqualError(t, memberLookupError("fb-window", []memberLookupFailure{
+		{symbol: "XYZ", unread: true},
+		{symbol: "QQQ", unread: true},
+	}, start, end), header+twoUnread)
+
+	require.EqualError(t, memberLookupError("fb-window", []memberLookupFailure{
+		{symbol: "AAA", unknown: true},
+		{symbol: "XYZ", unread: true},
+	}, start, end), header+
+		"  AAA: yahoo doesn't know this symbol. Remove it.\n"+
+		oneUnread+footer)
+}
+
+func TestNilDatabaseReachesTheTickerHistorySentence(t *testing.T) {
+	client := new(financeServicePB.MockMarketdataClient)
+	client.On("GetAsset", mock.Anything, &financeServicePB.GetAssetRequest{
+		Identifier: &financeServicePB.GetAssetRequest_Symbol{Symbol: "XYZ"},
+	}).Return(nil, status.Error(codes.NotFound, "unknown symbol XYZ"))
+	var buf bytes.Buffer
+	previous := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = previous })
+
+	start := time.Date(2021, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2021, 9, 30, 0, 0, 0, 0, time.UTC)
+	failures, err := lookupMemberAssets(context.Background(), nil, client, []string{"XYZ"}, nil, start, end)
+	require.NoError(t, err)
+	require.Len(t, failures, 1)
+	require.True(t, failures[0].unread)
+	got := memberLookupError("fb-window", failures, start, end)
+	require.EqualError(t, got, "Couldn't load data for backtest 'fb-window': foreverbull couldn't read its ticker history for XYZ. "+
+		"The backtest wasn't saved. Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+	require.NotContains(t, got.Error(), "unknown symbol")
+	require.NotContains(t, got.Error(), "Remove")
+	require.Contains(t, buf.String(), "no database to read ticker aliases")
+}
+
 func TestWithPricesKeptDoesNotPanicWithoutTheNotRemovedSentence(t *testing.T) {
 	t.Parallel()
 	text, err := withPricesKept("context canceled")

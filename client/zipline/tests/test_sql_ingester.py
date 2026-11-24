@@ -14,6 +14,7 @@ from foreverbull_zipline.data_bundles.foreverbull import bundle_provider
 from foreverbull_zipline.data_bundles.foreverbull import group_symbols_by_instrument
 from foreverbull_zipline.data_bundles.foreverbull import membership_auto_close_date
 from foreverbull_zipline.data_bundles.foreverbull import session_labels
+from foreverbull_zipline.data_bundles.foreverbull import symbol_event_where
 from foreverbull_zipline.errors import PlainSentence
 from sqlalchemy import create_engine
 from zipline.utils.calendar_utils import get_calendar
@@ -568,3 +569,16 @@ def test_sql_ingester_logs_the_ticker_history_cause_redacted(caplog, monkeypatch
 
     assert "postgresql://fb:***@db.invalid:5432" in caplog.text
     assert "hunter2" not in caplog.text
+
+
+def test_symbol_events_are_read_by_backtest_id_when_that_is_the_key():
+    clause, params = symbol_event_where(False, "", "oef-2024q1")
+    assert clause == "backtest_name = :key"
+    assert params == {"key": "oef-2024q1"}
+
+    clause, params = symbol_event_where(True, "backtest-id", "oef-2024q1")
+    assert clause == "backtest_id = :key"
+    assert params == {"key": "backtest-id"}
+
+    with pytest.raises(PlainSentence, match="couldn't read which symbols were listed or delisted"):
+        symbol_event_where(True, "  ", "oef-2024q1")

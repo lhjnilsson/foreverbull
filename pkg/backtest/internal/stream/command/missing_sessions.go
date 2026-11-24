@@ -933,7 +933,7 @@ func checkMissingSessions(ctx context.Context, msg stream.Message, db *pgxpool.P
 			return discardFailedIngest(ctx, backtests, name, id, err)
 		}
 		if len(gaps) == 0 && len(misses) == 0 && len(downloads) == 0 {
-			if err := backtests.SaveSymbolEvents(ctx, name, events); err != nil {
+			if err := saveSymbolEvents(ctx, backtests, name, id, events); err != nil {
 				return discardFailedIngest(ctx, backtests, name, id, err)
 			}
 			return nil

@@ -90,6 +90,7 @@ func backtestOwnerComplete(ctx context.Context, conn postgres.Query) (bool, erro
 		{"backtest_period", "backtest_name"},
 		{"backtest_period_asset", "backtest_name"},
 		{"universe_member", "backtest_name"},
+		{"backtest_symbol_event", "backtest_name"},
 		{"session", "backtest"},
 	} {
 		exists, err := auth.ColumnExists(ctx, conn, column.table, column.column)
@@ -134,6 +135,9 @@ func migrateBacktestShape(ctx context.Context, conn *pgxpool.Pool, adminID strin
 		if err := repointExperiment(ctx, tx); err != nil {
 			return err
 		}
+		if err := repointSymbolEvents(ctx, tx); err != nil {
+			return err
+		}
 		return dropBacktestNameForeignKeys(ctx, tx)
 	})
 }
@@ -169,6 +173,19 @@ func repointUniverse(ctx context.Context, conn postgres.Query) error {
 		return err
 	}
 	return replaceUniverseExclusion(ctx, conn)
+}
+
+func repointSymbolEvents(ctx context.Context, conn postgres.Query) error {
+	exists, err := auth.TableExists(ctx, conn, "backtest_symbol_event")
+	if err != nil || !exists {
+		return err
+	}
+	if err := addBacktestID(ctx, conn, "backtest_symbol_event", "backtest_name", true); err != nil {
+		return err
+	}
+	// The name column is still present until the primary key swap drops it.
+	// The key has to move first, or the drop would remove a primary-key column.
+	return auth.EnsurePrimaryKey(ctx, conn, "backtest_symbol_event", "backtest_id", "symbol", "kind")
 }
 
 func repointExperiment(ctx context.Context, conn postgres.Query) error {
@@ -361,6 +378,7 @@ func swapBacktestPrimaryKey(ctx context.Context, conn *pgxpool.Pool) error {
 			{"backtest_period", "backtest_name"},
 			{"backtest_period_asset", "backtest_name"},
 			{"universe_member", "backtest_name"},
+			{"backtest_symbol_event", "backtest_name"},
 			{"session", "backtest"},
 			{"strategy_experiment", "backtest_name"},
 		}
