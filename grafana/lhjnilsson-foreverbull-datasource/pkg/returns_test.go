@@ -75,10 +75,10 @@ func (test *DatasouceTest) TestTotalReturnRunNamesBothReturns() {
 		"benchmark":              "ko ko Benchmark total return",
 		"benchmark_price_return": "ko ko Benchmark price return",
 	}, displayNames(frame))
-	test.Equal([]string{
-		"Dividends paid on the ex-date: the cash lands then, not on the pay date.",
-		"1 foreign dividend booked gross, before withholding.",
-	}, noticeTexts(frame))
+	test.Equal([]data.Notice{{
+		Severity: data.NoticeSeverityInfo,
+		Text:     "Dividends paid on the ex-date: the cash lands then, not on the pay date. 1 foreign dividend booked gross, before withholding.",
+	}}, frame.Meta.Notices)
 
 	values := map[string][]float64{}
 	for _, field := range frame.Fields[1:] {
@@ -107,6 +107,100 @@ func (test *DatasouceTest) TestAdjustedCloseRunHasNoPriceReturn() {
 	}, displayNames(frame))
 	test.Equal([]string{"Adjusted-close return (dividends inside prices): no dividends were booked as cash."},
 		noticeTexts(frame))
+}
+
+// A total-return run that stored notices shows one Info notice for the
+// return basis and one Warning for the stored lines, joined in order.
+func (test *DatasouceTest) TestStoredExecutionNoticesAreShown() {
+	run := koRun(backtestpb.ReturnBasis_RETURN_BASIS_TOTAL, 1)
+	run.Execution.Notices = []string{
+		"1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC.",
+		"ABC was listed on 2024-03-15 and has no prices before then.",
+		"1 symbol left the universe on 2026-04-30 and a held position was closed at that session's close: XYZ.",
+	}
+
+	frame := test.queryReturns(run)
+
+	test.Equal([]data.Notice{
+		{
+			Severity: data.NoticeSeverityInfo,
+			Text:     "Dividends paid on the ex-date: the cash lands then, not on the pay date. 1 foreign dividend booked gross, before withholding.",
+		},
+		{
+			Severity: data.NoticeSeverityWarning,
+			Text:     "1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC. ABC was listed on 2024-03-15 and has no prices before then. 1 symbol left the universe on 2026-04-30 and a held position was closed at that session's close: XYZ.",
+		},
+	}, frame.Meta.Notices)
+}
+
+// A legacy run has no return-basis note, so the stored line is the only
+// notice, a Warning. A held close stays on that line.
+func (test *DatasouceTest) TestStoredNoticesOnALegacyRunAreTheOnlyNotes() {
+	run := koRun(backtestpb.ReturnBasis_RETURN_BASIS_UNSPECIFIED, 0)
+	run.Execution.Notices = []string{
+		"1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC. Positions held were closed at the last price on 2026-03-31.",
+	}
+
+	frame := test.queryReturns(run)
+
+	test.Equal([]data.Notice{{
+		Severity: data.NoticeSeverityWarning,
+		Text:     "1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC. Positions held were closed at the last price on 2026-03-31.",
+	}}, frame.Meta.Notices)
+}
+
+// Two stored lines are one Warning. Grafana keeps one notice per severity.
+func (test *DatasouceTest) TestTwoStoredLinesAreOneWarning() {
+	run := koRun(backtestpb.ReturnBasis_RETURN_BASIS_UNSPECIFIED, 0)
+	run.Execution.Notices = []string{
+		"1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC.",
+		"XYZ was listed on 2024-03-15 and has no prices before then.",
+	}
+
+	frame := test.queryReturns(run)
+
+	test.Equal([]data.Notice{{
+		Severity: data.NoticeSeverityWarning,
+		Text:     "1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC. XYZ was listed on 2024-03-15 and has no prices before then.",
+	}}, frame.Meta.Notices)
+}
+
+// An adjusted-close run keeps its Info note and adds the stored lines as
+// one Warning.
+func (test *DatasouceTest) TestAdjustedCloseRunShowsStoredNotices() {
+	run := koRun(backtestpb.ReturnBasis_RETURN_BASIS_ADJUSTED_CLOSE, 0)
+	run.Execution.Notices = []string{
+		"1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC.",
+		"ABC was listed on 2024-03-15 and has no prices before then.",
+	}
+
+	frame := test.queryReturns(run)
+
+	test.Equal([]data.Notice{
+		{
+			Severity: data.NoticeSeverityInfo,
+			Text:     "Adjusted-close return (dividends inside prices): no dividends were booked as cash.",
+		},
+		{
+			Severity: data.NoticeSeverityWarning,
+			Text:     "1 symbol was delisted after its last price on 2026-03-31 and was left out: ABC. ABC was listed on 2024-03-15 and has no prices before then.",
+		},
+	}, frame.Meta.Notices)
+}
+
+// A run that stored no notices shows only the merged return-basis note.
+// An empty list and a run from before notices existed are the same.
+func (test *DatasouceTest) TestRunWithoutStoredNoticesShowsNothingExtra() {
+	total := koRun(backtestpb.ReturnBasis_RETURN_BASIS_TOTAL, 0)
+	total.Execution.Notices = []string{}
+	frame := test.queryReturns(total)
+	test.Equal([]data.Notice{{
+		Severity: data.NoticeSeverityInfo,
+		Text:     "Dividends paid on the ex-date: the cash lands then, not on the pay date.",
+	}}, frame.Meta.Notices)
+
+	legacy := test.queryReturns(koRun(backtestpb.ReturnBasis_RETURN_BASIS_UNSPECIFIED, 0))
+	test.Empty(legacy.Meta.Notices)
 }
 
 // A run stored before dividends were counted keeps its old names and no note.

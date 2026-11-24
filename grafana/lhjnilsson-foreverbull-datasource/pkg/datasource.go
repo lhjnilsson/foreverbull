@@ -414,7 +414,7 @@ func (d *Datasource) handleGetExecutionMetric(ctx context.Context, _ grafana.Que
 
 	frame := data.NewFrame(seriesLabel)
 	frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
-	frame.Meta = &data.FrameMeta{Notices: returnNotices(execution.GetExecution())}
+	frame.Meta = &data.FrameMeta{Notices: runNotices(execution.GetExecution())}
 	for _, metric := range qm.Metrics {
 		if returnMetric(metric.Name) {
 			appendReturnField(frame, metric.Name, basis, seriesLabels, map[QueryMetric]interface{}{

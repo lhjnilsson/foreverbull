@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	backtestpb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
@@ -84,6 +85,27 @@ func dailyPriceReturn(periods []*backtestpb.Period, i int) float64 {
 		return periods[0].GetPriceReturn()
 	}
 	return (1+periods[i].GetPriceReturn())/(1+periods[i-1].GetPriceReturn()) - 1
+}
+
+// runNotices are the notes under a run's panels. Grafana 11.3.2 keeps one
+// notice per severity, so every return-basis line is one Info notice and
+// every stored Execution.notices line is one Warning. Each line already
+// ends with a period; they are joined with a space, stored lines in stored
+// order. A run with no return-basis note omits the Info notice. A run that
+// stored none omits the Warning.
+func runNotices(execution *backtestpb.Execution) []data.Notice {
+	var notices []data.Notice
+	if basis := returnNotices(execution); len(basis) > 0 {
+		lines := make([]string, len(basis))
+		for i, note := range basis {
+			lines[i] = note.Text
+		}
+		notices = append(notices, data.Notice{Severity: data.NoticeSeverityInfo, Text: strings.Join(lines, " ")})
+	}
+	if stored := execution.GetNotices(); len(stored) > 0 {
+		notices = append(notices, data.Notice{Severity: data.NoticeSeverityWarning, Text: strings.Join(stored, " ")})
+	}
+	return notices
 }
 
 // returnNotices are the notes on how a run's returns count dividends.
