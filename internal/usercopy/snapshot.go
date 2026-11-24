@@ -37,6 +37,83 @@ func ETFNoHoldingsInWindow(etf string, start, end time.Time) string {
 		etf, calendarDate(start), calendarDate(end))
 }
 
+// HoldingsNoISIN is an Equity row with no ISIN. HoldingsUnread is a row or
+// column that couldn't be read. The exact sentences are pinned in snapshot_test.go.
+const (
+	HoldingsNoISIN = "no-isin"
+	HoldingsUnread = "unread"
+)
+
+// HoldingsFault is one row or column in a holdings list that can't be used.
+// Row is 1-based. Column is the JSON column name; set it and leave Row empty
+// for a column. Kind is HoldingsNoISIN or HoldingsUnread.
+type HoldingsFault struct {
+	Row    int
+	Label  string
+	Column string
+	Kind   string
+}
+
+func (f HoldingsFault) text() string {
+	if f.Column != "" {
+		return "the " + f.Column + " column couldn't be read"
+	}
+	head := fmt.Sprintf("row %d", f.Row)
+	if f.Label != "" {
+		head = fmt.Sprintf("row %d (%s)", f.Row, f.Label)
+	}
+	if f.Kind == HoldingsNoISIN {
+		return head + " has no ISIN"
+	}
+	return head + " couldn't be read"
+}
+
+// HoldingsListUnusable is the sentence when a holdings list has rows or columns
+// that can't be used. faults is at least one, rows before columns.
+// A date adds "Choose dates that don't include <date>." A row or column that
+// couldn't be read adds the report line. A message with no date adds it too:
+// it cannot say which dates to avoid. Missing ISINs on a dated list stop
+// after the date sentence. The exact strings are pinned in snapshot_test.go.
+func HoldingsListUnusable(etf string, asOf time.Time, faults []HoldingsFault) string {
+	if len(faults) == 0 {
+		panic("HoldingsListUnusable called with no fault")
+	}
+	parts := make([]string, len(faults))
+	unread := false
+	for i, fault := range faults {
+		parts[i] = fault.text()
+		if fault.Kind != HoldingsNoISIN {
+			unread = true
+		}
+	}
+	sentence := holdingsListSubject(etf, asOf) + ": " + strings.Join(parts, "; ") + "."
+	if !asOf.IsZero() {
+		sentence += " Choose dates that don't include " + calendarDate(asOf) + "."
+	}
+	if unread || asOf.IsZero() {
+		sentence += " " + ReportIt
+	}
+	return sentence
+}
+
+func holdingsListSubject(etf string, asOf time.Time) string {
+	etf = strings.TrimSpace(etf)
+	var date string
+	if !asOf.IsZero() {
+		date = calendarDate(asOf)
+	}
+	switch {
+	case etf != "" && date != "":
+		return "The " + etf + " holdings list for " + date + " can't be used"
+	case etf != "":
+		return "The " + etf + " holdings list can't be used"
+	case date != "":
+		return "The iShares holdings list for " + date + " can't be used"
+	default:
+		return "The iShares holdings list can't be used"
+	}
+}
+
 // ETFHoldingsGap is the sentence when sampled months inside the backtest
 // window have no holdings list. missing is those as-of dates; at least one.
 // Months in a row with no list are one gap ("2020-01-31 to 2020-02-29").

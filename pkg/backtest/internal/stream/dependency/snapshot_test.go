@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -519,7 +520,7 @@ func TestParseProductDataHoldings(t *testing.T) {
 			}
 		}
 	}`)
-	assets, asOf, err := parseProductDataHoldings(body)
+	assets, asOf, err := parseProductDataHoldings(body, "iShares S&P 100", testDate(t, "2025-12-31"), false)
 	require.NoError(t, err)
 	require.Equal(t, "20251231", asOf)
 	require.Equal(t, []Asset{{
@@ -566,4 +567,336 @@ func TestGetSnapshotRejectsMismatchedProductDataAsOf(t *testing.T) {
 	assets, err := scraper.GetSnapshot("iShares S&P 100", testDate(t, "2025-11-30"))
 	require.NoError(t, err)
 	require.Empty(t, assets)
+}
+
+func TestParseHoldingsRejectsRowThatDoesNotParse(t *testing.T) {
+	t.Parallel()
+
+	body := holdingsJSON(t, [][]interface{}{
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", "US0378331005"},
+		{1, "USD Cash", "-", "Cash", "", "", "", "", ""},
+		{"ABC", "Short Co", "Technology", "Equity"},
+	})
+	assets, published, err := parseHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"))
+	require.Nil(t, assets)
+	require.False(t, published)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for 2022-12-31 can't be used: "+
+		"row 3 (ABC) couldn't be read. Choose dates that don't include 2022-12-31. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+}
+
+func TestParseHoldingsRejectsEquityWithoutISIN(t *testing.T) {
+	t.Parallel()
+
+	body := holdingsJSON(t, [][]interface{}{
+		{"ABC", "No ISIN Co", "Technology", "Equity", "", "", "", "", ""},
+		{"CASH_USD", "USD Cash", "-", "Cash", "", "", "", "", ""},
+		{"DASH", "Dash Co", "Technology", "Equity", "", "", "", "", "-"},
+	})
+	assets, _, err := parseHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"))
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for 2022-12-31 can't be used: "+
+		"row 1 (ABC) has no ISIN; row 3 (DASH) has no ISIN. Choose dates that don't include 2022-12-31.")
+}
+
+func TestParseProductDataHoldingsRejectsUndecodableColumn(t *testing.T) {
+	t.Parallel()
+
+	body := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20221231},
+		"ticker": {"value": "AAPL"},
+		"issueName": {"value": ["APPLE INC"]},
+		"sectorName": {"value": ["Information Technology"]},
+		"assetClass": {"value": ["Equity"]},
+		"isin": {"value": ["US0378331005"]}
+	}`)
+	assets, _, err := parseProductDataHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"), false)
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for 2022-12-31 can't be used: "+
+		"the ticker column couldn't be read. Choose dates that don't include 2022-12-31. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+}
+
+func TestParseProductDataHoldingsNamesEveryProblem(t *testing.T) {
+	t.Parallel()
+
+	body := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20221231},
+		"ticker": {"value": ["AAPL", "ABC", "CASH", {"bad": true}]},
+		"issueName": {"value": ["APPLE INC", "No ISIN Co", "USD Cash", "Broken Row"]},
+		"sectorName": {"value": "not-an-array"},
+		"assetClass": {"value": ["Equity", "Equity", "Cash", "Equity"]},
+		"isin": {"value": ["US0378331005", "", null, "US9999999999"]}
+	}`)
+	assets, _, err := parseProductDataHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"), false)
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for 2022-12-31 can't be used: "+
+		"row 2 (ABC) has no ISIN; row 4 (Broken Row) couldn't be read; the sectorName column couldn't be read. "+
+		"Choose dates that don't include 2022-12-31. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+}
+
+func TestGetSnapshotFailsOnUnusableRows(t *testing.T) {
+	t.Parallel()
+
+	body := holdingsJSON(t, [][]interface{}{
+		{"ABC", "No ISIN Co", "Technology", "Equity", "", "", "", "", ""},
+		{"CASH_USD", "USD Cash", "-", "Cash", "", "", "", "", ""},
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", "US0378331005"},
+	})
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+
+	cacheDir := t.TempDir()
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: cacheDir},
+		client:   srv.Client(),
+	}
+	assets, err := scraper.GetSnapshot("iShares S&P 100", testDate(t, "2022-12-31"))
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for 2022-12-31 can't be used: "+
+		"row 1 (ABC) has no ISIN. Choose dates that don't include 2022-12-31.")
+	require.Equal(t, int32(1), calls.Load())
+	entries, readErr := os.ReadDir(cacheDir)
+	require.NoError(t, readErr)
+	require.Empty(t, entries)
+}
+
+func TestLoadSnapshotWindowFailsOnUnusableRows(t *testing.T) {
+	t.Parallel()
+
+	body := holdingsJSON(t, [][]interface{}{
+		{"ABC", "No ISIN Co", "Technology", "Equity", "", "", "", "", ""},
+		{"AAPL", "Apple Inc.", "Technology", "Equity", "", "", "", "", "US0378331005"},
+	})
+	var calls atomic.Int32
+	var gotAsOf atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		gotAsOf.Store(r.URL.Query().Get("asOfDate"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+	listings, err := LoadSnapshotWindow(scraper, "iShares S&P 100", testDate(t, "2020-01-15"), testDate(t, "2020-02-29"))
+	require.Nil(t, listings)
+	require.Equal(t, int32(1), calls.Load())
+	raw, ok := gotAsOf.Load().(string)
+	require.True(t, ok)
+	day, parseErr := time.Parse("20060102", raw)
+	require.NoError(t, parseErr)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for "+day.Format(time.DateOnly)+
+		" can't be used: row 1 (ABC) has no ISIN. Choose dates that don't include "+day.Format(time.DateOnly)+".")
+}
+
+func TestParseHoldingsAllowsNullSector(t *testing.T) {
+	t.Parallel()
+
+	body := holdingsJSON(t, [][]interface{}{
+		{"AAPL", "Apple Inc.", nil, "Equity", "", "", "", "", "US0378331005"},
+		{"CASH_USD", "USD Cash", nil, "Cash", "", "", "", "", ""},
+	})
+	assets, published, err := parseHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"))
+	require.NoError(t, err)
+	require.True(t, published)
+	require.Equal(t, []Asset{{
+		Symbol:    "AAPL",
+		Name:      "Apple Inc.",
+		Sector:    "",
+		AssetType: "Equity",
+		ISIN:      "US0378331005",
+	}}, assets)
+}
+
+func TestParseHoldingsNoDateNoISINReportsIt(t *testing.T) {
+	t.Parallel()
+
+	body := holdingsJSON(t, [][]interface{}{
+		{"ABC", "No ISIN Co", "Technology", "Equity", "", "", "", "", ""},
+	})
+	assets, _, err := parseHoldings(body, "", time.Time{})
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares holdings list can't be used: row 1 (ABC) has no ISIN. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+
+	assets, _, err = parseHoldings(body, "iShares S&P 100", time.Time{})
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list can't be used: row 1 (ABC) has no ISIN. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+}
+
+func TestParseHoldingsNoDateOmitsTheDatesSentence(t *testing.T) {
+	t.Parallel()
+
+	body := holdingsJSON(t, [][]interface{}{
+		{"ABC", "Short Co", "Technology", "Equity"},
+	})
+	assets, _, err := parseHoldings(body, "iShares S&P 100", time.Time{})
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list can't be used: "+
+		"row 1 (ABC) couldn't be read. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+}
+
+func TestParseProductDataHoldingsRejectsBlankTickerAndNullClass(t *testing.T) {
+	t.Parallel()
+
+	body := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20221231},
+		"ticker": {"value": ["", null, "OK", "CASH"]},
+		"issueName": {"value": ["Blank", "Missing", "Null Class", "USD"]},
+		"sectorName": {"value": [null, null, null, "Cash"]},
+		"assetClass": {"value": ["Equity", "Equity", null, "Cash"]},
+		"isin": {"value": ["US1111111111", "US2222222222", "US3333333333", null]}
+	}`)
+	assets, _, err := parseProductDataHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"), false)
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for 2022-12-31 can't be used: "+
+		"row 1 (Blank) couldn't be read; row 2 (Missing) couldn't be read; row 3 (OK) couldn't be read. "+
+		"Choose dates that don't include 2022-12-31. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+}
+
+func TestParseProductDataHoldingsUsesEveryColumnLength(t *testing.T) {
+	t.Parallel()
+
+	body := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20221231},
+		"ticker": {"value": ["AAPL", "MSFT"]},
+		"issueName": {"value": ["Apple", "Microsoft", "Extra"]},
+		"sectorName": {"value": ["Tech", "Tech", "Tech"]},
+		"assetClass": {"value": ["Equity", "Equity", "Equity"]},
+		"isin": {"value": ["US0378331005", "US5949181045", "US0000000001"]}
+	}`)
+	assets, _, err := parseProductDataHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"), false)
+	require.Nil(t, assets)
+	require.EqualError(t, err, "The iShares S&P 100 holdings list for 2022-12-31 can't be used: "+
+		"row 3 (Extra) couldn't be read. Choose dates that don't include 2022-12-31. "+
+		"Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message.")
+}
+
+func TestParseProductDataMismatchedAsOfSkipsColumns(t *testing.T) {
+	t.Parallel()
+
+	body := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20220729},
+		"ticker": {"value": "not-an-array"},
+		"issueName": {"value": null},
+		"sectorName": {"value": null},
+		"assetClass": {"value": null},
+		"isin": {"value": null}
+	}`)
+	assets, gotAsOf, err := parseProductDataHoldings(body, "iShares S&P 100", testDate(t, "2022-07-31"), true)
+	require.NoError(t, err)
+	require.Nil(t, assets)
+	require.Equal(t, "20220729", gotAsOf)
+}
+
+func TestParseProductDataAllNullIsUnpublished(t *testing.T) {
+	t.Parallel()
+
+	body := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20221231},
+		"ticker": {"value": null},
+		"issueName": {"value": null},
+		"sectorName": {"value": null},
+		"assetClass": {"value": null},
+		"isin": {"value": null}
+	}`)
+	assets, gotAsOf, err := parseProductDataHoldings(body, "iShares S&P 100", testDate(t, "2022-12-31"), true)
+	require.NoError(t, err)
+	require.Nil(t, assets)
+	require.Equal(t, "20221231", gotAsOf)
+}
+
+func TestGetSnapshotWalksBackNullProductData(t *testing.T) {
+	t.Parallel()
+
+	unpublished := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20261120},
+		"dateList": {"value": [20220729, 20261120]},
+		"ticker": {"value": null},
+		"issueName": {"value": null},
+		"sectorName": {"value": null},
+		"assetClass": {"value": null},
+		"isin": {"value": null}
+	}`)
+	friday := productHoldingsJSON(t, `{
+		"asOfDate": {"value": 20220729},
+		"ticker": {"value": ["AAPL"]},
+		"issueName": {"value": ["APPLE INC"]},
+		"sectorName": {"value": [null]},
+		"assetClass": {"value": ["Equity"]},
+		"isin": {"value": ["US0378331005"]}
+	}`)
+	var calls atomic.Int32
+	var mu sync.Mutex
+	asOfs := make([]string, 0, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		asOf := r.URL.Query().Get("asOfDate")
+		mu.Lock()
+		asOfs = append(asOfs, asOf)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if asOf == "20220729" {
+			_, _ = w.Write(friday)
+			return
+		}
+		_, _ = w.Write(unpublished)
+	}))
+	t.Cleanup(srv.Close)
+
+	scraper := &ISharesETFLoopup{
+		products: map[string]string{"iShares S&P 100": srv.URL},
+		cache:    &fsSnapshotCache{dir: t.TempDir()},
+		client:   srv.Client(),
+	}
+	assets, err := scraper.GetSnapshot("iShares S&P 100", testDate(t, "2022-07-31"))
+	require.NoError(t, err)
+	require.Equal(t, []Asset{{
+		Symbol:    "AAPL",
+		Name:      "APPLE INC",
+		Sector:    "",
+		AssetType: "Equity",
+		ISIN:      "US0378331005",
+	}}, assets)
+	mu.Lock()
+	require.Equal(t, []string{"20220731", "20220730", "20220729"}, asOfs)
+	mu.Unlock()
+	require.Equal(t, int32(3), calls.Load())
+
+	assets, err = scraper.GetSnapshot("iShares S&P 100", testDate(t, "2022-07-31"))
+	require.NoError(t, err)
+	require.Equal(t, "AAPL", assets[0].Symbol)
+	require.Equal(t, int32(3), calls.Load())
+}
+
+func productHoldingsJSON(t *testing.T, points string) []byte {
+	t.Helper()
+	body := []byte(`{
+		"componentsByNameMap": {
+			"holdings": {
+				"containersByNameMap": {
+					"all": {
+						"dataPointsByNameMap": ` + points + `
+					}
+				}
+			}
+		}
+	}`)
+	require.True(t, json.Valid(body), string(body))
+	return body
 }
