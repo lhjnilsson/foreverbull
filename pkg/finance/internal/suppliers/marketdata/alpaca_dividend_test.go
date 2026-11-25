@@ -21,8 +21,9 @@ import (
 // split on 2020-08-31, then a $0.205 dividend after it. They are written by
 // hand, not recorded.
 const (
-	alpacaAAPLActionsPage1 = "testdata/alpaca_corporate_actions_aapl_page1.json"
-	alpacaAAPLActionsPage2 = "testdata/alpaca_corporate_actions_aapl_page2.json"
+	alpacaAAPLActionsPage1   = "testdata/alpaca_corporate_actions_aapl_page1.json"
+	alpacaAAPLActionsPage2   = "testdata/alpaca_corporate_actions_aapl_page2.json"
+	alpacaTSMForeignDividend = "testdata/alpaca_corporate_actions_tsm_foreign.json"
 )
 
 // fakeAlpacaActions serves pages by page_token ("" is the first) and records
@@ -242,4 +243,27 @@ func TestAlpacaGetDividendsFailures(t *testing.T) {
 		require.EqualError(t, err, "alpaca corporate actions for KO: more than 50 pages, so the list would be truncated")
 		require.Len(t, *queries, alpacaCorporateActionsPages)
 	})
+}
+
+// The synthetic TSM page has one cash dividend and it is foreign. The window
+// is 2024-06-01 through 2024-06-30, which holds that ex-date and no other.
+func TestAlpacaSyntheticTSMForeignDividendIsExactlyOne(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2024, 7, 15, 12, 0, 0, 0, time.UTC)
+	client, _ := fakeAlpacaActions(t, now, map[string]string{
+		"": readFixture(t, alpacaTSMForeignDividend),
+	})
+	dividends, err := client.GetDividends(context.Background(), "TSM", date(t, "2024-06-01"), datePtr(t, "2024-06-30"))
+	require.NoError(t, err)
+	foreign := 0
+	for _, dividend := range dividends {
+		if dividend.Foreign {
+			foreign++
+		}
+	}
+	require.Equal(t, 1, foreign)
+	require.Equal(t, []supplier.Dividend{{
+		ExDate: date(t, "2024-06-13"), PayDate: datePtr(t, "2024-07-11"), RecordDate: datePtr(t, "2024-06-13"),
+		Amount: 0.539924, RawAmount: 0.539924, SplitFactor: 1, Currency: "USD", Foreign: true, SourceRef: "alpaca:tsm1",
+	}}, dividends)
 }

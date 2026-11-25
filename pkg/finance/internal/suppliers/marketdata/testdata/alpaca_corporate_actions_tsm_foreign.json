@@ -1,0 +1,20 @@
+{
+  "corporate_actions": {
+    "cash_dividends": [
+      {
+        "id": "tsm1",
+        "symbol": "TSM",
+        "cusip": "874039100",
+        "rate": 0.539924,
+        "special": false,
+        "foreign": true,
+        "currency": "USD",
+        "process_date": "2024-06-14",
+        "ex_date": "2024-06-13",
+        "record_date": "2024-06-13",
+        "payable_date": "2024-07-11"
+      }
+    ]
+  },
+  "next_page_token": null
+}
