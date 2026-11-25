@@ -386,15 +386,11 @@ func date(t *testing.T, s string) time.Time {
 	return d
 }
 
-// A symbol with an exchange suffix is asked for by Stooq's code for that
-// exchange, and its bars keep the symbol as asked, so they are stored under it.
+// A US suffix is asked for by Stooq's US code. A non-US suffix is not
+// downloaded: London and Xetra used to be mapped and stored as USD.
 func TestGetOHLCExchangeSuffixMapsToStooqCode(t *testing.T) {
 	t.Parallel()
 	for asked, want := range map[string]struct{ code, label string }{
-		"VOD.L":  {"vod.uk", "VOD.L"},
-		"vod.l":  {"vod.uk", "VOD.L"},
-		"VOD.UK": {"vod.uk", "VOD.UK"},
-		"SAP.DE": {"sap.de", "SAP.DE"},
 		"xyz.us": {"xyz.us", "XYZ"},
 	} {
 		var got stooqReq
@@ -428,10 +424,10 @@ func TestGetOHLCUnknownExchangeSuffixIsRefused(t *testing.T) {
 	require.ErrorIs(t, err, marketdata.ErrStooqExchange)
 	// Ingest shows this sentence as GetOHLC wrote it.
 	require.EqualError(t, err, "stooq doesn't support the .TO exchange (SHOP.TO). "+
-		"Supported suffixes: .DE, .L, .US. Try another provider with --provider.")
+		"Supported suffixes: .US. Try another provider with --provider.")
 	lead, ok := marketdata.StooqExchangeLead("SHOP.TO")
 	require.True(t, ok)
-	require.Equal(t, "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .DE, .L, .US.", lead)
+	require.Equal(t, "stooq doesn't support the .TO exchange (SHOP.TO). Supported suffixes: .US.", lead)
 	require.Equal(t, lead+" Try another provider with --provider.", err.Error())
 	require.True(t, marketdata.IsStooqExchangeRefusal(err.Error(), "SHOP.TO"))
 	require.True(t, marketdata.IsStooqExchangeRefusal(err.Error(), "shop.to"))
@@ -460,7 +456,7 @@ func TestGetOHLCRefusesUnboundedSuffixedSymbolWithoutEchoingIt(t *testing.T) {
 		_, err := client.GetOHLC(context.Background(), symbol, start, &end)
 		require.ErrorIs(t, err, marketdata.ErrStooqExchange, name)
 		require.EqualError(t, err,
-			"stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example VOD.L or AAPL.", name)
+			"stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example AAPL.", name)
 	}
 	require.False(t, called)
 }

@@ -9,9 +9,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy/service"
 	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/strategy/internal/runner"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -80,6 +82,9 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 	if calendar == "" {
 		calendar = defaultCalendar
 	}
+	if err := s.refuseDeployMarkets(ctx, req.GetStrategyName(), backend, req.GetSymbols()); err != nil {
+		return nil, err
+	}
 
 	deployments := repository.Deployment{Conn: s.pgx}
 	deployment, err := deployments.Create(
@@ -100,11 +105,76 @@ func (s *StrategyServer) Deploy(ctx context.Context, req *servicePb.DeployReques
 			notStored := repository.StatusNotStored(failErr)
 			log.Error().Err(failErr).Str("deployment", deployment.Id).Bool("error_not_stored", notStored).
 				Msg("error starting deployment runner")
-			return nil, status.Error(codes.Internal, usercopy.DeploymentStartFailed(req.GetStrategyName(), notStored))
+			return nil, admissionStatus(req.GetStrategyName(), err, notStored)
 		}
 	}
 
 	return &servicePb.DeployResponse{Deployment: deployment}, nil
+}
+
+// admissionStatus is the deploy error after Add failed and Fail stored it.
+// An admission sentence is shown as itself. Any other start failure keeps
+// the generic sentence. notStored means the ERROR row could not be written.
+func admissionStatus(strategy string, err error, notStored bool) error {
+	var admitted *runner.AdmissionError
+	if !notStored && errors.As(err, &admitted) {
+		return status.Error(codes.FailedPrecondition, admitted.Error())
+	}
+	return status.Error(codes.Internal, usercopy.DeploymentStartFailed(strategy, notStored))
+}
+
+// refuseDeployMarkets stops a deployment whose symbols are listed outside
+// the US or priced in a currency other than USD. The listing source is the
+// profile's provider: Alpaca for an Alpaca profile, Yahoo otherwise. It has
+// no benchmark. The check runs before the deployment row, the runner, and
+// any order. A symbol the source does not know is not a pass. A non-US
+// suffix refuses without a later ticker or a second lookup.
+func (s *StrategyServer) refuseDeployMarkets(ctx context.Context, name, profile string, symbols []string) error {
+	provider, err := finance.ListingProvider(profile)
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, usercopy.DeploymentProfileUnchecked(name, strings.TrimSpace(profile), !errors.Is(err, finance.ErrProfileNotFound)))
+	}
+	listed, _, err := finance.RefuseListed(ctx, provider, profile, symbols, "")
+	names, lookupProvider, lookup := deployLookups(err)
+	if lookupProvider == "" {
+		lookupProvider = provider
+	}
+	if !lookup && err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	switch {
+	case len(names) > 0 && len(listed) > 0:
+		return status.Error(codes.FailedPrecondition, usercopy.GlobalMarketsDeployMixed(name, listed, lookupProvider, names))
+	case len(names) > 0:
+		return status.Error(codes.FailedPrecondition, usercopy.LookupDeploy(name, lookupProvider, names))
+	case len(listed) > 0:
+		return status.Error(codes.FailedPrecondition, usercopy.GlobalMarketsDeploy(name, listed))
+	}
+	if !finance.ListingsAnswered(provider, symbols) {
+		return status.Error(codes.FailedPrecondition, usercopy.DeploymentSymbolsUnknown(name, provider, finance.Unanswered(provider, symbols)))
+	}
+	return nil
+}
+
+func deployLookups(err error) (names []string, provider string, ok bool) {
+	var many *finance.QuoteFailures
+	if errors.As(err, &many) && many != nil {
+		for _, item := range many.Items {
+			if item == nil {
+				continue
+			}
+			names = append(names, item.Symbol)
+			if provider == "" {
+				provider = item.Provider
+			}
+		}
+		return names, provider, true
+	}
+	var one *finance.QuoteFailure
+	if errors.As(err, &one) && one != nil {
+		return []string{one.Symbol}, one.Provider, true
+	}
+	return nil, "", false
 }
 
 // knownProfile refuses a trading profile name that is not in the registry.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 )
 
@@ -113,6 +114,17 @@ func storeBacktest(ctx context.Context, backtests repository.Backtest, ownerID s
 	}
 	if strings.TrimSpace(id) == "" {
 		return errors.New("backtest id is empty")
+	}
+	// The listing check already passed. A later download, ingest, or run
+	// reads this and does not ask the provider again. An unknown symbol
+	// did not answer, so the row stays unchecked.
+	symbols, benchmark := backtestMembers(item)
+	asked := append(append([]string{}, symbols...), benchmark)
+	if !finance.ListingsAnswered(item.GetProvider(), asked) {
+		return nil
+	}
+	if err := backtests.MarkMarketsChecked(ctx, item.GetName(), id); err != nil {
+		return err
 	}
 	return nil
 }

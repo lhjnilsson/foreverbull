@@ -13,6 +13,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/numfmt"
 	"github.com/lhjnilsson/foreverbull/internal/redact"
+	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
@@ -387,7 +388,7 @@ func (fs *MarketdataServer) downloadSymbol(
 	symbol string,
 	start time.Time,
 	end *time.Time,
-	provider string,
+	provider, profile string,
 	assetRepo repository.Asset,
 	ohlcRepo repository.OHLC,
 	bars supplier.Marketdata,
@@ -395,6 +396,14 @@ func (fs *MarketdataServer) downloadSymbol(
 	rsp := &servicePb.DownloadHistoricalDataResponse{
 		Symbol: symbol,
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
+	}
+
+	// A non-US suffix refuses before the asset lookup, the price retry, and
+	// the later-ticker search. The quote, when the download checked it, has
+	// already stopped the request; this is the suffix on its own.
+	if refusal, refused, _ := marketdata.Classify(provider, symbol, marketdata.Quote{}, nil); refused {
+		failSymbol(ctx, sender, rsp, errors.New(usercopy.GlobalMarketsSuffix(refusal)))
+		return nil
 	}
 
 	asset, err := fs.marketdata.GetAsset(ctx, symbol)
@@ -436,7 +445,7 @@ func (fs *MarketdataServer) downloadSymbol(
 			}
 			log.Info().Str("symbol", symbol).Str("isin", inst.ISIN).
 				Msg("yahoo doesn't know the ticker; looking up the later ticker of its instrument")
-			return fs.finishLaterTicker(ctx, sender, rsp, symbol, start, end, provider, assetRepo, ohlcRepo, bars, inst)
+			return fs.finishLaterTicker(ctx, sender, rsp, symbol, start, end, provider, profile, assetRepo, ohlcRepo, bars, inst)
 		}
 		if providerTimedOut(ctx, err) {
 			failSymbol(ctx, sender, rsp, &marketdata.TimeoutError{Provider: metadataProvider, Symbol: symbol})
@@ -509,7 +518,7 @@ func (fs *MarketdataServer) downloadSymbol(
 			failSymbol(ctx, sender, rsp, noPriceDataError(symbol))
 			return nil
 		}
-		fetched, blocked := fs.takeLaterTicker(ctx, sender, rsp, symbol, start, end, provider, assetRepo, bars, nil)
+		fetched, blocked := fs.takeLaterTicker(ctx, sender, rsp, symbol, start, end, provider, profile, assetRepo, bars, nil)
 		if blocked != nil || fetched == nil {
 			return blocked
 		}
@@ -796,13 +805,13 @@ func (fs *MarketdataServer) finishLaterTicker(
 	symbol string,
 	start time.Time,
 	end *time.Time,
-	provider string,
+	provider, profile string,
 	assetRepo repository.Asset,
 	ohlcRepo repository.OHLC,
 	bars supplier.Marketdata,
 	inst *repository.Instrument,
 ) *marketdata.BlockedError {
-	fetched, blocked := fs.takeLaterTicker(ctx, sender, rsp, symbol, start, end, provider, assetRepo, bars, inst)
+	fetched, blocked := fs.takeLaterTicker(ctx, sender, rsp, symbol, start, end, provider, profile, assetRepo, bars, inst)
 	if blocked != nil || fetched == nil {
 		return blocked
 	}
@@ -820,7 +829,7 @@ func (fs *MarketdataServer) takeLaterTicker(
 	symbol string,
 	start time.Time,
 	end *time.Time,
-	provider string,
+	provider, profile string,
 	assetRepo repository.Asset,
 	bars supplier.Marketdata,
 	inst *repository.Instrument,
@@ -830,9 +839,9 @@ func (fs *MarketdataServer) takeLaterTicker(
 		fetchErr error
 	)
 	if inst != nil {
-		fetched, fetchErr = fs.fetchBarsOf(ctx, inst, symbol, start, end, bars, assetRepo)
+		fetched, fetchErr = fs.fetchBarsOf(ctx, inst, symbol, start, end, provider, profile, bars, assetRepo)
 	} else {
-		fetched, fetchErr = fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, bars, assetRepo)
+		fetched, fetchErr = fs.fetchBarsViaLaterTicker(ctx, symbol, start, end, provider, profile, bars, assetRepo)
 	}
 	if fetchErr != nil {
 		var blocked *marketdata.BlockedError
@@ -861,6 +870,10 @@ func (fs *MarketdataServer) takeLaterTicker(
 			return nil, nil
 		}
 		if ctx.Err() != nil {
+			return nil, nil
+		}
+		if errors.Is(fetchErr, errRefusedCandidate) {
+			failSymbol(ctx, sender, rsp, fetchErr)
 			return nil, nil
 		}
 		if named := barsStatusError(symbol, provider, "find later ticker", fetchErr); named != nil {
@@ -893,6 +906,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 	symbol string,
 	start time.Time,
 	end *time.Time,
+	provider, profile string,
 	bars supplier.Marketdata,
 	assetRepo repository.Asset,
 ) (*fetchedBars, error) {
@@ -904,7 +918,7 @@ func (fs *MarketdataServer) fetchBarsViaLaterTicker(
 		}
 		return nil, err
 	}
-	return fs.fetchBarsOf(ctx, inst, symbol, start, end, bars, assetRepo)
+	return fs.fetchBarsOf(ctx, inst, symbol, start, end, provider, profile, bars, assetRepo)
 }
 
 // fetchBarsOf is the later-ticker fetch once the instrument is known.
@@ -914,6 +928,7 @@ func (fs *MarketdataServer) fetchBarsOf(
 	symbol string,
 	start time.Time,
 	end *time.Time,
+	provider, profile string,
 	bars supplier.Marketdata,
 	assetRepo repository.Asset,
 ) (*fetchedBars, error) {
@@ -934,6 +949,15 @@ func (fs *MarketdataServer) fetchBarsOf(
 	for _, candidate := range candidates {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		// A later ticker is checked the same way as the symbol that was
+		// asked, suffix and quote, before any price is fetched or stored.
+		listed, _, lookErr := marketdata.RefuseListed(ctx, provider, profile, []string{candidate}, "")
+		if lookErr != nil {
+			return nil, lookErr
+		}
+		if len(listed) > 0 {
+			return nil, &refusedCandidateError{sentence: usercopy.LaterTickerPrices(symbol, listed[0])}
 		}
 		ohlcs, err := bars.GetOHLC(ctx, candidate, start, end)
 		// A cancelled download is not "no price data", whatever GetOHLC said.
@@ -1025,6 +1049,36 @@ func laterTickerCandidates(
 	return candidates, searchErr, nil
 }
 
+// errRefusedCandidate is a later ticker listed outside the US or priced in
+// a currency other than USD. Nothing for it is fetched or stored.
+// The error text names the asked symbol and that later ticker, and includes
+// the global-markets sentence.
+var errRefusedCandidate = errors.New("later ticker is listed outside the US")
+
+type refusedCandidateError struct {
+	sentence string
+}
+
+func (e *refusedCandidateError) Error() string {
+	if e == nil || e.sentence == "" {
+		return errRefusedCandidate.Error()
+	}
+	return e.sentence
+}
+
+func (e *refusedCandidateError) Unwrap() error { return errRefusedCandidate }
+
+func downloadMarketSentence(listed []usercopy.MarketSymbol, err error) (string, bool) {
+	var many *marketdata.QuoteFailures
+	if errors.As(err, &many) && many != nil && len(many.Items) > 0 {
+		return many.Error(), true
+	}
+	if len(listed) > 0 {
+		return usercopy.GlobalMarketsLead(listed, nil), true
+	}
+	return "", false
+}
+
 // candidateSymbol reports whether a later-ticker candidate may be fetched.
 // Bars and the alias are stored under it and a refused bar names it, so a
 // stored alias or a search result outside the ticker pattern is skipped.
@@ -1084,6 +1138,15 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 	if err != nil {
 		return err
 	}
+	// Before any asset or bar is stored, and before a later ticker is asked.
+	// A suffix refuses even when the quote lookup fails.
+	listed, _, err := marketdata.RefuseListed(ctx, provider, req.GetProfile(), symbols, "")
+	if sentence, ok := downloadMarketSentence(listed, err); ok {
+		return status.Error(codes.FailedPrecondition, sentence)
+	}
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
 
 	start := internal_pb.DateToTime(req.GetStartDate())
 	var end *time.Time
@@ -1136,7 +1199,7 @@ func (fs *MarketdataServer) DownloadHistoricalData(req *servicePb.DownloadHistor
 				if ctx.Err() != nil {
 					continue
 				}
-				if err := fs.downloadSymbol(ctx, sender, symbol, start, end, provider, assetRepo, ohlcRepo, bars); err != nil {
+				if err := fs.downloadSymbol(ctx, sender, symbol, start, end, provider, req.GetProfile(), assetRepo, ohlcRepo, bars); err != nil {
 					blockedOnce.Do(func() {
 						blocked = err
 						cancel()

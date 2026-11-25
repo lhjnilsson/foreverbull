@@ -5,12 +5,16 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	internalGrpc "github.com/lhjnilsson/foreverbull/internal/grpc"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	common "github.com/lhjnilsson/foreverbull/pkg/pb"
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -91,9 +95,10 @@ type StrategyServerTest struct {
 	launcher *ss.MockExperimentLauncher
 	runner   *recordingRunner
 
-	listener *bufconn.Listener
-	server   *grpc.Server
-	client   servicePb.StrategyServicerClient
+	listener     *bufconn.Listener
+	server       *grpc.Server
+	client       servicePb.StrategyServicerClient
+	restoreQuote func()
 }
 
 func TestStrategyServer(t *testing.T) {
@@ -114,6 +119,12 @@ func (test *StrategyServerTest) SetupSubTest() {
 
 	test.launcher = new(ss.MockExperimentLauncher)
 	test.runner = &recordingRunner{}
+	test.restoreQuote = finance.SetQuoteReader(func(context.Context, string, string, string) (finance.Quote, error) {
+		return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+	})
+	path := filepath.Join(test.T().TempDir(), "profiles.yaml")
+	test.Require().NoError(os.WriteFile(path, []byte("profiles:\n  - name: alpaca-paper\n    provider: alpaca\n    apiKey: key\n    apiSecret: secret\n"), 0o600))
+	test.T().Setenv(environment.TradingProfilesFile, path)
 	test.startServer(nil)
 }
 
@@ -157,6 +168,10 @@ func (test *StrategyServerTest) startServer(profiles supplier.Registry) {
 }
 
 func (test *StrategyServerTest) TearDownSubTest() {
+	if test.restoreQuote != nil {
+		test.restoreQuote()
+		test.restoreQuote = nil
+	}
 	if test.server != nil {
 		test.server.Stop()
 	}
@@ -546,6 +561,83 @@ func (test *StrategyServerTest) seedDeployableVersion(name, image string) *pb.Ve
 	test.Require().NoError(err)
 	test.Require().NoError(experiments.UpdateStatus(context.Background(), created.Id, pb.Experiment_COMPLETED, nil))
 	return version
+}
+
+func (test *StrategyServerTest) TestDeployRefusesALondonListing() {
+	test.Run("one symbol", func() {
+		var calls []string
+		restore := finance.SetQuoteReader(func(_ context.Context, _, _, symbol string) (finance.Quote, error) {
+			calls = append(calls, symbol)
+			if strings.EqualFold(symbol, "VOD.L") {
+				return finance.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+			}
+			return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+		})
+		defer restore()
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Symbols:      []string{"VOD.L"},
+		})
+		test.Require().EqualError(err, "rpc error: code = FailedPrecondition desc = Couldn't start deployment 'mean-rev': VOD.L is listed outside the US (London, GBP). Global markets aren't supported yet. The deployment wasn't started. Remove VOD.L from --symbols, then run `fbull strategy deploy mean-rev` again with the same options.")
+		test.Equal([]string{"VOD.L"}, calls)
+		test.Empty(test.runner.added)
+		var n int
+		test.Require().NoError(test.pgx.QueryRow(context.Background(), `SELECT count(*) FROM strategy_deployment`).Scan(&n))
+		test.Zero(n)
+	})
+
+	test.Run("several symbols", func() {
+		var calls []string
+		restore := finance.SetQuoteReader(func(_ context.Context, _, _, symbol string) (finance.Quote, error) {
+			calls = append(calls, symbol)
+			switch strings.ToUpper(symbol) {
+			case "VOD.L":
+				return finance.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+			case "BMW.DE":
+				return finance.Quote{Exchange: "GER", Currency: "EUR", Reported: true}, nil
+			default:
+				return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+			}
+		})
+		defer restore()
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Symbols:      []string{"VOD.L", "BMW.DE"},
+		})
+		test.Require().EqualError(err, "rpc error: code = FailedPrecondition desc = Couldn't start deployment 'mean-rev': 2 symbols aren't US-listed in USD: BMW.DE (Xetra, EUR), VOD.L (London, GBP). Global markets aren't supported yet. The deployment wasn't started. Remove them from --symbols, then run `fbull strategy deploy mean-rev` again with the same options.")
+		test.Equal([]string{"VOD.L", "BMW.DE"}, calls)
+		test.Empty(test.runner.added)
+		var n int
+		test.Require().NoError(test.pgx.QueryRow(context.Background(), `SELECT count(*) FROM strategy_deployment`).Scan(&n))
+		test.Zero(n)
+	})
+}
+
+func (test *StrategyServerTest) TestDeployRefusesAnUnknownSymbol() {
+	test.Run("unknown symbol", func() {
+		restore := finance.SetQuoteReader(func(_ context.Context, _, _, symbol string) (finance.Quote, error) {
+			if symbol == "NOPE" {
+				return finance.Quote{}, finance.ErrUnknownSymbol
+			}
+			return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+		})
+		defer restore()
+		version := test.seedDeployableVersion("mean-rev", "algo:local")
+		_, err := test.client.Deploy(context.Background(), &servicePb.DeployRequest{
+			StrategyName: "mean-rev",
+			VersionId:    version.Id,
+			Symbols:      []string{"NOPE"},
+		})
+		test.Require().EqualError(err, "rpc error: code = FailedPrecondition desc = Couldn't start deployment 'mean-rev': yahoo doesn't know the symbol NOPE. The deployment wasn't started. Check NOPE, or remove it from --symbols, then run `fbull strategy deploy mean-rev` again with the same options.")
+		test.Empty(test.runner.added)
+		var n int
+		test.Require().NoError(test.pgx.QueryRow(context.Background(), `SELECT count(*) FROM strategy_deployment`).Scan(&n))
+		test.Zero(n)
+	})
 }
 
 func (test *StrategyServerTest) TestDeploy() {

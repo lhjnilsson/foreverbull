@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -58,6 +59,30 @@ func (ts *TradingServer) GetOrders(ctx context.Context, req *servicePb.GetOrders
 	return rsp, nil
 }
 
+// checkedSessionSymbols is the set the listing check accepted: the request
+// symbols and the benchmark, without an empty name or a repeat.
+func checkedSessionSymbols(symbols []string, benchmark string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(symbols)+1)
+	add := func(symbol string) {
+		symbol = strings.TrimSpace(symbol)
+		if symbol == "" {
+			return
+		}
+		key := strings.ToUpper(symbol)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, symbol)
+	}
+	for _, symbol := range symbols {
+		add(symbol)
+	}
+	add(benchmark)
+	return out
+}
+
 func (ts *TradingServer) GetPortfolio(ctx context.Context, req *servicePb.GetPortfolioRequest) (*servicePb.GetPortfolioResponse, error) {
 	if err := requireTradingAccount(ctx); err != nil {
 		return nil, err
@@ -88,6 +113,14 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 	if err != nil {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
+	// Before the session row and before any price import or order.
+	listed, bench, err := marketdata.RefuseListed(ctx, provider, strings.TrimSpace(req.GetProfile()), req.GetSymbols(), req.GetBenchmark())
+	if sentence, ok := tradingMarketSentence(req.GetBacktestName(), listed, bench, err); ok {
+		return status.Error(codes.FailedPrecondition, sentence)
+	}
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
 	rsp := &servicePb.CreateSessionResponse{
 		CREATING: &commonPb.Step{
 			State: commonPb.State_STATE_RUNNING,
@@ -108,7 +141,7 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 	}
 
 	sessions := repository.Trading{Conn: ts.pgx}
-	s, err := sessions.Create(ctx)
+	s, err := sessions.Create(ctx, checkedSessionSymbols(req.GetSymbols(), req.GetBenchmark()))
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
 	}
@@ -150,6 +183,44 @@ func (ts *TradingServer) CreateSession(req *servicePb.CreateSessionRequest, serv
 	}
 	published = true
 	return nil
+}
+
+func tradingMarketSentence(name string, listed []usercopy.MarketSymbol, bench *usercopy.MarketSymbol, err error) (string, bool) {
+	names, provider, lookup := tradingLookups(err)
+	if !lookup && err != nil {
+		return "", false
+	}
+	switch {
+	case len(names) > 0 && (len(listed) > 0 || bench != nil):
+		return usercopy.GlobalMarketsTradingMixed(name, listed, bench, provider, names), true
+	case len(names) > 0:
+		return usercopy.LookupTrading(name, provider, names), true
+	case len(listed) > 0 || bench != nil:
+		return usercopy.GlobalMarketsTrading(name, listed, bench), true
+	default:
+		return "", false
+	}
+}
+
+func tradingLookups(err error) (names []string, provider string, ok bool) {
+	var many *marketdata.QuoteFailures
+	if errors.As(err, &many) && many != nil {
+		for _, item := range many.Items {
+			if item == nil {
+				continue
+			}
+			names = append(names, item.Symbol)
+			if provider == "" {
+				provider = item.Provider
+			}
+		}
+		return names, provider, true
+	}
+	var one *marketdata.QuoteFailure
+	if errors.As(err, &one) && one != nil {
+		return []string{one.Symbol}, one.Provider, true
+	}
+	return nil, "", false
 }
 
 // tradingStep names the session in a step that failed because the services

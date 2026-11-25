@@ -344,6 +344,46 @@ func alpacaFetchEnd(start time.Time, end *time.Time, now time.Time) (time.Time, 
 	return endAt, endAt.After(start)
 }
 
+// Listing reads the exchange, and the currency when the asset payload has
+// one, from the trading API. A failed request is an error, not "US".
+func (a *AlpacaBars) Listing(ctx context.Context, symbol string) (exchange, currency string, err error) {
+	asked := strings.ToUpper(strings.TrimSpace(symbol))
+	base := a.tradingURL
+	if base == "" {
+		base = alpacaTradingURL
+	}
+	endpoint := strings.TrimRight(base, "/") + "/v2/assets/" + url.PathEscape(alpacaSymbol(symbol))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", "", lookupTransport("asset", asked, ctx, err)
+	}
+	req.Header.Set("APCA-API-KEY-ID", a.opts.APIKey)
+	req.Header.Set("APCA-API-SECRET-KEY", a.opts.APISecret)
+	resp, err := a.statusClient(ctx).Do(req)
+	if err != nil {
+		return "", "", lookupTransport("asset", asked, ctx, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", "", fmt.Errorf("alpaca asset for %s couldn't be read", asked)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", "", lookupStatus("asset", asked, resp.StatusCode, resp.Status)
+	}
+	var payload struct {
+		Exchange string `json:"exchange"`
+		Currency string `json:"currency"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", "", fmt.Errorf("alpaca asset for %s couldn't be read", asked)
+	}
+	if strings.TrimSpace(payload.Exchange) == "" && strings.TrimSpace(payload.Currency) == "" {
+		return "", "", fmt.Errorf("alpaca asset for %s has no exchange", asked)
+	}
+	return payload.Exchange, payload.Currency, nil
+}
+
 // AssetStatus is the trading API's asset status, "active" or "inactive".
 // Any other answer, including a missing status or a failed request, is an
 // error. It is never read as inactive.

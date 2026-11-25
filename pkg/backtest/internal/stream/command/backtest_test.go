@@ -53,6 +53,8 @@ type BacktestCommandTest struct {
 	restore func()
 	// restoreInspect puts back the provider lookup SetupTest replaced.
 	restoreInspect func()
+	// restoreQuote puts back the listing lookup SetupTest replaced.
+	restoreQuote func()
 }
 
 func TestBacktest(t *testing.T) {
@@ -104,6 +106,9 @@ func (test *BacktestCommandTest) SetupTest() {
 	test.mdclient = new(financeServicePB.MockMarketdataClient)
 	test.resetBars()
 	test.fixClock(testClock)
+	test.restoreQuote = financepkg.SetQuoteReader(func(context.Context, string, string, string) (financepkg.Quote, error) {
+		return financepkg.Quote{}, nil
+	})
 	test.restoreInspect = command.SetSymbolInspector(func(
 		context.Context, *pgxpool.Pool, string, string, string, *time.Time, *time.Time,
 	) (financepkg.SymbolFacts, error) {
@@ -140,6 +145,10 @@ func (test *BacktestCommandTest) TearDownTest() {
 	if test.restoreInspect != nil {
 		test.restoreInspect()
 		test.restoreInspect = nil
+	}
+	if test.restoreQuote != nil {
+		test.restoreQuote()
+		test.restoreQuote = nil
 	}
 }
 
@@ -324,8 +333,9 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 	test.Require().NoError(err)
 	test.Equal("BRKB", stored.GetBenchmark())
 
-	// An exchange suffix is not a share class: VOD.L is stored as typed.
-	test.Require().NoError(create(&backtest.Backtest{
+	// An exchange suffix is not a share class, and a London listing is not
+	// stored. BRK.B in the same file does not make VOD.L a class.
+	err = create(&backtest.Backtest{
 		Name:      "share-class-exchange",
 		Benchmark: "VOD.L",
 		Provider:  "yahoo",
@@ -333,11 +343,12 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 			&backtest.Backtest_Period_Asset{Symbol: "VOD.L", Enabled: true},
 			&backtest.Backtest_Period_Asset{Symbol: "BRK.B", Enabled: true},
 		),
-	}))
-	test.Equal([]string{"BRKB", "VOD.L"}, storedSymbols("share-class-exchange"))
-	exchange, err := backtests.Get(context.TODO(), "share-class-exchange")
-	test.Require().NoError(err)
-	test.Equal("VOD.L", exchange.GetBenchmark())
+	})
+	test.Require().EqualError(err, "Couldn't create backtest 'share-class-exchange': the benchmark VOD.L is listed outside the US (London). "+
+		"Global markets aren't supported yet. The backtest wasn't saved. "+
+		"Set `benchmark` in the backtest file to a US-listed symbol such as SPY, then run `fbull backtest create` again.")
+	_, err = backtests.Get(context.TODO(), "share-class-exchange")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
 
 	// Two spellings that disagree on enabled are refused, not guessed.
 	err = create(&backtest.Backtest{
@@ -1023,6 +1034,59 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataRemovesBacktestWhenSym
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
 }
 
+const laterTickerSentence = "Prices for VOD come from VOD.L, the company's later ticker, " +
+	"which is listed outside the US (London, GBP). Global markets aren't supported yet."
+
+func (test *BacktestCommandTest) vodBacktest() {
+	test.T().Helper()
+	item, ok := proto.Clone(test.backtest).(*backtest.Backtest)
+	test.Require().True(ok)
+	item.Name = "vod-2020"
+	item.Provider = "yahoo"
+	backtests := repository.Backtest{Conn: test.db}
+	_, _, err := backtests.Create(context.TODO(), item)
+	test.Require().NoError(err)
+	err = backtests.UpdatePeriod(context.TODO(), "vod-2020", &backtest.Backtest_Period{
+		StartDate: &pb.Date{Year: 2022, Month: 1, Day: 1},
+		EndDate:   &pb.Date{Year: 2022, Month: 12, Day: 31},
+		Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "VOD", Enabled: true}},
+	})
+	test.Require().NoError(err)
+}
+
+func (test *BacktestCommandTest) laterTickerStream() {
+	test.T().Helper()
+	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
+	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
+		Symbol: "VOD",
+		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
+		Error:  laterTickerSentence,
+	}, nil).Once()
+	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
+}
+
+func (test *BacktestCommandTest) TestDownloadShowsARefusedLaterTicker() {
+	test.vodBacktest()
+	test.laterTickerStream()
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("vod-2020"))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'vod-2020': "+laterTickerSentence+
+		" The backtest wasn't saved. Remove VOD, then run `fbull backtest create` again.")
+	_, err = (&repository.Backtest{Conn: test.db}).Get(context.TODO(), "vod-2020")
+	test.Require().ErrorIs(err, pgx.ErrNoRows)
+}
+
+func (test *BacktestCommandTest) TestDownloadShowsARefusedLaterTickerWhenTheBacktestStays() {
+	test.vodBacktest()
+	test.refuseBacktestDelete()
+	test.laterTickerStream()
+	err := command.DownloadFinancialData(context.TODO(), test.downloadMessage("vod-2020"))
+	test.Require().EqualError(err, "Couldn't load data for backtest 'vod-2020': "+laterTickerSentence+
+		" The backtest was partly saved and couldn't be removed. Run `fbull backtest delete vod-2020` first. "+
+		"Remove VOD, then run `fbull backtest create` again.")
+	_, err = (&repository.Backtest{Conn: test.db}).Get(context.TODO(), "vod-2020")
+	test.Require().NoError(err)
+}
+
 // The no-bars sentence names the backtest's own provider, not the default.
 func (test *BacktestCommandTest) TestDownloadFinancialDataNoPriceDataNamesProvider() {
 	stooq, ok := proto.Clone(test.backtest).(*backtest.Backtest)
@@ -1302,19 +1366,14 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataIgnoresInvalidTickerFo
 	test.NotContains(err.Error(), "symbol 7 of 99")
 }
 
-// shopTORefusal is the sentence the Stooq client returns for SHOP.TO.
-// Create keeps the refusal and supplies its own next step.
-const shopTORefusal = "stooq doesn't support the .TO exchange (SHOP.TO). " +
-	"Supported suffixes: .DE, .L, .US. Try another provider with --provider."
+const shopTORemoved = "Couldn't create backtest 'stooq-shop': SHOP.TO is listed outside the US (the .TO suffix isn't a US exchange). " +
+	"Global markets aren't supported yet. The backtest wasn't saved. " +
+	"Remove SHOP.TO, then run `fbull backtest create` again."
 
-const shopTORemoved = "Couldn't load data for backtest 'stooq-shop': stooq doesn't support the .TO exchange (SHOP.TO). " +
-	"Supported suffixes: .DE, .L, .US. The backtest wasn't saved. " +
-	"Remove SHOP.TO or try another provider with --provider, then run `fbull backtest create` again."
-
-const shopTOKept = "Couldn't load data for backtest 'stooq-shop': stooq doesn't support the .TO exchange (SHOP.TO). " +
-	"Supported suffixes: .DE, .L, .US. The backtest was partly saved and couldn't be removed. " +
+const shopTOKept = "Couldn't create backtest 'stooq-shop': SHOP.TO is listed outside the US (the .TO suffix isn't a US exchange). " +
+	"Global markets aren't supported yet. The backtest was partly saved and couldn't be removed. " +
 	"Run `fbull backtest delete stooq-shop` first. " +
-	"Remove SHOP.TO or try another provider with --provider, then run `fbull backtest create` again."
+	"Remove SHOP.TO, then run `fbull backtest create` again."
 
 // prepareStooqShopDownload stores stooq-shop with SHOP.TO and answers the
 // download with Stooq's refusal.
@@ -1334,14 +1393,6 @@ func (test *BacktestCommandTest) prepareStooqShopDownload() {
 		},
 	})
 	test.Require().NoError(err)
-
-	clientStreamMock := new(financeServicePB.MockMarketdata_DownloadHistoricalDataClient[interface{}])
-	clientStreamMock.On("Recv", mock.Anything).Return(&financeServicePB.DownloadHistoricalDataResponse{
-		Symbol: "SHOP.TO",
-		Status: financeServicePB.DownloadHistoricalDataResponse_STATUS_ERROR,
-		Error:  shopTORefusal,
-	}, nil).Once()
-	test.mdclient.On("DownloadHistoricalData", mock.Anything, mock.Anything).Return(clientStreamMock, nil)
 }
 
 // An unsupported Stooq exchange suffix fails create with the refusal and
@@ -1354,6 +1405,7 @@ func (test *BacktestCommandTest) TestDownloadFinancialDataShowsStooqExchangeRefu
 	test.Require().EqualError(err, shopTORemoved)
 	_, err = (&repository.Backtest{Conn: test.db}).Get(context.TODO(), "stooq-shop")
 	test.Require().ErrorIs(err, pgx.ErrNoRows)
+	test.mdclient.AssertNotCalled(test.T(), "DownloadHistoricalData", mock.Anything, mock.Anything)
 }
 
 // When that backtest could not be removed, the same refusal says to delete

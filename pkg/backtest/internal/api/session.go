@@ -136,6 +136,10 @@ func (s *grpcSessionServer) CreateExecution(ctx context.Context, req *servicePb.
 		log.Info().Err(err).Str("backtest", s.session.GetBacktest()).Msg("execution dates rejected")
 		return nil, err
 	}
+	if err := s.refuseRunMarkets(ctx, stored); err != nil {
+		log.Info().Err(err).Str("backtest", stored.GetName()).Msg("execution refused")
+		return nil, err
+	}
 
 	executions := repository.Execution{Conn: s.db}
 	e := backtest.Execution{
@@ -177,6 +181,15 @@ func (s *grpcSessionServer) RunExecution(req *servicePb.RunExecutionRequest, str
 	execution, err := s.executionForListener(ctx, req.ExecutionId)
 	if err != nil {
 		log.Error().Err(err).Str("execution_id", req.ExecutionId).Msg("error getting execution")
+		return err
+	}
+	stored, err := s.storedBacktest(ctx)
+	if err != nil {
+		log.Error().Err(err).Str("session", s.session.GetId()).Msg("error getting backtest")
+		return backtestLoadStatus(err)
+	}
+	if err := s.refuseRunMarkets(ctx, stored); err != nil {
+		log.Info().Err(err).Str("backtest", stored.GetName()).Msg("execution refused")
 		return err
 	}
 

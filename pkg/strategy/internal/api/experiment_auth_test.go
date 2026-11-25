@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,6 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	service "github.com/lhjnilsson/foreverbull/pkg/pb/service"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/strategy"
@@ -234,6 +236,30 @@ func completedAuthedDeploy(t *testing.T) (*pgxpool.Pool, context.Context, *pb.Ve
 	require.NoError(t, err)
 	require.NoError(t, experiments.UpdateStatus(ctx, created.GetId(), pb.Experiment_COMPLETED, nil))
 	return pool, ctx, version
+}
+
+func TestDeployAuthedRefusesALondonListing(t *testing.T) {
+	pool, ctx, version := completedAuthedDeploy(t)
+	var calls []string
+	restore := finance.SetQuoteReader(func(_ context.Context, _, _, symbol string) (finance.Quote, error) {
+		calls = append(calls, symbol)
+		if strings.EqualFold(symbol, "VOD.L") {
+			return finance.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+		}
+		return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+	})
+	defer restore()
+	server := &StrategyServer{pgx: pool}
+	_, err := server.deployAuthed(ctx, &servicePb.DeployRequest{
+		StrategyName: "mean-rev",
+		VersionId:    version.GetId(),
+		Symbols:      []string{"VOD.L"},
+	})
+	require.EqualError(t, err, "rpc error: code = FailedPrecondition desc = Couldn't start deployment 'mean-rev': VOD.L is listed outside the US (London, GBP). Global markets aren't supported yet. The deployment wasn't started. Remove VOD.L from --symbols, then run `fbull strategy deploy mean-rev` again with the same options.")
+	require.Equal(t, []string{"VOD.L"}, calls)
+	var n int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM strategy_deployment`).Scan(&n))
+	require.Equal(t, 0, n)
 }
 
 func TestDeployAuthedRefusesUnknownProfile(t *testing.T) {

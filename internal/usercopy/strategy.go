@@ -34,6 +34,18 @@ func ExperimentRunFailed(strategy, backtest string, causes []string) string {
 	return fmt.Sprintf("Couldn't run experiment '%s': %s. %s", strategy, strings.Join(causes, " and "), step)
 }
 
+// DeploymentListingNotStored is a deployment whose listing decision could
+// not be read or saved. The deployment is not started.
+func DeploymentListingNotStored(strategy string) string {
+	name := strings.TrimSpace(strategy)
+	const cause = "foreverbull couldn't save or read where its symbols are listed. The deployment wasn't started. " +
+		"Run `fbenv status` to check that the environment is running, then run `fbull strategy deploy"
+	if name == "" {
+		return "Couldn't start the deployment: " + cause + "` again with the same options."
+	}
+	return "Couldn't start deployment '" + name + "': " + cause + " " + name + "` again with the same options."
+}
+
 // DeploymentStartFailed is the sentence for a deployment whose runner
 // couldn't start. notStored is a failure that couldn't be saved either: the
 // deployment still reads RUNNING and would resume on the next start, so the

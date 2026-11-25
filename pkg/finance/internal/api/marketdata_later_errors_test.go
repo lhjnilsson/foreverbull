@@ -201,6 +201,10 @@ func TestDownloadSymbolLooksUpLaterTickerOnlyOnNoBars(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			restore := marketdata.SetQuoteReader(func(context.Context, string, string, string) (marketdata.Quote, error) {
+				return marketdata.Quote{Exchange: "NASDAQ", Currency: "USD", Reported: true}, nil
+			})
+			t.Cleanup(restore)
 			require.NoError(t, repository.Recreate(context.Background(), pool))
 			storeRenamedFB(t, pool)
 
@@ -231,7 +235,7 @@ func TestDownloadSymbolLooksUpLaterTickerOnlyOnNoBars(t *testing.T) {
 			fs := NewMarketdataServer(pool, meta)
 			start := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 			end := time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC)
-			blocked := fs.downloadSymbol(ctx, newDownloadSender(stream, func() {}), "FB", start, &end, tc.provider,
+			blocked := fs.downloadSymbol(ctx, newDownloadSender(stream, func() {}), "FB", start, &end, tc.provider, "",
 				repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, dividendFree{bars})
 
 			if tc.wantBlock {
@@ -349,7 +353,7 @@ func TestDownloadSymbolWithNothingToFetchSkipsTheFetchAndTheLookup(t *testing.T)
 	stream := &countingStream{}
 	fs := NewMarketdataServer(pool, meta)
 	start := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
-	blocked := fs.downloadSymbol(context.Background(), newDownloadSender(stream, func() {}), "FB", start, nil, "alpaca",
+	blocked := fs.downloadSymbol(context.Background(), newDownloadSender(stream, func() {}), "FB", start, nil, "alpaca", "",
 		repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, bars)
 
 	require.Nil(t, blocked)

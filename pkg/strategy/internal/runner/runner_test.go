@@ -3,11 +3,14 @@ package runner
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonpb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -44,6 +47,26 @@ func TestRunner(t *testing.T) {
 	suite.Run(t, new(RunnerTest))
 }
 
+// allowUSListings answers every listing as a US dollar symbol and points the
+// alpaca-paper profile at a file, so an add of the suite's deployment passes
+// the check and starts.
+func allowUSListings(t *testing.T) {
+	t.Helper()
+	restore := finance.SetQuoteReader(func(context.Context, string, string, string) (finance.Quote, error) {
+		return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+	})
+	t.Cleanup(restore)
+	writeAlpacaProfile(t)
+}
+
+func writeAlpacaProfile(t *testing.T) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "profiles.yaml")
+	body := "profiles:\n  - name: alpaca-paper\n    provider: alpaca\n    apiKey: key\n    apiSecret: secret\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	t.Setenv("TRADING_PROFILES_FILE", path)
+}
+
 func (test *RunnerTest) SetupTest() {
 	test.mon = SessionClose{
 		Date:  &commonpb.Date{Year: 2024, Month: 3, Day: 4},
@@ -71,6 +94,7 @@ func (test *RunnerTest) SetupTest() {
 	test.clock = NewFakeClock(test.mon.Close.Add(-time.Hour), test.mon, test.tue, test.wed)
 	test.runner = New(test.store, test.clock, profileRegistry{"alpaca-paper": test.trading}, test.processor).WithPollInterval(5 * time.Millisecond)
 	test.store.Put(test.deployment())
+	allowUSListings(test.T())
 }
 
 func (test *RunnerTest) TearDownTest() {

@@ -44,6 +44,8 @@ type MarketdataTest struct {
 	listener *bufconn.Listener
 	server   *grpc.Server
 	client   servicePb.MarketdataClient
+
+	restoreQuote func()
 }
 
 func TestMarketData(t *testing.T) {
@@ -59,12 +61,22 @@ func (suite *MarketdataTest) SetupSuite() {
 func (suite *MarketdataTest) TearDownSuite() {
 }
 
+func (suite *MarketdataTest) TearDownTest() {
+	if suite.restoreQuote != nil {
+		suite.restoreQuote()
+		suite.restoreQuote = nil
+	}
+}
+
 func (suite *MarketdataTest) SetupTest() {
 	var err error
 	suite.pgx, err = pgxpool.New(context.Background(), environment.GetPostgresURL())
 	suite.Require().NoError(err)
 	suite.Require().NoError(repository.Recreate(context.TODO(), suite.pgx))
 	suite.marketdata = supplier.NewMockMarketdata(suite.T())
+	suite.restoreQuote = marketdata.SetQuoteReader(func(context.Context, string, string, string) (marketdata.Quote, error) {
+		return marketdata.Quote{}, nil
+	})
 
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server, err = internalGrpc.NewServer()
@@ -1217,22 +1229,21 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataRetriesAnEmptyAnswerOnce(
 	suite.marketdata.AssertNumberOfCalls(suite.T(), "GetOHLC", 2)
 }
 
-// A London listing is stored under the symbol the user asked for. Stooq
-// fetches VOD.L as vod.uk, and a bar labelled with the provider's ticker must
-// not end up stored under that ticker.
+// A bar labelled with the provider's ticker is stored under the symbol that
+// was asked for.
 func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProviderTicker() {
 	ctx := context.Background()
-	suite.marketdata.On("GetAsset", mock.Anything, "VOD.L").Return(&pb.Asset{Symbol: "VOD.L", Name: "Vodafone Group Plc"}, nil)
-	suite.marketdata.On("GetOHLC", mock.Anything, "VOD.L", mock.Anything, mock.Anything).Return([]*pb.OHLC{
+	suite.marketdata.On("GetAsset", mock.Anything, "AAPL").Return(&pb.Asset{Symbol: "AAPL", Name: "Apple Inc."}, nil)
+	suite.marketdata.On("GetOHLC", mock.Anything, "AAPL", mock.Anything, mock.Anything).Return([]*pb.OHLC{
 		{
-			Symbol:    "vod.uk",
+			Symbol:    "aapl.us",
 			Timestamp: timestamppb.New(mustTime("2024-01-02")),
 			Open:      69.1, High: 70.2, Low: 68.9, Close: 69.8, Volume: 51000000,
 		},
 	}, nil)
 
 	req := &servicePb.DownloadHistoricalDataRequest{
-		Symbols:   []string{"VOD.L"},
+		Symbols:   []string{"AAPL"},
 		StartDate: &internal_pb.Date{Year: 2024, Month: 1, Day: 2},
 		EndDate:   &internal_pb.Date{Year: 2024, Month: 1, Day: 3},
 		Provider:  "yahoo",
@@ -1252,7 +1263,7 @@ func (suite *MarketdataTest) TestDownloadHistoricalDataStoresAskedSymbolNotProvi
 		symbols = append(symbols, symbol)
 	}
 	suite.Require().NoError(rows.Err())
-	suite.Equal([]string{"VOD.L"}, symbols)
+	suite.Equal([]string{"AAPL"}, symbols)
 }
 
 // A request symbol outside the ticker pattern refuses the whole download

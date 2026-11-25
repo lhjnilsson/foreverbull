@@ -779,6 +779,83 @@ func yahooThrough(symbol string, timestamps []int64, quotes []yahooQuote, last t
 	return kept, []yahooQuote{trimmed}
 }
 
+// listingQuote is the quote summary used to read exchange and currency.
+// It is not an asset lookup: no ISIN is fetched and nothing is stored.
+type listingQuote struct {
+	QuoteSummary struct {
+		Result []struct {
+			QuoteType struct {
+				Exchange string `json:"exchange"`
+			} `json:"quoteType"`
+			Price struct {
+				Currency string `json:"currency"`
+				Exchange string `json:"exchange"`
+			} `json:"price"`
+		} `json:"result"`
+		Error struct {
+			Code        string `json:"code"`
+			Description string `json:"description"`
+		} `json:"error"`
+	} `json:"quoteSummary"`
+}
+
+// Listing reads the exchange and currency Yahoo reports for symbol.
+// Exchange prefers price.exchange and falls back to quoteType.exchange.
+// Currency is price.currency. A missing quote is ErrUnknownSymbol.
+// The call is not retried and does not look up a later ticker.
+func (y *YahooClient) Listing(ctx context.Context, symbol string) (exchange, currency string, err error) {
+	quoteURL := y.quoteURL
+	if quoteURL == "" {
+		quoteURL = defaultYahooQuoteURL
+	}
+	resp, err := y.doRequest(ctx, quoteURL+url.PathEscape(yahooSymbol(symbol)), "modules=quoteType,price")
+	if err != nil {
+		return "", "", fmt.Errorf("error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, isinBodyLimit))
+	if err != nil {
+		return "", "", fmt.Errorf("error reading response: %w", err)
+	}
+	if err := blockedError("yahoo", symbol, resp.Header.Get("Content-Type"), body); err != nil {
+		return "", "", err
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return "", "", fmt.Errorf("fail to get asset for symbol %s: HTTP %s", symbol, resp.Status)
+	}
+	var data listingQuote
+	if err := json.Unmarshal(body, &data); err != nil {
+		if resp.StatusCode == http.StatusNotFound {
+			return "", "", unknownSymbol("")
+		}
+		return "", "", fmt.Errorf("error decoding response: %w", err)
+	}
+	assetShaped := AssetResponse{}
+	assetShaped.QuoteSummary.Error.Code = data.QuoteSummary.Error.Code
+	assetShaped.QuoteSummary.Error.Description = data.QuoteSummary.Error.Description
+	if unknown, text := unknownQuoteSummary(resp.StatusCode, assetShaped); unknown {
+		return "", "", unknownSymbol(text)
+	}
+	if data.QuoteSummary.Error.Code != "" {
+		return "", "", fmt.Errorf("%s", data.QuoteSummary.Error.Description)
+	}
+	if len(data.QuoteSummary.Result) == 0 {
+		return "", "", fmt.Errorf("no results found")
+	}
+	row := data.QuoteSummary.Result[0]
+	exchange = row.Price.Exchange
+	if exchange == "" {
+		exchange = row.QuoteType.Exchange
+	}
+	currency = row.Price.Currency
+	// An empty listing is not a US quote. Alpaca refuses the same gap.
+	if strings.TrimSpace(exchange) == "" && strings.TrimSpace(currency) == "" {
+		return "", "", fmt.Errorf("yahoo listing for %s has no exchange", symbol)
+	}
+	return exchange, currency, nil
+}
+
 // yahooPrice is true for a real positive price.
 func yahooPrice(price *float64) bool {
 	if price == nil {

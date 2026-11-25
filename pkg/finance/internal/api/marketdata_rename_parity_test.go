@@ -255,7 +255,7 @@ func downloadRename(t *testing.T, pool *pgxpool.Pool, provider, symbol string, b
 	stream := &countingStream{}
 	blocked := NewMarketdataServer(pool, renameMetadata(t)).downloadSymbol(
 		context.Background(), newDownloadSender(stream, func() {}),
-		symbol, start, &end, provider,
+		symbol, start, &end, provider, "",
 		repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, bars,
 	)
 	require.Nil(t, blocked)
@@ -423,6 +423,10 @@ func TestStooqAndAlpacaCurrentTickerCoversTheRename(t *testing.T) {
 	pool := renamePool(t)
 	for _, provider := range []string{"stooq", "alpaca"} {
 		t.Run(provider, func(t *testing.T) {
+			restore := marketdata.SetQuoteReader(func(context.Context, string, string, string) (marketdata.Quote, error) {
+				return marketdata.Quote{Exchange: "NASDAQ", Currency: "USD", Reported: true}, nil
+			})
+			t.Cleanup(restore)
 			require.NoError(t, repository.Recreate(context.Background(), pool))
 			seedRename(t, pool, false)
 			msg := downloadRename(t, pool, provider, "FB", feeds[provider])
@@ -475,7 +479,7 @@ func TestFBBarOutsideEveryWindowStoresNothing(t *testing.T) {
 			stream := &countingStream{}
 			blocked := NewMarketdataServer(pool, renameMetadata(t)).downloadSymbol(
 				context.Background(), newDownloadSender(stream, func() {}),
-				"FB", start, &end, provider,
+				"FB", start, &end, provider, "",
 				repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, feeds[provider],
 			)
 			require.Nil(t, blocked)

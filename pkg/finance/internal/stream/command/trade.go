@@ -39,6 +39,10 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 	if err != nil {
 		return fmt.Errorf("error getting session: %w", err)
 	}
+	symbols, err := repository.Symbols(ctx, cmd.Id)
+	if err != nil {
+		return fmt.Errorf("error getting session symbols: %w", err)
+	}
 	if trading == nil {
 		return fmt.Errorf("trading is not enabled")
 	}
@@ -59,10 +63,12 @@ func SessionRun(ctx context.Context, msg stream.Message) error {
 			return fmt.Errorf("%s is missing", auth.SessionMetadata())
 		}
 		server, activity, err = api.NewSecuredGRPCSessionServer(trading, secret,
-			api.WithBars(bars, provider), api.WithSessionCalendar(calendar), api.WithSessionID(cmd.Id))
+			api.WithBars(bars, provider), api.WithSessionCalendar(calendar), api.WithSessionID(cmd.Id),
+			api.WithCheckedSymbols(symbols))
 	} else {
 		server, activity, err = api.NewGRPCSessionServer(trading,
-			api.WithBars(bars, provider), api.WithSessionCalendar(calendar), api.WithSessionID(cmd.Id))
+			api.WithBars(bars, provider), api.WithSessionCalendar(calendar), api.WithSessionID(cmd.Id),
+			api.WithCheckedSymbols(symbols))
 	}
 	if err != nil {
 		return fmt.Errorf("error creating grpc session server: %w", err)

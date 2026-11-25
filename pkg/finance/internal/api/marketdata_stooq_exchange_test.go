@@ -19,10 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// shopTORefusal is the sentence Stooq's client returns for SHOP.TO. The
-// download reports it as written. Create wraps the refusal in its own step.
-const shopTORefusal = "stooq doesn't support the .TO exchange (SHOP.TO). " +
-	"Supported suffixes: .DE, .L, .US. Try another provider with --provider."
+// shopTORefusal is the download's refusal for a non-US suffix. The quote is
+// not asked, and neither is a later ticker. The global-markets sentence follows.
+const shopTORefusal = "SHOP.TO is listed outside the US (the .TO suffix isn't a US exchange). Global markets aren't supported yet."
 
 // shopISIN is the instrument a later-ticker lookup would resolve SHOP.TO to.
 const shopISIN = "CA82509L1076"
@@ -40,10 +39,8 @@ func (c *countingPrice) GetOHLC(ctx context.Context, symbol string, start time.T
 	return c.Marketdata.GetOHLC(ctx, symbol, start, end)
 }
 
-// SHOP.TO is an exchange suffix Stooq has no code for. Backtest create's
-// download stops on that refusal: the sentence names the symbol, stooq and
-// .TO, GetOHLC runs once, and the later ticker a missing-price answer would
-// look up is not asked for.
+// SHOP.TO is listed outside the US. The download stops before GetAsset,
+// before GetOHLC, and before the later ticker a missing price would look up.
 func TestDownloadSymbolRefusesUnsupportedStooqExchangeOnce(t *testing.T) {
 	test_helper.SetupEnvironment(t, &test_helper.Containers{Postgres: true})
 	pool, err := pgxpool.New(context.Background(), environment.GetPostgresURL())
@@ -74,19 +71,12 @@ func TestDownloadSymbolRefusesUnsupportedStooqExchangeOnce(t *testing.T) {
 	bars := &countingPrice{Marketdata: client}
 
 	meta := supplier.NewMockMarketdata(t)
-	meta.On("GetAsset", mock.Anything, "SHOP.TO").Return(&pb.Asset{Symbol: "SHOP.TO", Name: "Shopify Inc."}, nil)
-	// A missing-price answer looks these up. The refusal must not.
-	meta.On("SearchAsset", mock.Anything, shopISIN).Return([]*pb.Asset{
-		{Symbol: "SHOP", Name: "Shopify Inc.", ISIN: shopISIN},
-	}, nil).Maybe()
-	meta.On("GetAsset", mock.Anything, "SHOP").
-		Return(&pb.Asset{Symbol: "SHOP", Name: "Shopify Inc.", ISIN: shopISIN}, nil).Maybe()
 
 	stream := &countingStream{}
 	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 3, 28, 0, 0, 0, 0, time.UTC)
 	blocked := NewMarketdataServer(pool, meta).downloadSymbol(ctx, newDownloadSender(stream, func() {}),
-		"SHOP.TO", start, &end, "stooq", repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, bars)
+		"SHOP.TO", start, &end, "stooq", "", repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, bars)
 
 	require.Nil(t, blocked)
 	require.Len(t, stream.sent, 1)
@@ -94,11 +84,11 @@ func TestDownloadSymbolRefusesUnsupportedStooqExchangeOnce(t *testing.T) {
 	require.Equal(t, servicePb.DownloadHistoricalDataResponse_STATUS_ERROR, stream.sent[0].GetStatus())
 	require.Equal(t, shopTORefusal, stream.sent[0].GetError())
 	require.Nil(t, stream.sent[0].GetLaterTicker())
-	require.Equal(t, 1, bars.calls)
-	require.Equal(t, []string{"SHOP.TO"}, bars.symbols)
+	require.Zero(t, bars.calls)
+	require.Empty(t, bars.symbols)
 	require.Zero(t, hits)
 	meta.AssertNotCalled(t, "SearchAsset", mock.Anything, mock.Anything)
-	meta.AssertNotCalled(t, "GetAsset", mock.Anything, "SHOP")
+	meta.AssertNotCalled(t, "GetAsset", mock.Anything, mock.Anything)
 
 	var stored, later int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM ohlc`).Scan(&stored))
