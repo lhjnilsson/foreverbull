@@ -14,6 +14,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/internal/web"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
+	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
@@ -40,6 +41,11 @@ type fakeBacktests struct {
 	oneReq *servicePb.GetExecutionRequest
 	one    *servicePb.GetExecutionResponse
 	oneErr error
+
+	divName  string
+	divOwner string
+	divRows  []repository.StoredDividend
+	divErr   error
 }
 
 func (f *fakeBacktests) ListBacktests(context.Context, *servicePb.ListBacktestsRequest) (*servicePb.ListBacktestsResponse, error) {
@@ -79,6 +85,15 @@ func (f *fakeBacktests) GetExecution(_ context.Context, req *servicePb.GetExecut
 		return nil, f.oneErr
 	}
 	return f.one, nil
+}
+
+func (f *fakeBacktests) ListDividends(_ context.Context, name, owner string) ([]repository.StoredDividend, error) {
+	f.divName = name
+	f.divOwner = owner
+	if f.divErr != nil {
+		return nil, f.divErr
+	}
+	return f.divRows, nil
 }
 
 func sampleBacktest() *backtest.Backtest {
@@ -406,6 +421,70 @@ func TestHTTP(t *testing.T) {
 		mux.ServeHTTP(rec, jsonRequest(http.MethodPost, "/api/backtests/spy/executions", `{"service":"algo:local"}`))
 
 		require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	})
+}
+
+func TestHTTPDividends(t *testing.T) {
+	pay := "2024-04-01"
+
+	t.Run("list", func(t *testing.T) {
+		fake := &fakeBacktests{divRows: []repository.StoredDividend{
+			{Symbol: "KO", ExDate: "2024-03-14", Amount: 0.25, PayDate: &pay},
+			{Symbol: "TSM", ExDate: "2024-06-13", Amount: 0.5, PayDate: nil},
+		}}
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, fake)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/backtests/spy/dividends?owner=ada", nil))
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+		require.JSONEq(t, `[
+			{"symbol":"KO","ex_date":"2024-03-14","amount":0.25,"pay_date":"2024-04-01"},
+			{"symbol":"TSM","ex_date":"2024-06-13","amount":0.5,"pay_date":null}
+		]`, rec.Body.String())
+		require.Equal(t, "spy", fake.divName)
+		require.Equal(t, "ada", fake.divOwner)
+		require.Empty(t, fake.name)
+	})
+
+	t.Run("none", func(t *testing.T) {
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, &fakeBacktests{})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/backtests/spy/dividends", nil))
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "[]", rec.Body.String())
+	})
+
+	t.Run("unknown backtest", func(t *testing.T) {
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, &fakeBacktests{divErr: status.Error(codes.NotFound, "backtest missing not found")})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/backtests/missing/dividends", nil))
+
+		require.Equal(t, http.StatusNotFound, rec.Code)
+		require.JSONEq(t, `{"error":"not found"}`, rec.Body.String())
+	})
+
+	t.Run("missing row", func(t *testing.T) {
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, &fakeBacktests{divErr: pgx.ErrNoRows})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/backtests/missing/dividends", nil))
+
+		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("failure hides the cause", func(t *testing.T) {
+		mux := http.NewServeMux()
+		api.RegisterHTTP(mux, &fakeBacktests{divErr: fmt.Errorf("postgres password=secret")})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/backtests/spy/dividends", nil))
+
+		require.Equal(t, http.StatusInternalServerError, rec.Code)
+		require.NotContains(t, rec.Body.String(), "secret")
 	})
 }
 

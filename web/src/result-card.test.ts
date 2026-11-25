@@ -248,6 +248,53 @@ test("an adjusted-close run labels the return and notes dividends inside prices"
   ]);
 });
 
+test("one foreign dividend uses the singular note", () => {
+  const stored = [period(2, { startingCash: 1_000, portfolioValue: 1_000, longsCount: 1 })];
+  const load = resultCard({
+    stored,
+    benchmark: "SPY",
+    provider: "yahoo",
+    returnBasis: "RETURN_BASIS_TOTAL",
+    foreignDividendsGross: 1,
+  });
+  assert.ok(load?.ok);
+  assert.deepEqual(load.card.notes, [
+    "Dividends paid on the ex-date: the cash lands then, not on the pay date.",
+    "1 foreign dividend booked gross, before withholding.",
+  ]);
+});
+
+test("a total-return run with no benchmark says the benchmark is not set", () => {
+  const stored = [
+    period(2, { startingCash: 1_000, portfolioValue: 1_000 }),
+    period(4, {
+      portfolioValue: 1_100,
+      algorithmPeriodReturn: 0.1,
+      priceReturn: 0.08,
+      maxDrawdown: -0.01,
+      longsCount: 1,
+    }),
+  ];
+  const rows = cells(
+    resultCard({ stored, benchmark: "", provider: "alpaca", returnBasis: "RETURN_BASIS_TOTAL" }),
+  );
+  assert.deepEqual(rows[1], ["Total return=+10.0%", "Benchmark total=not set"]);
+  assert.deepEqual(rows[2], ["Price return=+8.0%", "Benchmark price=not set"]);
+});
+
+test("a legacy run keeps the plain return and has no dividend notes", () => {
+  const stored = [period(2, { startingCash: 1_000, portfolioValue: 1_050, algorithmPeriodReturn: 0.05, longsCount: 1 })];
+  const load = resultCard({
+    stored,
+    benchmark: "SPY",
+    provider: "yahoo",
+    returnBasis: "RETURN_BASIS_UNSPECIFIED",
+  });
+  assert.deepEqual(cells(load)[1], ["Return=+5.0%", "Benchmark (SPY)=not available"]);
+  assert.ok(load?.ok);
+  assert.equal(load.card.notes, undefined);
+});
+
 test("an ETF run shows close on universe drop as on or off", () => {
   assert.equal(CLOSE_ON_DROP_LABEL, "Close on universe drop");
   assert.equal(closeOnDropValue(true), "on");

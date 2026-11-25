@@ -22,6 +22,8 @@ import {
 } from "../components/fb";
 import { hasStoredDate, lastStoredPeriod, portfolioSeries } from "../equity";
 import { openRunInGrafana, rankRunsInGrafana } from "../grafana";
+import { DividendList } from "../dividend-list.ts";
+import type { StoredDividend } from "../dividends";
 import { CLOSE_ON_DROP_CREATE_HELP, CLOSE_ON_DROP_LABEL, closeOnDropValue, type ResultCard, resultCard } from "../result-card";
 import type { Backtest, Execution, ExecutionResult, GetExecution } from "../types";
 import { postJson, useJson, type Load } from "../useJson";
@@ -187,6 +189,9 @@ export function BacktestDetail() {
   const on = assets.filter((asset) => asset.enabled).map((asset) => asset.symbol ?? "");
   const off = assets.filter((asset) => !asset.enabled).map((asset) => asset.symbol ?? "");
   const runs = executions.state === "ready" && Array.isArray(executions.data) ? executions.data : [];
+  const dividends = useJson<StoredDividend[]>(
+    b.name ? `/api/backtests/${encodeURIComponent(b.name)}/dividends` : null,
+  );
   const rank = b.name ? rankRunsInGrafana(grafanaBase ?? "", b.name) : null;
 
   return (
@@ -208,6 +213,8 @@ export function BacktestDetail() {
         <Field label="Enabled">{on.filter(Boolean).join(", ") || "—"}</Field>
         <Field label="Disabled">{off.filter(Boolean).join(", ") || "—"}</Field>
       </dl>
+      <H2>Dividends</H2>
+      <DividendList load={dividends} />
       <H2>Executions</H2>
       {rank ? (
         <p className="mb-3">
@@ -227,6 +234,7 @@ export function BacktestDetail() {
             universe={b.hasUniverseMembers === true}
             closeOnDrop={b.autoCloseOnUniverseDrop !== false}
             grafanaBase={grafanaBase}
+            dividends={dividends}
           />
         ))}
       </ul>
@@ -254,6 +262,7 @@ function ExecutionRow({
   universe,
   closeOnDrop,
   grafanaBase,
+  dividends,
 }: {
   execution: Execution;
   revision: number;
@@ -261,6 +270,7 @@ function ExecutionRow({
   universe: boolean;
   closeOnDrop: boolean;
   grafanaBase: string | null;
+  dividends: Load<StoredDividend[]>;
 }) {
   const id = execution.id ?? "";
   const run = openRunInGrafana(grafanaBase ?? "", id);
@@ -312,6 +322,7 @@ function ExecutionRow({
           status={status}
           runHref={run?.href ?? null}
           runLabel={run?.label ?? ""}
+          dividends={dividends}
         />
       </Modal>
     </li>
@@ -328,6 +339,7 @@ function RunReport({
   status,
   runHref,
   runLabel,
+  dividends,
 }: {
   execution: Execution;
   detail: Load<GetExecution>;
@@ -338,6 +350,7 @@ function RunReport({
   status: string;
   runHref: string | null;
   runLabel: string;
+  dividends: Load<StoredDividend[]>;
 }) {
   const periods = detail.state === "ready" && Array.isArray(detail.data.periods) ? detail.data.periods : [];
   const points = portfolioSeries(periods);
@@ -373,6 +386,10 @@ function RunReport({
       {card?.ok ? <ResultCardView card={card.card} /> : null}
       {card && !card.ok ? <p className="text-muted-foreground">{card.message}</p> : null}
       {!card && detail.state === "ready" ? <p className="text-muted-foreground">No result stored for this run.</p> : null}
+      <div>
+        <h3 className="mb-5 font-medium">Dividends stored for this backtest</h3>
+        <DividendList load={dividends} />
+      </div>
       {detail.state === "loading" ? (
         <p className="flex items-center gap-2 text-muted-foreground">
           <LoaderCircle className="animate-spin motion-reduce:animate-none" size={16} aria-hidden />

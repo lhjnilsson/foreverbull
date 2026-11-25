@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -25,6 +27,9 @@ type BacktestHTTP interface {
 	CreateBacktest(*servicePb.CreateBacktestRequest, servicePb.BacktestServicer_CreateBacktestServer) error
 	ListExecutions(context.Context, *servicePb.ListExecutionsRequest) (*servicePb.ListExecutionsResponse, error)
 	GetExecution(context.Context, *servicePb.GetExecutionRequest) (*servicePb.GetExecutionResponse, error)
+	// ListDividends is the stored dividends of the named backtest. A missing
+	// backtest is not found. pay_date is nil when the provider sent none.
+	ListDividends(ctx context.Context, name, owner string) ([]repository.StoredDividend, error)
 }
 
 var _ BacktestHTTP = (*BacktestServer)(nil)
@@ -45,6 +50,7 @@ func RegisterHTTP(mux *http.ServeMux, backtests BacktestHTTP) {
 	mux.HandleFunc("GET /api/backtests", routes.list)
 	mux.HandleFunc("POST /api/backtests", routes.create)
 	mux.HandleFunc("GET /api/backtests/{name}/executions", routes.executions)
+	mux.HandleFunc("GET /api/backtests/{name}/dividends", routes.dividends)
 	mux.HandleFunc("GET /api/backtests/{name}", routes.get)
 	mux.HandleFunc("GET /api/executions/{id}", routes.execution)
 }
@@ -193,6 +199,45 @@ func (h backtestRoutes) executions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	web.WriteMessages(w, resp.GetExecutions())
+}
+
+// dividendJSON is one stored dividend. PayDate is null when the provider
+// sent none. The field is always present, so a missing date is not omitted.
+type dividendJSON struct {
+	Symbol  string  `json:"symbol"`
+	ExDate  string  `json:"ex_date"`
+	Amount  float64 `json:"amount"`
+	PayDate *string `json:"pay_date"`
+}
+
+func (h backtestRoutes) dividends(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		web.NotFound(w)
+		return
+	}
+	rows, err := h.api.ListDividends(r.Context(), name, r.URL.Query().Get("owner"))
+	if err != nil {
+		web.WriteError(w, err)
+		return
+	}
+	body := make([]dividendJSON, 0, len(rows))
+	for _, row := range rows {
+		body = append(body, dividendJSON{
+			Symbol: row.Symbol, ExDate: row.ExDate, Amount: row.Amount, PayDate: row.PayDate,
+		})
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		web.WriteError(w, err)
+		return
+	}
+	// Same ceiling as the other JSON lists.
+	if len(encoded) > 4<<20 {
+		web.WriteError(w, fmt.Errorf("response exceeds %d bytes", 4<<20))
+		return
+	}
+	web.StatusJSON(w, http.StatusOK, string(encoded))
 }
 
 func (h backtestRoutes) execution(w http.ResponseWriter, r *http.Request) {

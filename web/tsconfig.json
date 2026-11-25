@@ -14,7 +14,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "vite.config.ts"],
   "exclude": ["src/**/*.test.ts"]
