@@ -121,7 +121,9 @@ func setupUnrecorded(t *testing.T, refusing refusingJetStream, method string, cb
 	t.Cleanup(listenerConn.Close)
 	listener := &stateSubscriber{repository: NewRepository(db), nc: listenerConn}
 	require.NoError(t, listener.startUnrecorded())
-	t.Cleanup(func() { require.NoError(t, listener.unrecordedSub.Unsubscribe()) })
+	t.Cleanup(func() {
+		require.NoError(t, drainSubscription(context.Background(), listener.unrecordedSub))
+	})
 
 	return unrecordedSetup{waiter: waiter, db: db}
 }
