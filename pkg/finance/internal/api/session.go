@@ -37,6 +37,11 @@ type grpcSessionServer struct {
 
 	// sessionID names the trading session in the user's sentences.
 	sessionID string
+
+	// checked is the set stored when the session was created. Nil means this
+	// server was not given a set. A non-nil set, including an empty one,
+	// rejects every symbol that is not in it.
+	checked map[string]struct{}
 }
 
 type sessionOption func(*grpcSessionServer)
@@ -47,6 +52,22 @@ func WithBars(source worker.BarSource, provider string) sessionOption {
 	return func(gs *grpcSessionServer) {
 		gs.bars = source
 		gs.provider = provider
+	}
+}
+
+// WithCheckedSymbols is the set CreateSession stored after the listing check.
+// Run and PlaceOrders reject a symbol that is not in it.
+func WithCheckedSymbols(symbols []string) sessionOption {
+	return func(gs *grpcSessionServer) {
+		checked := make(map[string]struct{}, len(symbols))
+		for _, symbol := range symbols {
+			symbol = strings.ToUpper(strings.TrimSpace(symbol))
+			if symbol == "" {
+				continue
+			}
+			checked[symbol] = struct{}{}
+		}
+		gs.checked = checked
 	}
 }
 
@@ -98,6 +119,34 @@ func NewSecuredGRPCSessionServer(trading supplier.Trading, secret string, opts .
 	return grpcServer, activity, nil
 }
 
+// refuseOutside rejects a symbol that was not in the set checked when the
+// session was created. Nothing is run and no order is sent.
+func (gs *grpcSessionServer) refuseOutside(symbols []string) error {
+	if gs.checked == nil {
+		return nil
+	}
+	var outside []string
+	seen := map[string]struct{}{}
+	for _, symbol := range symbols {
+		key := strings.ToUpper(strings.TrimSpace(symbol))
+		if key == "" {
+			continue
+		}
+		if _, ok := gs.checked[key]; ok {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		outside = append(outside, strings.TrimSpace(symbol))
+	}
+	if len(outside) == 0 {
+		return nil
+	}
+	return status.Error(codes.FailedPrecondition, usercopy.GlobalMarketsOutside(outside))
+}
+
 func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.ConfigureRequest) (*servicePb.ConfigureResponse, error) {
 	var poolOpts []worker.Option
 	if gs.bars != nil {
@@ -122,6 +171,9 @@ func (gs *grpcSessionServer) Configure(ctx context.Context, req *servicePb.Confi
 }
 
 func (gs *grpcSessionServer) Run(ctx context.Context, req *servicePb.RunRequest) (*servicePb.RunResponse, error) {
+	if err := gs.refuseOutside(req.GetSymbols()); err != nil {
+		return nil, err
+	}
 	portfolio, err := gs.trading.GetPortfolio(ctx)
 	if err != nil {
 		return nil, err
@@ -144,6 +196,16 @@ func (gs *grpcSessionServer) Run(ctx context.Context, req *servicePb.RunRequest)
 // carries the same response: a unary RPC does not send the reply when the
 // handler returns an error.
 func (gs *grpcSessionServer) PlaceOrders(ctx context.Context, req *servicePb.PlaceOrderRequest) (*servicePb.PlaceOrderResponse, error) {
+	symbols := make([]string, 0, len(req.GetOrders()))
+	for _, order := range req.GetOrders() {
+		if order == nil {
+			continue
+		}
+		symbols = append(symbols, order.GetSymbol())
+	}
+	if err := gs.refuseOutside(symbols); err != nil {
+		return nil, err
+	}
 	rsp := &servicePb.PlaceOrderResponse{
 		Orders: make([]*pb.Order, len(req.GetOrders())),
 	}

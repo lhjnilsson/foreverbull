@@ -39,11 +39,20 @@ func TestTrading(t *testing.T) {
 	suite.Run(t, new(TradingTest))
 }
 
+func (test *TradingTest) TestSymbolsRoundTrip() {
+	uut := repository.Trading{Conn: test.conn}
+	session, err := uut.Create(context.Background(), []string{"AAPL", "SPY"})
+	test.Require().NoError(err)
+	got, err := uut.Symbols(context.Background(), session.Id)
+	test.Require().NoError(err)
+	test.Equal([]string{"AAPL", "SPY"}, got)
+}
+
 func (test *TradingTest) TestCreate() {
 	uut := repository.Trading{Conn: test.conn}
 	ctx := context.Background()
 
-	session, err := uut.Create(ctx)
+	session, err := uut.Create(ctx, nil)
 	test.Require().NoError(err)
 	test.NotNil(session.Id)
 	test.Nil(session.Port)
@@ -53,7 +62,7 @@ func (test *TradingTest) TestGet() {
 	uut := repository.Trading{Conn: test.conn}
 	ctx := context.Background()
 
-	session, err := uut.Create(ctx)
+	session, err := uut.Create(ctx, nil)
 	test.Require().NoError(err)
 	test.NotNil(session.Id)
 
@@ -67,11 +76,11 @@ func (test *TradingTest) TestList() {
 	uut := repository.Trading{Conn: test.conn}
 	ctx := context.Background()
 
-	session1, err := uut.Create(ctx)
+	session1, err := uut.Create(ctx, nil)
 	test.Require().NoError(err)
 	test.NotNil(session1.Id)
 
-	session2, err := uut.Create(ctx)
+	session2, err := uut.Create(ctx, nil)
 	test.Require().NoError(err)
 	test.NotNil(session2.Id)
 
@@ -86,7 +95,7 @@ func (test *TradingTest) TestUpdatePort() {
 	uut := repository.Trading{Conn: test.conn}
 	ctx := context.Background()
 
-	session, err := uut.Create(ctx)
+	session, err := uut.Create(ctx, nil)
 	test.Require().NoError(err)
 	test.NotNil(session.Id)
 

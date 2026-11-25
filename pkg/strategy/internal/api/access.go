@@ -373,6 +373,9 @@ func (s *StrategyServer) deployAuthed(ctx context.Context, req *servicePb.Deploy
 	if calendar == "" {
 		calendar = defaultCalendar
 	}
+	if err := s.refuseDeployMarkets(ctx, req.GetStrategyName(), backend, req.GetSymbols()); err != nil {
+		return nil, err
+	}
 	deployments := repository.Deployment{Conn: s.pgx}
 	deployment, err := deployments.Create(
 		ctx, version.GetId(), backend, calendar,
@@ -391,7 +394,7 @@ func (s *StrategyServer) deployAuthed(ctx context.Context, req *servicePb.Deploy
 			notStored := repository.StatusNotStored(failErr)
 			log.Error().Err(failErr).Str("deployment", deployment.GetId()).Bool("error_not_stored", notStored).
 				Msg("error starting deployment runner")
-			return nil, status.Error(codes.Internal, usercopy.DeploymentStartFailed(req.GetStrategyName(), notStored))
+			return nil, admissionStatus(req.GetStrategyName(), err, notStored)
 		}
 	}
 	return &servicePb.DeployResponse{Deployment: deployment}, nil

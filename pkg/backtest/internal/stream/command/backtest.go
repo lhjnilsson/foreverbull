@@ -76,6 +76,12 @@ func CreateBacktestFromBacktest(ctx context.Context, msg stream.Message) error {
 	if err := refuseSameCompany(ctx, db, &b); err != nil {
 		return err
 	}
+	// Before the row. A non-US listing or a non-USD price is not saved,
+	// and the lookup is not retried and does not follow a later ticker.
+	members, benchmark := backtestMembers(&b)
+	if err := refuseCreateMarkets(ctx, b.GetName(), b.GetProvider(), b.GetProfile(), benchmark, members, true, false); err != nil {
+		return err
+	}
 	backtests := repository.Backtest{Conn: db}
 	if err = createStoredBacktest(repository.WithCreateMessage(ctx, command.CreateMessageID), backtests, command.OwnerID, &b); err != nil {
 		if errors.Is(err, repository.ErrProviderMissing) {
@@ -151,6 +157,12 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	symbols := uniqueAliasSymbols(result.Aliases)
 	// Over the download cap: refuse before any provider call or store.
 	if err := tooManySymbols(command.BacktestName, append([]string{benchmark}, symbols...)); err != nil {
+		return err
+	}
+	// Before the asset lookup, the instrument rows, and the backtest row.
+	// The ETF path picks the benchmark, so a refused benchmark is reported
+	// rather than handed back as a file the user can edit.
+	if err := refuseCreateMarkets(ctx, command.BacktestName, command.Provider, command.Profile, benchmark, symbols, true, true); err != nil {
 		return err
 	}
 	db := msg.MustGet(stream.DBDep).(*pgxpool.Pool)
@@ -880,6 +892,11 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	if err := finance.ValidatePriceSource(provider, b.GetProfile()); err != nil {
 		return fmt.Errorf("price source: %w", err)
 	}
+	// Before the cutoff notice, the price download, and any bar. A refused
+	// symbol is not retried and its later ticker is not looked up.
+	if err := discardRefusedMarkets(ctx, backtests, command.BacktestName, backtestID, provider, b.GetProfile(), b.GetBenchmark(), memberSymbols(symbols, b.GetBenchmark())); err != nil {
+		return err
+	}
 
 	startDate := b.Periods[0].StartDate
 	endDate := b.Periods[len(b.Periods)-1].EndDate
@@ -1217,6 +1234,11 @@ func symbolDownloadMessage(name, provider, symbol string, start, end *pb.Date, e
 	case tickerHistorySymbol(errText, symbol):
 		lead = fmt.Sprintf("foreverbull couldn't read its ticker history for %s.", symbol)
 		next = "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+	case strings.Contains(errText, "Global markets aren't supported yet."):
+		// A later ticker, or a suffix, already wrote the sentence. Create
+		// shows it. The raw text is not left behind --verbose.
+		lead = strings.TrimSpace(errText)
+		next = fmt.Sprintf("Remove %s, then run `fbull backtest create` again.", symbol)
 	case isRefusedBarError(errText):
 		lead = errText + "."
 		next = providerFaultNextStep
@@ -1369,6 +1391,14 @@ func Ingest(ctx context.Context, msg stream.Message) error {
 	b, backtestID, err := loadStoredBacktest(ctx, db, command.BacktestName, command.OwnerID, command.BacktestID)
 	if err != nil {
 		return fmt.Errorf("error getting backtest: %w", err)
+	}
+	ingestList, err := ingestSymbols(ctx, db, b, backtestID)
+	if err != nil {
+		return fmt.Errorf("error listing ingest symbols: %w", err)
+	}
+	// Before the engine and the bundle. The same symbols the download checked.
+	if err := discardRefusedMarkets(ctx, backtests, command.BacktestName, backtestID, b.GetProvider(), b.GetProfile(), b.GetBenchmark(), memberSymbols(ingestList, b.GetBenchmark())); err != nil {
+		return err
 	}
 
 	store, isStorage := msg.MustGet(stream.StorageDep).(storage.Storage)

@@ -72,7 +72,7 @@ func TestDownloadSymbolKeepsYahooCrumbOutOfStatusAndLog(t *testing.T) {
 	server := NewMarketdataServer(nil, dividendFree{md})
 
 	blocked := server.downloadSymbol(ctx, newDownloadSender(stream, cancel), "AAPL",
-		time.Unix(0, 0).UTC(), nil, "yahoo", repository.Asset{}, repository.OHLC{}, md)
+		time.Unix(0, 0).UTC(), nil, "yahoo", "", repository.Asset{}, repository.OHLC{}, md)
 
 	require.Nil(t, blocked)
 	require.Len(t, stream.sent, 1)

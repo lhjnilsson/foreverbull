@@ -25,6 +25,8 @@ var ErrDuplicateRun = errors.New("duplicate session run")
 type Store interface {
 	GetDeployment(ctx context.Context, id string) (*pb.Deployment, error)
 	ListRunning(ctx context.Context) ([]*pb.Deployment, error)
+	MarketsChecked(ctx context.Context, id string) (bool, error)
+	MarkMarketsChecked(ctx context.Context, id string) error
 	SetLastSessionDate(ctx context.Context, id string, date *commonpb.Date) error
 	UpdateStatus(ctx context.Context, id string, status pb.Deployment_Status, err error) error
 	CreateRun(ctx context.Context, deploymentID string, sessionDate *commonpb.Date, orders []*financepb.Order, skipped bool, runErr error) (*pb.DeploymentRun, error)
@@ -50,6 +52,16 @@ func (s *PostgresStore) GetDeployment(ctx context.Context, id string) (*pb.Deplo
 func (s *PostgresStore) ListRunning(ctx context.Context) ([]*pb.Deployment, error) {
 	d := repository.Deployment{Conn: s.Conn}
 	return d.ListRunning(ctx)
+}
+
+func (s *PostgresStore) MarketsChecked(ctx context.Context, id string) (bool, error) {
+	d := repository.Deployment{Conn: s.Conn}
+	return d.MarketsChecked(ctx, id)
+}
+
+func (s *PostgresStore) MarkMarketsChecked(ctx context.Context, id string) error {
+	d := repository.Deployment{Conn: s.Conn}
+	return d.MarkMarketsChecked(ctx, id)
 }
 
 func (s *PostgresStore) SetLastSessionDate(ctx context.Context, id string, date *commonpb.Date) error {
@@ -92,11 +104,15 @@ func isUniqueViolation(err error) bool {
 type MemoryStore struct {
 	mu          sync.Mutex
 	deployments map[string]*pb.Deployment
+	checked     map[string]bool
 	runs        []*pb.DeploymentRun
 }
 
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{deployments: map[string]*pb.Deployment{}}
+	return &MemoryStore{
+		deployments: map[string]*pb.Deployment{},
+		checked:     map[string]bool{},
+	}
 }
 
 var _ Store = (*MemoryStore)(nil)
@@ -115,6 +131,25 @@ func (m *MemoryStore) GetDeployment(_ context.Context, id string) (*pb.Deploymen
 		return nil, fmt.Errorf("deployment %q not found", id)
 	}
 	return cloneDeployment(d), nil
+}
+
+func (m *MemoryStore) MarketsChecked(_ context.Context, id string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.deployments[id]; !ok {
+		return false, fmt.Errorf("deployment %q not found", id)
+	}
+	return m.checked[id], nil
+}
+
+func (m *MemoryStore) MarkMarketsChecked(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.deployments[id]; !ok {
+		return fmt.Errorf("deployment %q not found", id)
+	}
+	m.checked[id] = true
+	return nil
 }
 
 func (m *MemoryStore) ListRunning(_ context.Context) ([]*pb.Deployment, error) {

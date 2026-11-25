@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,6 +19,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	financeStream "github.com/lhjnilsson/foreverbull/pkg/finance/stream"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonPb "github.com/lhjnilsson/foreverbull/pkg/pb"
@@ -55,9 +57,10 @@ type TradingServerTest struct {
 	trading *supplier.MockTrading
 	stream  *stream.MockStream
 
-	listener *bufconn.Listener
-	server   *grpc.Server
-	client   servicePb.TradingServicerClient
+	listener     *bufconn.Listener
+	server       *grpc.Server
+	client       servicePb.TradingServicerClient
+	restoreQuote func()
 	// running keeps every Serve goroutine until TearDownSuite. A later test
 	// reuses the server the previous subtest left up, so subtests do not
 	// stop it.
@@ -72,6 +75,13 @@ func (suite *TradingServerTest) SetupSuite() {
 	test_helper.SetupEnvironment(suite.T(), &test_helper.Containers{
 		Postgres: true,
 	})
+}
+
+func (suite *TradingServerTest) TearDownTest() {
+	if suite.restoreQuote != nil {
+		suite.restoreQuote()
+		suite.restoreQuote = nil
+	}
 }
 
 func (suite *TradingServerTest) TearDownSuite() {
@@ -90,6 +100,9 @@ func (suite *TradingServerTest) SetupSubTest() {
 	suite.Require().NoError(repository.Recreate(context.TODO(), suite.pgx))
 
 	suite.trading = supplier.NewMockTrading(suite.T())
+	suite.restoreQuote = marketdata.SetQuoteReader(func(context.Context, string, string, string) (marketdata.Quote, error) {
+		return marketdata.Quote{}, nil
+	})
 
 	suite.listener = bufconn.Listen(1024 * 1024)
 	suite.server, err = internalGrpc.NewServer()
@@ -211,6 +224,67 @@ func (test *TradingServerTest) TestCreateSession() {
 		test.Require().NotNil(session)
 		test.Require().NotNil(session.Port)
 		test.Equal(int64(1337), *session.Port)
+	})
+}
+
+func (test *TradingServerTest) TestCreateSessionRefusesALondonListing() {
+	test.Run("one symbol", func() {
+		restore := marketdata.SetQuoteReader(func(_ context.Context, _, _, symbol string) (marketdata.Quote, error) {
+			switch strings.ToUpper(symbol) {
+			case "VOD.L", "^FTSE":
+				return marketdata.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+			case "BMW.DE":
+				return marketdata.Quote{Exchange: "GER", Currency: "EUR", Reported: true}, nil
+			default:
+				return marketdata.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+			}
+		})
+		defer restore()
+		rsp, err := test.client.CreateSession(context.Background(), &servicePb.CreateSessionRequest{
+			Provider: "yahoo", Symbols: []string{"VOD.L"}, BacktestName: "uk-2024",
+		})
+		test.Require().NoError(err)
+		_, err = rsp.Recv()
+		test.Require().EqualError(err, "rpc error: code = FailedPrecondition desc = Couldn't start trading with backtest 'uk-2024': VOD.L is listed outside the US (London, GBP). Global markets aren't supported yet. No orders were sent. Pick another backtest, or delete it with `fbull backtest delete uk-2024`, remove VOD.L from the backtest file, then create it again with `fbull backtest create`.")
+		test.stream.AssertNotCalled(test.T(), "RunOrchestration", mock.Anything, mock.Anything)
+		test.trading.AssertNotCalled(test.T(), "PlaceOrder", mock.Anything, mock.Anything)
+		var sessions int
+		test.Require().NoError(test.pgx.QueryRow(context.Background(), `SELECT count(*) FROM trading_session`).Scan(&sessions))
+		test.Zero(sessions)
+	})
+	test.Run("two symbols", func() {
+		restore := marketdata.SetQuoteReader(func(_ context.Context, _, _, symbol string) (marketdata.Quote, error) {
+			switch strings.ToUpper(symbol) {
+			case "VOD.L":
+				return marketdata.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+			case "BMW.DE":
+				return marketdata.Quote{Exchange: "GER", Currency: "EUR", Reported: true}, nil
+			default:
+				return marketdata.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+			}
+		})
+		defer restore()
+		rsp, err := test.client.CreateSession(context.Background(), &servicePb.CreateSessionRequest{
+			Provider: "yahoo", Symbols: []string{"BMW.DE", "VOD.L"}, BacktestName: "uk-2024",
+		})
+		test.Require().NoError(err)
+		_, err = rsp.Recv()
+		test.Require().EqualError(err, "rpc error: code = FailedPrecondition desc = Couldn't start trading with backtest 'uk-2024': 2 symbols aren't US-listed in USD: BMW.DE (Xetra, EUR), VOD.L (London, GBP). Global markets aren't supported yet. No orders were sent. Pick another backtest, or delete it with `fbull backtest delete uk-2024`, remove them from the backtest file, then create it again with `fbull backtest create`.")
+	})
+	test.Run("benchmark", func() {
+		restore := marketdata.SetQuoteReader(func(_ context.Context, _, _, symbol string) (marketdata.Quote, error) {
+			if strings.EqualFold(symbol, "^FTSE") {
+				return marketdata.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+			}
+			return marketdata.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+		})
+		defer restore()
+		rsp, err := test.client.CreateSession(context.Background(), &servicePb.CreateSessionRequest{
+			Provider: "yahoo", Symbols: []string{"AAPL"}, Benchmark: "^FTSE", BacktestName: "uk-2024",
+		})
+		test.Require().NoError(err)
+		_, err = rsp.Recv()
+		test.Require().EqualError(err, "rpc error: code = FailedPrecondition desc = Couldn't start trading with backtest 'uk-2024': the benchmark ^FTSE is listed outside the US (London, GBP). Global markets aren't supported yet. No orders were sent. Pick another backtest, or delete it with `fbull backtest delete uk-2024`, set `benchmark` in the backtest file to a US-listed symbol such as SPY, then create it again with `fbull backtest create`.")
 	})
 }
 

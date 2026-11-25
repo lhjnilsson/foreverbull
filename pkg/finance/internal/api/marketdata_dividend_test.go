@@ -48,7 +48,7 @@ func symbolDownload(t *testing.T, symbol, provider string, bars supplier.Marketd
 	start := time.Date(2024, 3, 13, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 3, 14, 0, 0, 0, 0, time.UTC)
 	blocked := NewMarketdataServer(pool, meta).downloadSymbol(context.Background(), newDownloadSender(stream, func() {}),
-		symbol, start, &end, provider, repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, bars)
+		symbol, start, &end, provider, "", repository.Asset{Conn: pool}, repository.OHLC{Conn: pool}, bars)
 	require.Nil(t, blocked)
 	return stream, pool
 }

@@ -255,7 +255,9 @@ def test_trading_run_yes(runner):
         assert result.exit_code == 0
         assert "Positions and Orders" in result.stdout
         mocks["place_orders"].assert_called_once()
-        mocks["create_session"].assert_called_once_with(["A", "B", "C", "D"], "yahoo", "")
+        mocks["create_session"].assert_called_once_with(
+            ["A", "B", "C", "D"], "yahoo", "", backtest_name="test_name", benchmark=""
+        )
 
 
 def test_trading_run_sends_the_backtest_provider(runner):
@@ -265,7 +267,9 @@ def test_trading_run_sends_the_backtest_provider(runner):
         with patch("foreverbull.broker.backtest.get", return_value=mocks_backtest):
             result = runner(cli, ["trading", "run", "test_name", "demo.py", "--yes"])
         assert result.exit_code == 0
-        mocks["create_session"].assert_called_once_with(["A", "B", "C", "D"], "stooq", "alpaca-paper")
+        mocks["create_session"].assert_called_once_with(
+            ["A", "B", "C", "D"], "stooq", "alpaca-paper", backtest_name="test_name", benchmark=""
+        )
 
 
 def test_trading_run_refuses_a_missing_provider():

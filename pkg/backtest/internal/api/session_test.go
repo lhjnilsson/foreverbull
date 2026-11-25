@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/engine"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/api"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/pb"
 	"github.com/lhjnilsson/foreverbull/pkg/pb/backtest"
 	servicePb "github.com/lhjnilsson/foreverbull/pkg/pb/backtest/service"
@@ -139,6 +141,180 @@ func (s *SessionTest) TestCreateExecution() {
 	case <-time.After(5 * time.Second):
 		s.Require().Fail("timeout waiting for activity")
 	}
+}
+
+func (s *SessionTest) TestCreateExecutionRefusesALondonListing() {
+	restore := finance.SetQuoteReader(func(_ context.Context, _, _, symbol string) (finance.Quote, error) {
+		if strings.EqualFold(symbol, "VOD.L") {
+			return finance.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+		}
+		return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+	})
+	defer restore()
+
+	backtests := repository.Backtest{Conn: s.conn}
+	_, _, err := backtests.Create(context.Background(), &backtest.Backtest{
+		Name: "uk-2024", Benchmark: "SPY", Provider: "yahoo",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+			Assets:    []*backtest.Backtest_Period_Asset{{Symbol: "VOD.L", Enabled: true}},
+		}},
+	})
+	s.Require().NoError(err)
+	sessions := repository.Session{Conn: s.conn}
+	session, err := sessions.Create(context.Background(), "uk-2024")
+	s.Require().NoError(err)
+
+	engineSession := new(engine.MockEngineSession)
+	eng := new(engine.MockEngine)
+	eng.On("NewSession", mock.Anything, mock.Anything).Return(engineSession, nil)
+	grpcServer, _, err := api.NewGRPCSessionServer(session, s.conn, eng)
+	s.Require().NoError(err)
+	listener := bufconn.Listen(1024 * 1024)
+	go func() { _ = grpcServer.Serve(listener) }()
+	s.T().Cleanup(grpcServer.Stop)
+	conn, err := grpc.NewClient(listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+	)
+	s.Require().NoError(err)
+	s.T().Cleanup(func() { _ = conn.Close() })
+	client := servicePb.NewSessionServicerClient(conn)
+
+	_, err = client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   session.GetId(),
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 6, Day: 30},
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().EqualError(err, "rpc error: code = FailedPrecondition desc = Couldn't run backtest 'uk-2024': VOD.L is listed outside the US (London, GBP). Global markets aren't supported yet. Nothing was run. Delete it with `fbull backtest delete uk-2024`, remove VOD.L from the backtest file, then create it again with `fbull backtest create`.")
+	engineSession.AssertNotCalled(s.T(), "RunBacktest", mock.Anything, mock.Anything, mock.Anything)
+	var executions int
+	s.Require().NoError(s.conn.QueryRow(context.Background(), `SELECT count(*) FROM backtest_execution`).Scan(&executions))
+	s.Zero(executions)
+}
+
+func (s *SessionTest) legacySession(name string, assets ...string) (servicePb.SessionServicerClient, *backtest.Session) {
+	s.T().Helper()
+	items := make([]*backtest.Backtest_Period_Asset, len(assets))
+	for i, symbol := range assets {
+		items[i] = &backtest.Backtest_Period_Asset{Symbol: symbol, Enabled: true}
+	}
+	backtests := repository.Backtest{Conn: s.conn}
+	_, _, err := backtests.Create(context.Background(), &backtest.Backtest{
+		Name: name, Benchmark: "SPY", Provider: "yahoo",
+		Periods: []*backtest.Backtest_Period{{
+			StartDate: &pb.Date{Year: 2024, Month: 1, Day: 1},
+			EndDate:   &pb.Date{Year: 2024, Month: 12, Day: 31},
+			Assets:    items,
+		}},
+	})
+	s.Require().NoError(err)
+	sessions := repository.Session{Conn: s.conn}
+	session, err := sessions.Create(context.Background(), name)
+	s.Require().NoError(err)
+	eng := new(engine.MockEngine)
+	eng.On("NewSession", mock.Anything, mock.Anything).Return(new(engine.MockEngineSession), nil)
+	grpcServer, _, err := api.NewGRPCSessionServer(session, s.conn, eng)
+	s.Require().NoError(err)
+	listener := bufconn.Listen(1024 * 1024)
+	go func() { _ = grpcServer.Serve(listener) }()
+	s.T().Cleanup(grpcServer.Stop)
+	conn, err := grpc.NewClient(listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+	)
+	s.Require().NoError(err)
+	s.T().Cleanup(func() { _ = conn.Close() })
+	return servicePb.NewSessionServicerClient(conn), session
+}
+
+func (s *SessionTest) TestLegacyBacktestWithStoredBarsIsRefused() {
+	client, session := s.legacySession("uk-2024", "VOD.L")
+	_, err := s.conn.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS asset (symbol text PRIMARY KEY)`)
+	s.Require().NoError(err)
+	_, err = s.conn.Exec(context.Background(), `INSERT INTO asset (symbol) VALUES ('VOD.L') ON CONFLICT DO NOTHING`)
+	s.Require().NoError(err)
+	_, err = s.conn.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS ohlc (
+		symbol text, open numeric, high numeric, low numeric, close numeric,
+		volume bigint, time timestamp, provider text)`)
+	s.Require().NoError(err)
+	_, err = s.conn.Exec(context.Background(), `INSERT INTO ohlc (symbol, open, high, low, close, volume, time, provider)
+		VALUES ('VOD.L', 1, 1, 1, 1, 1, '2024-01-02', 'yahoo')`)
+	s.Require().NoError(err)
+	restore := finance.SetQuoteReader(func(_ context.Context, _, _, symbol string) (finance.Quote, error) {
+		if strings.EqualFold(symbol, "VOD.L") {
+			return finance.Quote{Exchange: "LSE", Currency: "GBP", Reported: true}, nil
+		}
+		return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+	})
+	defer restore()
+	want := "rpc error: code = FailedPrecondition desc = Couldn't run backtest 'uk-2024': VOD.L is listed outside the US (London, GBP). Global markets aren't supported yet. Nothing was run. Delete it with `fbull backtest delete uk-2024`, remove VOD.L from the backtest file, then create it again with `fbull backtest create`."
+	_, err = client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   session.GetId(),
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 6, Day: 30},
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().EqualError(err, want)
+	var checked bool
+	s.Require().NoError(s.conn.QueryRow(context.Background(), `SELECT markets_checked FROM backtest WHERE name = 'uk-2024'`).Scan(&checked))
+	s.False(checked)
+
+	created, err := (&repository.Execution{Conn: s.conn}).Create(context.Background(), &backtest.Execution{
+		Session:   session.GetId(),
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 6, Day: 30},
+	}, nil)
+	s.Require().NoError(err)
+	stream, err := client.RunExecution(context.Background(), &servicePb.RunExecutionRequest{ExecutionId: created.GetId()})
+	s.Require().NoError(err)
+	_, err = stream.Recv()
+	s.Require().EqualError(err, want)
+}
+
+func (s *SessionTest) TestUncheckedUSBacktestStoresTheDecision() {
+	client, session := s.legacySession("us-2024", "AAPL")
+	restore := finance.SetQuoteReader(func(context.Context, string, string, string) (finance.Quote, error) {
+		return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+	})
+	defer restore()
+	_, err := client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   session.GetId(),
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 6, Day: 30},
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().NoError(err)
+	var checked bool
+	s.Require().NoError(s.conn.QueryRow(context.Background(), `SELECT markets_checked FROM backtest WHERE name = 'us-2024'`).Scan(&checked))
+	s.True(checked)
+}
+
+func (s *SessionTest) TestUnknownSymbolDoesNotStoreTheDecision() {
+	client, session := s.legacySession("us-2024", "NOPE")
+	restore := finance.SetQuoteReader(func(_ context.Context, _, _, symbol string) (finance.Quote, error) {
+		if strings.EqualFold(symbol, "NOPE") {
+			return finance.Quote{}, finance.ErrUnknownSymbol
+		}
+		return finance.Quote{Exchange: "NMS", Currency: "USD", Reported: true}, nil
+	})
+	defer restore()
+	_, err := client.CreateExecution(context.Background(), &servicePb.CreateExecutionRequest{
+		Session:   session.GetId(),
+		StartDate: &pb.Date{Year: 2024, Month: 1, Day: 2},
+		EndDate:   &pb.Date{Year: 2024, Month: 6, Day: 30},
+		Algorithm: &service_pb.Algorithm{},
+	})
+	s.Require().NoError(err)
+	var checked bool
+	s.Require().NoError(s.conn.QueryRow(context.Background(), `SELECT markets_checked FROM backtest WHERE name = 'us-2024'`).Scan(&checked))
+	s.False(checked)
 }
 
 func (s *SessionTest) TestCreateExecutionStoresUsedArguments() {

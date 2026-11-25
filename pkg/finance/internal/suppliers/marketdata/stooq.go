@@ -43,14 +43,12 @@ var defaultStooqUS = map[string]string{
 	"NVDA":  "nvda.us",
 }
 
-// stooqExchangeSuffix maps an exchange suffix, as written in a stored symbol
-// (Yahoo style, such as VOD.L), to Stooq's suffix for the same exchange.
-// Stooq's own suffix (VOD.UK) is accepted too. A suffix that is in neither
-// form is refused with ErrStooqExchange instead of guessing a code. The keys
-// are the suffixes the refusal lists as supported.
+// stooqExchangeSuffix maps a suffix Stooq may be asked for. Only US is
+// accepted. London (.L, .UK) and Xetra (.DE) used to be downloaded and
+// priced as USD on the NYSE calendar; they are refused before any request.
+// A suffix that is not here is ErrStooqExchange. The keys are the suffixes
+// the refusal lists as supported.
 var stooqExchangeSuffix = map[string]string{
-	"L":  "uk", // London Stock Exchange
-	"DE": "de", // Xetra
 	"US": "us",
 }
 
@@ -69,7 +67,7 @@ func stooqSuffixFor(suffix string) (string, bool) {
 	return "", false
 }
 
-// stooqSupportedSuffixes lists the supported suffixes as ".DE, .L, .US".
+// stooqSupportedSuffixes lists the supported suffixes. Only .US is accepted.
 func stooqSupportedSuffixes() string {
 	suffixes := make([]string, 0, len(stooqExchangeSuffix))
 	for suffix := range stooqExchangeSuffix {
@@ -88,7 +86,7 @@ func (e *stooqRefusal) Unwrap() error { return ErrStooqExchange }
 
 // errStooqInvalidTicker never echoes the symbol: it failed the bound check.
 var errStooqInvalidTicker = &stooqRefusal{
-	msg: "stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example VOD.L or AAPL.",
+	msg: "stooq can't use this symbol because it isn't a valid ticker. Check the spelling, for example AAPL.",
 }
 
 // stooqTicker bounds a suffixed ticker before it is echoed in an error, so
@@ -159,7 +157,7 @@ type StooqClient struct {
 	limiter     *requestLimiter
 	toStooq     map[string]string // canonical upper → stooq code
 	toCanonical map[string]string // stooq code lower → canonical upper
-	// exchange is Stooq's suffix (us, uk, de). Empty is refused.
+	// exchange is Stooq's suffix. Only us is accepted. Empty is refused.
 	exchange string
 	// now replaces the clock, so tests can fix today's session.
 	now func() time.Time
@@ -361,10 +359,10 @@ func (c *StooqClient) resolveSymbol(symbol string) (code, canonical string, err 
 	return lower + "." + c.exchange, upper, nil
 }
 
-// exchangeCode maps a ticker with an exchange suffix (VOD.L) to its Stooq
-// code (vod.uk). Bars keep the symbol as asked (VOD.L), so they are stored
-// under the name the caller stores. A US code (xyz.us) is labelled XYZ, the
-// form US tickers are stored under.
+// exchangeCode maps a US suffix (xyz.us) to Stooq's code. The bar is labelled
+// XYZ, the form US tickers are stored under. Any other suffix is refused
+// before a request: Stooq does not report an exchange, and a non-US suffix
+// is a listing outside the US.
 func exchangeCode(ticker, suffix string) (code, canonical string, err error) {
 	upper := strings.ToUpper(ticker + "." + suffix)
 	if !stooqTicker.MatchString(upper) {

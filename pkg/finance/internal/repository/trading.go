@@ -11,21 +11,39 @@ import (
 const TradingTable = `
 CREATE TABLE IF NOT EXISTS trading_session (
 	id text PRIMARY KEY DEFAULT uuid_generate_v4(),
-	port integer);
+	port integer,
+	symbols text[] NOT NULL DEFAULT '{}');
 `
 
 type Trading struct {
 	Conn postgres.Query
 }
 
-func (db *Trading) Create(ctx context.Context) (*pb.Session, error) {
+func (db *Trading) Create(ctx context.Context, symbols []string) (*pb.Session, error) {
+	if symbols == nil {
+		symbols = []string{}
+	}
 	var id string
-	err := db.Conn.QueryRow(ctx, `INSERT INTO trading_session DEFAULT VALUES RETURNING id`).Scan(&id)
+	err := db.Conn.QueryRow(ctx, `INSERT INTO trading_session (symbols) VALUES ($1) RETURNING id`, symbols).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
 
 	return db.Get(ctx, id)
+}
+
+// Symbols are the tickers checked when the session was created. A symbol
+// that is not in the set was not checked.
+func (db *Trading) Symbols(ctx context.Context, id string) ([]string, error) {
+	var symbols []string
+	err := db.Conn.QueryRow(ctx, `SELECT symbols FROM trading_session WHERE id = $1`, id).Scan(&symbols)
+	if err != nil {
+		return nil, err
+	}
+	if symbols == nil {
+		return []string{}, nil
+	}
+	return symbols, nil
 }
 
 func (db *Trading) Get(ctx context.Context, id string) (*pb.Session, error) {

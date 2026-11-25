@@ -40,8 +40,16 @@ def create_session(
     symbols: list[str],
     provider: str,
     profile: str = "",
+    backtest_name: str = "",
+    benchmark: str = "",
 ) -> Generator[trading_service_pb.CreateSessionResponse, None, None]:
     rsp = stub.create_session(
-        trading_service_pb.CreateSessionRequest(symbols=symbols, provider=provider, profile=profile)
+        trading_service_pb.CreateSessionRequest(
+            symbols=symbols,
+            provider=provider,
+            profile=profile,
+            backtest_name=backtest_name,
+            benchmark=benchmark,
+        )
     )
     yield from rsp

@@ -88,6 +88,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 		return err
 	}
 
+	if err := MigrateMarketsChecked(ctx, conn); err != nil {
+		return err
+	}
+
 	// Name stays the primary key. The id is the ingestion object key in both
 	// auth modes, so a re-create does not read an object left under the name.
 	if err := auth.EnsureSurrogateID(ctx, conn, "backtest"); err != nil {
@@ -167,6 +171,10 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 	}
 
 	if err := MigrateClosedEnd(ctx, conn); err != nil {
+		return err
+	}
+
+	if err := MigrateMarketsChecked(ctx, conn); err != nil {
 		return err
 	}
 

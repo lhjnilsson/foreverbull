@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
+	"github.com/lhjnilsson/foreverbull/pkg/finance"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	commonpb "github.com/lhjnilsson/foreverbull/pkg/pb"
 	financepb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
@@ -133,15 +134,40 @@ func (r *InProcess) WithPollInterval(d time.Duration) *InProcess {
 }
 
 // Start recovers deployments with status=running from last_session_date.
+// A deployment that is not admitted is already ERROR. Start logs that and
+// keeps going, so one refusal does not stop the broker. Start returns an
+// error only when the running list cannot be read, or when a deployment's
+// ERROR status could not be written and the row is still RUNNING.
 func (r *InProcess) Start(ctx context.Context) error {
 	running, err := r.store.ListRunning(ctx)
 	if err != nil {
 		return fmt.Errorf("list running deployments: %w", err)
 	}
 	for _, d := range running {
-		if err := r.Add(ctx, d); err != nil {
-			return err
+		err := r.Add(ctx, d)
+		if err == nil {
+			continue
 		}
+		var admitted *AdmissionError
+		if errors.As(err, &admitted) {
+			stored, readErr := r.store.GetDeployment(ctx, d.GetId())
+			if readErr == nil && stored.GetStatus() == pb.Deployment_ERROR {
+				cause := admitted.Cause
+				if cause == nil {
+					cause = err
+				}
+				log.Error().Err(cause).Str("deployment", d.GetId()).Str("cause", admitted.Name).
+					Msg("deployment was not admitted")
+				continue
+			}
+		}
+		// The row is still RUNNING. Stop every loop this start already
+		// opened, then return the error so the broker does not keep trading
+		// on a boot that failed.
+		if stopErr := r.Stop(ctx); stopErr != nil {
+			return errors.Join(err, fmt.Errorf("stop deployments started before the status write failed: %w", stopErr))
+		}
+		return err
 	}
 	return nil
 }
@@ -168,10 +194,57 @@ func (r *InProcess) Stop(ctx context.Context) error {
 	}
 }
 
+// AdmissionError is a deployment that must not start. Error is the sentence
+// stored on the row and returned to deploy. Cause is the underlying failure
+// when there is one.
+type AdmissionError struct {
+	Sentence string
+	Cause    error
+	// Name is the log cause: listing_refused, listing_unknown, listing_lookup,
+	// profile, or store.
+	Name string
+}
+
+func (e *AdmissionError) Error() string {
+	if e == nil || e.Sentence == "" {
+		return "deployment was not admitted"
+	}
+	return e.Sentence
+}
+
+func (e *AdmissionError) Unwrap() error { return e.Cause }
+
 // Add starts a loop for a running deployment. Idempotent per deployment id.
-func (r *InProcess) Add(_ context.Context, d *pb.Deployment) error {
+// Each deployment is checked once, on the add, against its symbols and the
+// profile's price provider. A deployment has no benchmark of its own.
+// A pass stores the decision so a later add does not ask again. Anything
+// that is not a pass marks the deployment ERROR and returns that sentence.
+func (r *InProcess) Add(ctx context.Context, d *pb.Deployment) error {
 	if d == nil || d.Id == "" {
 		return fmt.Errorf("deployment is required")
+	}
+
+	r.mu.Lock()
+	if _, ok := r.loops[d.Id]; ok {
+		r.mu.Unlock()
+		return nil
+	}
+	r.mu.Unlock()
+
+	if err := r.admit(ctx, d); err != nil {
+		if updateErr := r.store.UpdateStatus(ctx, d.GetId(), pb.Deployment_ERROR, err); updateErr != nil {
+			log.Error().Err(updateErr).Str("deployment", d.GetId()).Str("cause", "store").
+				Msg("deployment could not be marked failed")
+			return &AdmissionError{Sentence: err.Error(), Cause: updateErr, Name: "store"}
+		}
+		var admitted *AdmissionError
+		name := "listing_lookup"
+		if errors.As(err, &admitted) && admitted.Name != "" {
+			name = admitted.Name
+		}
+		log.Error().Err(err).Str("deployment", d.GetId()).Str("cause", name).
+			Msg("deployment was not admitted")
+		return err
 	}
 
 	r.mu.Lock()
@@ -197,6 +270,85 @@ func (r *InProcess) Add(_ context.Context, d *pb.Deployment) error {
 		r.loop(loopCtx, id)
 	}(d.Id)
 	return nil
+}
+
+// admit reports whether the deployment may start. A stored pass, and a
+// deployment with no symbols, may start. Every other result is an
+// AdmissionError whose sentence is what the row stores.
+func (r *InProcess) admit(ctx context.Context, d *pb.Deployment) error {
+	checked, err := r.store.MarketsChecked(ctx, d.GetId())
+	if err != nil {
+		return &AdmissionError{Sentence: usercopy.DeploymentListingNotStored(d.GetStrategyName()), Cause: err, Name: "store"}
+	}
+	if checked {
+		return nil
+	}
+	if !hasSymbol(d.GetSymbols()) {
+		if err := r.store.MarkMarketsChecked(ctx, d.GetId()); err != nil {
+			return &AdmissionError{Sentence: usercopy.DeploymentListingNotStored(d.GetStrategyName()), Cause: err, Name: "store"}
+		}
+		return nil
+	}
+	provider, err := finance.ListingProvider(d.GetBackend())
+	if err != nil {
+		return &AdmissionError{
+			Sentence: usercopy.DeploymentProfileUnchecked(d.GetStrategyName(), strings.TrimSpace(d.GetBackend()), !errors.Is(err, finance.ErrProfileNotFound)),
+			Cause:    err,
+			Name:     "profile",
+		}
+	}
+	profile := strings.TrimSpace(d.GetBackend())
+	listed, _, err := finance.RefuseListed(ctx, provider, profile, d.GetSymbols(), "")
+	if err != nil {
+		names, lookupProvider := admissionLookups(err)
+		if len(names) > 0 {
+			return &AdmissionError{Sentence: usercopy.LookupDeploy(d.GetStrategyName(), lookupProvider, names), Cause: err, Name: "listing_lookup"}
+		}
+		return &AdmissionError{Sentence: usercopy.DeploymentListingUnexpected(d.GetStrategyName()), Cause: err, Name: "listing_lookup"}
+	}
+	if len(listed) > 0 {
+		return &AdmissionError{Sentence: usercopy.GlobalMarketsDeploy(d.GetStrategyName(), listed), Name: "listing_refused"}
+	}
+	if !finance.ListingsAnswered(provider, d.GetSymbols()) {
+		return &AdmissionError{
+			Sentence: usercopy.DeploymentSymbolsUnknown(d.GetStrategyName(), provider, finance.Unanswered(provider, d.GetSymbols())),
+			Name:     "listing_unknown",
+		}
+	}
+	if err := r.store.MarkMarketsChecked(ctx, d.GetId()); err != nil {
+		return &AdmissionError{Sentence: usercopy.DeploymentListingNotStored(d.GetStrategyName()), Cause: err, Name: "store"}
+	}
+	return nil
+}
+
+func admissionLookups(err error) (names []string, provider string) {
+	var many *finance.QuoteFailures
+	if errors.As(err, &many) && many != nil {
+		for _, item := range many.Items {
+			if item == nil {
+				continue
+			}
+			names = append(names, item.Symbol)
+			if provider == "" {
+				provider = item.Provider
+			}
+		}
+		return names, provider
+	}
+	var one *finance.QuoteFailure
+	if errors.As(err, &one) && one != nil {
+		return []string{one.Symbol}, one.Provider
+	}
+	return nil, ""
+}
+
+func hasSymbol(symbols []string) bool {
+	for _, symbol := range symbols {
+		if strings.TrimSpace(symbol) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Remove stops the loop for a deployment and waits until it has ended, so

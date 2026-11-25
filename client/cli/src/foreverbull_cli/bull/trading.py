@@ -258,7 +258,15 @@ def run(
         has_run = False
         messages = None
         try:
-            messages = iter(broker.finance.create_session(symbols, provider, profile))
+            messages = iter(
+                broker.finance.create_session(
+                    symbols,
+                    provider,
+                    profile,
+                    backtest_name=backtest_name,
+                    benchmark=_backtest.benchmark or "",
+                )
+            )
         except grpc.RpcError as exc:
             broker_refusal = _create_session_refusal(exc)
             if broker_refusal is None:

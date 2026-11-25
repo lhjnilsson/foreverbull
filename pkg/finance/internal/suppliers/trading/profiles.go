@@ -218,6 +218,40 @@ func (spec profileSpec) config(opts RegistryOptions) Config {
 	return cfg
 }
 
+// ErrProfilesFile is a profiles file that is missing or cannot be read.
+var ErrProfilesFile = errors.New("trading profiles file is required")
+
+// ErrProfileNotFound is a profile name that is not in the file.
+var ErrProfileNotFound = errors.New("trading profile was not found")
+
+// ProfileProvider is the provider field of the named profile.
+// An empty name is yahoo: there is no profile to read. A missing file, an
+// unreadable file, or an unknown name is an error.
+func ProfileProvider(path, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "yahoo", nil
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", ErrProfilesFile
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrProfilesFile, err)
+	}
+	specs, err := parseProfiles(raw)
+	if err != nil {
+		return "", err
+	}
+	for _, spec := range specs {
+		if spec.Name == name {
+			return strings.ToLower(strings.TrimSpace(spec.Provider)), nil
+		}
+	}
+	return "", fmt.Errorf("profile %q was not found: %w", name, ErrProfileNotFound)
+}
+
 // AlpacaPriceCredentials reads the profiles file even when TRADING_ENABLED is false.
 // name empty selects the only alpaca profile. Zero profiles, or more than one with
 // name empty, is an error. A named profile must exist and be alpaca.

@@ -29,6 +29,10 @@ message CreateSessionRequest {
   string provider = 2;
   // Alpaca profile name when provider is alpaca. Ignored for yahoo and stooq.
   string profile = 3;
+  // Backtest the symbols were taken from. The refusal names it.
+  string backtest_name = 4;
+  // Benchmark of that backtest. Checked the same way as the symbols.
+  string benchmark = 5;
 }
 
 message CreateSessionResponse {

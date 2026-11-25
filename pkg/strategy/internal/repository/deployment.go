@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS strategy_deployment (
 	schedule_kind int NOT NULL DEFAULT 0,
 	dry_run boolean NOT NULL DEFAULT true,
 	skip_missed boolean NOT NULL DEFAULT false,
+	markets_checked boolean NOT NULL DEFAULT false,
 	status int NOT NULL DEFAULT 0,
 	last_session_date date,
 	error text,
@@ -194,6 +195,29 @@ func (db *Deployment) Stop(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to stop strategy deployment: %w", err)
 	}
 
+	return nil
+}
+
+// MarketsChecked is the stored listing decision. A deployment that has not
+// been checked is false, including one stored before the column existed.
+func (db *Deployment) MarketsChecked(ctx context.Context, id string) (bool, error) {
+	var checked bool
+	err := db.Conn.QueryRow(ctx, `SELECT markets_checked FROM strategy_deployment WHERE id=$1`, id).Scan(&checked)
+	if err != nil {
+		return false, fmt.Errorf("deployment markets: %w", err)
+	}
+	return checked, nil
+}
+
+// MarkMarketsChecked records that every symbol answered and none was refused.
+func (db *Deployment) MarkMarketsChecked(ctx context.Context, id string) error {
+	tag, err := db.Conn.Exec(ctx, `UPDATE strategy_deployment SET markets_checked=true WHERE id=$1`, id)
+	if err != nil {
+		return fmt.Errorf("deployment markets: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("deployment %q not found", id)
+	}
 	return nil
 }
 

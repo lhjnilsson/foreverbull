@@ -85,6 +85,9 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 	if _, err := conn.Exec(ctx, TradingTable); err != nil {
 		return fmt.Errorf("failed to create trading table: %w", err)
 	}
+	if _, err := conn.Exec(ctx, `ALTER TABLE trading_session ADD COLUMN IF NOT EXISTS symbols text[] NOT NULL DEFAULT '{}'`); err != nil {
+		return fmt.Errorf("trading_session symbols: %w", err)
+	}
 
 	if _, err := conn.Exec(ctx, CalendarTable); err != nil {
 		return fmt.Errorf("failed to create trading_calendar table: %w", err)
@@ -128,6 +131,9 @@ func CreateTables(ctx context.Context, conn *pgxpool.Pool) error {
 
 	if _, err := conn.Exec(ctx, TradingTable); err != nil {
 		return fmt.Errorf("failed to create trading table: %w", err)
+	}
+	if _, err := conn.Exec(ctx, `ALTER TABLE trading_session ADD COLUMN IF NOT EXISTS symbols text[] NOT NULL DEFAULT '{}'`); err != nil {
+		return fmt.Errorf("trading_session symbols: %w", err)
 	}
 
 	if _, err := conn.Exec(ctx, CalendarTable); err != nil {
