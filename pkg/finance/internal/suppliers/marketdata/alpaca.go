@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/rs/zerolog/log"
@@ -30,6 +31,9 @@ type AlpacaBars struct {
 	// tradingURL is the trading API origin for asset status. Empty is the
 	// paper host. Tests point it at an httptest server.
 	tradingURL string
+	// classes is shared with Yahoo when the broker built this client, so a
+	// joined ticker learned from an ISIN is asked for as BRK.B.
+	classes *mapping.Classes
 }
 
 // AlpacaPaperHost is the paper trading host. Asset status is read from it.
@@ -54,6 +58,21 @@ func WithAlpacaBaseURL(baseURL string) AlpacaOption {
 		a.opts.BaseURL = baseURL
 		return nil
 	}
+}
+
+func (a *AlpacaBars) alpacaTicker(symbol string) string {
+	if a != nil && a.classes != nil {
+		return mapping.FormatAlpaca(a.classes, symbol)
+	}
+	return mapping.Alpaca(symbol)
+}
+
+// UseShareClasses shares Yahoo's learned iShares tickers with this client.
+func (a *AlpacaBars) UseShareClasses(c *mapping.Classes) {
+	if a == nil {
+		return
+	}
+	a.classes = c
 }
 
 // NewAlpacaBars builds a bars client. An empty key or secret fails before any request.
@@ -267,7 +286,7 @@ func (a *AlpacaBars) GetOHLC(ctx context.Context, symbol string, start time.Time
 		return []*pb.OHLC{}, nil
 	}
 	// Bars are returned for the asked ticker; only the request uses Alpaca's form.
-	symbol = alpacaSymbol(symbol)
+	symbol = a.alpacaTicker(symbol)
 	// A 429 or a 5xx is sent again alpacaBarsRetries times (clientWith),
 	// each send with its own timeout, so one fetch could outlast Sync's idle
 	// timeout when it runs under the symbol lock. Every send and every wait
@@ -352,7 +371,7 @@ func (a *AlpacaBars) Listing(ctx context.Context, symbol string) (exchange, curr
 	if base == "" {
 		base = alpacaTradingURL
 	}
-	endpoint := strings.TrimRight(base, "/") + "/v2/assets/" + url.PathEscape(alpacaSymbol(symbol))
+	endpoint := strings.TrimRight(base, "/") + "/v2/assets/" + url.PathEscape(a.alpacaTicker(symbol))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", "", lookupTransport("asset", asked, ctx, err)
@@ -393,7 +412,7 @@ func (a *AlpacaBars) AssetStatus(ctx context.Context, symbol string) (string, er
 	if base == "" {
 		base = alpacaTradingURL
 	}
-	endpoint := strings.TrimRight(base, "/") + "/v2/assets/" + url.PathEscape(alpacaSymbol(symbol))
+	endpoint := strings.TrimRight(base, "/") + "/v2/assets/" + url.PathEscape(a.alpacaTicker(symbol))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", lookupTransport("asset status", asked, ctx, err)

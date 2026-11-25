@@ -24,6 +24,9 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error { //nolint: cyclop
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS provider_symbol;`); err != nil {
 		return fmt.Errorf("failed to drop table provider_symbol: %w", err)
 	}
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS instrument_identity;`); err != nil {
+		return fmt.Errorf("failed to drop table instrument_identity: %w", err)
+	}
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS asset_symbol;`); err != nil {
 		return fmt.Errorf("failed to drop table asset_symbol: %w", err)
 	}
@@ -130,6 +133,9 @@ func createIdentityTables(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to create table asset_symbol: %w", err)
 	}
 	if err := MigrateAssetSymbol(ctx, conn); err != nil {
+		return err
+	}
+	if err := MigrateInstrumentIdentity(ctx, conn); err != nil {
 		return err
 	}
 	if err := MigrateProviderSymbol(ctx, conn); err != nil {

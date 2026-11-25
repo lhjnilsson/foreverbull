@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 	"github.com/rs/zerolog/log"
@@ -61,6 +62,10 @@ type YahooClient struct {
 	// limiter spaces the Yahoo requests. Nil means the process-wide Yahoo
 	// limiter; tests set their own.
 	limiter *requestLimiter
+	// classes turns a joined iShares ticker into the provider's spelling
+	// after a listing or an ISIN search has taught it. Nil knows only the
+	// separated spelling.
+	classes *mapping.Classes
 }
 
 // baseClient sends without the Yahoo limiter. The ISIN lookup goes to
@@ -86,8 +91,23 @@ func (y *YahooClient) client() *http.Client {
 	}
 }
 
+func (y *YahooClient) yahooTicker(symbol string) string {
+	if y != nil && y.classes != nil {
+		return mapping.FormatYahoo(y.classes, symbol)
+	}
+	return mapping.Yahoo(symbol)
+}
+
+// ShareClasses is the set this client uses for joined iShares tickers.
+func (y *YahooClient) ShareClasses() *mapping.Classes {
+	if y == nil {
+		return nil
+	}
+	return y.classes
+}
+
 func NewYahooClient() (supplier.Marketdata, error) {
-	yahoo := &YahooClient{}
+	yahoo := &YahooClient{classes: mapping.Process()}
 
 	// The cookie and crumb are fetched once at startup, before any request
 	// ctx exists.
@@ -225,7 +245,7 @@ func (y *YahooClient) GetAsset(ctx context.Context, symbol string) (*pb.Asset, e
 	if quoteURL == "" {
 		quoteURL = defaultYahooQuoteURL
 	}
-	resp, err := y.doRequest(ctx, quoteURL+url.PathEscape(yahooSymbol(symbol)), "modules=quoteType")
+	resp, err := y.doRequest(ctx, quoteURL+url.PathEscape(y.yahooTicker(symbol)), "modules=quoteType")
 	if err != nil {
 		return nil, fmt.Errorf("error: %w", err)
 	}
@@ -285,7 +305,7 @@ func (y *YahooClient) GetAsset(ctx context.Context, symbol string) (*pb.Asset, e
 			return nil, fmt.Errorf("error getting isin for symbol %s: %w", asset.Symbol, noISIN("empty ISIN"))
 		}
 	}
-	if _, ok := parseShareClass(symbol); ok {
+	if y.yahooTicker(symbol) != strings.ToUpper(strings.TrimSpace(symbol)) || parseShareClass(symbol) {
 		asset.Symbol = strings.ToUpper(strings.TrimSpace(symbol))
 	}
 
@@ -394,7 +414,7 @@ func (y *YahooClient) FirstTradeDate(ctx context.Context, symbol string) (time.T
 		"interval=1d",
 	}
 	asked := strings.ToUpper(strings.TrimSpace(symbol))
-	resp, err := y.doRequest(ctx, chartURL+url.PathEscape(yahooSymbol(symbol)), params...)
+	resp, err := y.doRequest(ctx, chartURL+url.PathEscape(y.yahooTicker(symbol)), params...)
 	if err != nil {
 		return time.Time{}, lookupTransport("listing date", asked, ctx, err)
 	}
@@ -605,7 +625,7 @@ func (y *YahooClient) GetOHLC(ctx context.Context, symbol string, start time.Tim
 	if chartURL == "" {
 		chartURL = defaultYahooChartURL
 	}
-	chart := chartURL + url.PathEscape(yahooSymbol(symbol))
+	chart := chartURL + url.PathEscape(y.yahooTicker(symbol))
 	params := []string{}
 	params = append(params, fmt.Sprintf("period1=%d", start.Unix()))
 
@@ -808,7 +828,7 @@ func (y *YahooClient) Listing(ctx context.Context, symbol string) (exchange, cur
 	if quoteURL == "" {
 		quoteURL = defaultYahooQuoteURL
 	}
-	resp, err := y.doRequest(ctx, quoteURL+url.PathEscape(yahooSymbol(symbol)), "modules=quoteType,price")
+	resp, err := y.doRequest(ctx, quoteURL+url.PathEscape(y.yahooTicker(symbol)), "modules=quoteType,price")
 	if err != nil {
 		return "", "", fmt.Errorf("error: %w", err)
 	}

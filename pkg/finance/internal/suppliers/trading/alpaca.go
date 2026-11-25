@@ -60,7 +60,7 @@ type AlpacaClient struct {
 	apiSecret  string
 	currency   string
 	httpClient *http.Client
-	byISIN     map[string]Listing
+	byISIN     map[string][]Listing
 	bySymbol   map[string]symbolListing
 }
 
@@ -90,10 +90,9 @@ func NewAlpaca(cfg AlpacaConfig, book *Book, client *http.Client) (*AlpacaClient
 		currency = defaultAlpacaCurrency
 	}
 
-	byISIN := make(map[string]Listing)
+	byISIN := listingsByISIN(book.List())
 	bySymbol := make(map[string]symbolListing)
 	for _, row := range book.List() {
-		byISIN[row.ISIN] = row
 		if row.AlpacaSymbol == "" {
 			continue
 		}
@@ -315,8 +314,11 @@ func (c *AlpacaClient) orderRequest(order *pb.Order) (Listing, alpacaOrderReques
 	if isin == "" {
 		return Listing{}, alpacaOrderRequest{}, fmt.Errorf("empty isin: %w", supplier.ErrNotTradable)
 	}
-	listing, ok := c.byISIN[isin]
-	if !ok || listing.AlpacaSymbol == "" {
+	listing, err := orderListingNow(c.byISIN[isin], isin)
+	if err != nil {
+		return Listing{}, alpacaOrderRequest{}, err
+	}
+	if listing.AlpacaSymbol == "" {
 		return Listing{}, alpacaOrderRequest{}, fmt.Errorf("isin %s: %w", isin, supplier.ErrNotTradable)
 	}
 	if order.GetAmount() == 0 {

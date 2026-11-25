@@ -305,6 +305,27 @@ func (test *InstrumentTest) TestMigrateAssetSymbolLeavesOverlappingRows() {
 	test.Equal(int64(2), n)
 }
 
+func (test *InstrumentTest) TestIdentityCheckRefusesABadUnitAndANullISIN() {
+	ctx := context.Background()
+	_, err := test.conn.Exec(ctx, `
+		INSERT INTO instrument_identity (isin, mic, currency, price_unit, valid_from)
+		VALUES ('US0378331005', 'XNAS', 'USD', 'USX', '2020-01-01')`)
+	test.Require().Error(err)
+	test.Require().ErrorContains(err, "instrument_identity_price_unit")
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO instrument_identity (isin, mic, currency, price_unit, valid_from)
+		VALUES ('US0378331005', 'XNAS', NULL, 'USD', '2020-01-01')`)
+	test.Require().Error(err)
+	test.Require().ErrorContains(err, "instrument_identity_price_unit")
+
+	_, err = test.conn.Exec(ctx, `
+		INSERT INTO instrument_identity (isin, mic, currency, valid_from)
+		VALUES (NULL, 'XNAS', 'USD', '2020-01-01')`)
+	test.Require().Error(err)
+	test.Require().ErrorContains(err, `null value in column "isin"`)
+}
+
 func (test *InstrumentTest) TestSymbolAtRejectsMissingISIN() {
 	_, err := test.instruments.SymbolAt(context.Background(), "  ", test.date("2021-06-30"))
 	test.Require().ErrorContains(err, "missing ISIN")

@@ -104,6 +104,13 @@ func (test *BacktestCommandTest) SetupTest() {
 
 	test.etfscraper = new(dependency.MockETFScraper)
 	test.mdclient = new(financeServicePB.MockMarketdataClient)
+	// Joined tickers are resolved by ISIN before a symbol lookup. A holding
+	// that is not a share class still gets that call; it must not fail the test.
+	test.mdclient.On("GetAsset", mock.Anything, mock.MatchedBy(func(req *financeServicePB.GetAssetRequest) bool {
+		return req != nil && req.GetIsin() != ""
+	})).Return(&financeServicePB.GetAssetResponse{
+		Asset: &finance.Asset{},
+	}, nil).Maybe()
 	test.resetBars()
 	test.fixClock(testClock)
 	test.restoreQuote = financepkg.SetQuoteReader(func(context.Context, string, string, string) (financepkg.Quote, error) {
@@ -316,6 +323,9 @@ func (test *BacktestCommandTest) TestCreateBacktestFromBacktestStoresOneNamePerS
 		}), spelling)
 		test.Equal([]string{"AAPL", "BRKB"}, storedSymbols(name), spelling)
 	}
+	// BRK.B was learned before it was stored as BRKB, with no listings file
+	// and no asset_symbol row. Yahoo is asked for BRK-B.
+	test.Equal("BRK-B", financepkg.YahooSymbol("BRKB"))
 
 	// All three spellings in one file are one asset.
 	test.Require().NoError(create(&backtest.Backtest{
@@ -638,6 +648,9 @@ func (test *BacktestCommandTest) TestCreateBacktestFromETFMembersFromStart() {
 			scraper.On("GetBenchmark", "iShares S&P 100").Return("OEF", nil)
 			mdclient := new(financeServicePB.MockMarketdataClient)
 			test.mdclient = mdclient
+			mdclient.On("GetAsset", mock.Anything, mock.MatchedBy(func(req *financeServicePB.GetAssetRequest) bool {
+				return req != nil && req.GetIsin() != ""
+			})).Return(&financeServicePB.GetAssetResponse{Asset: &finance.Asset{}}, nil).Maybe()
 			for _, symbol := range []string{"AAPL", "FB", "META", "MSFT"} {
 				test.mockGetAsset(symbol, nil)
 			}

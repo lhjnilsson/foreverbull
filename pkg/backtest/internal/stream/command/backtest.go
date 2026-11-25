@@ -159,6 +159,12 @@ func CreateBacktestFromETF(ctx context.Context, msg stream.Message) error {
 	if err := tooManySymbols(command.BacktestName, append([]string{benchmark}, symbols...)); err != nil {
 		return err
 	}
+	// A joined iShares ticker (BRKB) is asked for as BRK-B only after the
+	// provider's symbol for that ISIN is known. This is before the listing
+	// check, which would otherwise ask for BRKB.
+	if err := teachJoinedShareClasses(ctx, marketdataClient, memberISINBySymbol(result.Aliases)); err != nil {
+		return err
+	}
 	// Before the asset lookup, the instrument rows, and the backtest row.
 	// The ETF path picks the benchmark, so a refused benchmark is reported
 	// rather than handed back as a file the user can edit.
@@ -429,6 +435,60 @@ func calendarYearPeriods(start, end time.Time) []*backtest.Backtest_Period {
 		})
 	}
 	return periods
+}
+
+// teachJoinedShareClasses asks the provider for each joined iShares ticker
+// by ISIN and records the separated spelling (BRK-B for BRKB). A hit whose
+// ISIN is not the holding's is ignored. A failed lookup is returned: the
+// class is not guessed from the letters.
+func teachJoinedShareClasses(ctx context.Context, client financeServicePB.MarketdataClient, isinBySymbol map[string]string) error {
+	if client == nil {
+		return errors.New("no marketdata client to resolve a share class")
+	}
+	for symbol, isin := range isinBySymbol {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !finance.JoinedShareClass(symbol) || strings.TrimSpace(isin) == "" {
+			continue
+		}
+		rsp, err := client.GetAsset(ctx, &financeServicePB.GetAssetRequest{
+			Identifier: &financeServicePB.GetAssetRequest_Isin{Isin: isin},
+		})
+		if err != nil {
+			return fmt.Errorf("share class %s: %w", symbol, err)
+		}
+		got := rsp.GetAsset()
+		// A hit with no ISIN, or a different ISIN, is not this holding.
+		if got == nil || !strings.EqualFold(strings.TrimSpace(got.GetISIN()), isin) {
+			continue
+		}
+		finance.LearnJoinedShareClass(symbol, got.GetSymbol())
+	}
+	return nil
+}
+
+// teachStoredJoinedShareClasses is the restart path: asset_symbol already
+// holds the iShares ticker and its ISIN.
+func teachStoredJoinedShareClasses(ctx context.Context, db *pgxpool.Pool, client financeServicePB.MarketdataClient, symbols []string, start, end time.Time) error {
+	isinBySymbol := make(map[string]string)
+	for _, symbol := range symbols {
+		if !finance.JoinedShareClass(symbol) {
+			continue
+		}
+		isin, err := finance.SymbolHasInstrument(ctx, db, symbol, start, &end)
+		if err != nil {
+			return err
+		}
+		if isin == "" {
+			continue
+		}
+		isinBySymbol[symbol] = isin
+	}
+	if len(isinBySymbol) == 0 {
+		return nil
+	}
+	return teachJoinedShareClasses(ctx, client, isinBySymbol)
 }
 
 // memberISINBySymbol is the snapshot ISIN of a ticker that belongs to one
@@ -880,6 +940,16 @@ func DownloadFinancialData(ctx context.Context, msg stream.Message) error {
 	symbols, err := ingestSymbols(ctx, db, b, backtestID)
 	if err != nil {
 		return fmt.Errorf("error listing ingest symbols: %w", err)
+	}
+	// asset_symbol was written at create, before this download. A restart
+	// has an empty Classes, so the joined ticker is taught again from the
+	// stored ISIN before the listing check asks the provider.
+	if len(b.GetPeriods()) > 0 {
+		start := pb.DateToTime(b.Periods[0].StartDate)
+		end := pb.DateToTime(b.Periods[len(b.Periods)-1].EndDate)
+		if err := teachStoredJoinedShareClasses(ctx, db, financeClient, symbols, start, end); err != nil {
+			return err
+		}
 	}
 	if count := finance.DownloadSymbolCount(symbols); count > finance.MaxDownloadSymbols {
 		return discardOversizedBacktest(ctx, backtests, command.BacktestName, backtestID, count)

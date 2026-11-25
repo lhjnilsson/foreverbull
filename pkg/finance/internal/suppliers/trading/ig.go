@@ -77,7 +77,7 @@ type IGClient struct {
 	cst           string
 	securityToken string
 	httpClient    *http.Client
-	byISIN        map[string]Listing
+	byISIN        map[string][]Listing
 	byEpic        map[string]Listing
 }
 
@@ -102,11 +102,10 @@ func NewIG(cfg IGConfig, book *Book, client *http.Client) (*IGClient, error) {
 		currency = defaultIGCurrency
 	}
 
-	byISIN := make(map[string]Listing)
+	byISIN := listingsByISIN(book.List())
 	byEpic := make(map[string]Listing)
 	ambiguous := make(map[string]struct{})
 	for _, row := range book.List() {
-		byISIN[row.ISIN] = row
 		if row.IGEpic == "" || row.IGShareSize <= 0 {
 			continue
 		}
@@ -342,8 +341,11 @@ func (c *IGClient) orderRequest(order *pb.Order) (Listing, igCreatePosition, err
 	if isin == "" {
 		return Listing{}, igCreatePosition{}, fmt.Errorf("empty isin: %w", supplier.ErrNotTradable)
 	}
-	listing, ok := c.byISIN[isin]
-	if !ok || listing.IGEpic == "" || listing.IGShareSize <= 0 {
+	listing, err := orderListingNow(c.byISIN[isin], isin)
+	if err != nil {
+		return Listing{}, igCreatePosition{}, err
+	}
+	if listing.IGEpic == "" || listing.IGShareSize <= 0 {
 		return Listing{}, igCreatePosition{}, fmt.Errorf("isin %s: %w", isin, supplier.ErrNotTradable)
 	}
 	size, direction, err := igDealSize(order.GetAmount(), listing.IGShareSize)

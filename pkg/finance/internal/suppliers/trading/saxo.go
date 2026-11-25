@@ -60,7 +60,7 @@ type SaxoClient struct {
 	accountKey  string
 	currency    string
 	httpClient  *http.Client
-	byISIN      map[string]Listing
+	byISIN      map[string][]Listing
 	byUIC       map[saxoKey]Listing
 	uicListings map[int64][]Listing
 }
@@ -91,11 +91,10 @@ func NewSaxo(cfg SaxoConfig, book *Book, client *http.Client) (*SaxoClient, erro
 		currency = defaultSaxoCurrency
 	}
 
-	byISIN := make(map[string]Listing)
+	byISIN := listingsByISIN(book.List())
 	byUIC := make(map[saxoKey]Listing)
 	ambiguous := make(map[saxoKey]struct{})
 	for _, row := range book.List() {
-		byISIN[row.ISIN] = row
 		if row.SaxoUIC == 0 || row.SaxoAssetType == "" {
 			continue
 		}
@@ -374,8 +373,11 @@ func (c *SaxoClient) orderRequest(order *pb.Order) (Listing, saxoOrderRequest, e
 	if isin == "" {
 		return Listing{}, saxoOrderRequest{}, fmt.Errorf("empty isin: %w", supplier.ErrNotTradable)
 	}
-	listing, ok := c.byISIN[isin]
-	if !ok || listing.SaxoUIC == 0 || listing.SaxoAssetType == "" {
+	listing, err := orderListingNow(c.byISIN[isin], isin)
+	if err != nil {
+		return Listing{}, saxoOrderRequest{}, err
+	}
+	if listing.SaxoUIC == 0 || listing.SaxoAssetType == "" {
 		return Listing{}, saxoOrderRequest{}, fmt.Errorf("isin %s: %w", isin, supplier.ErrNotTradable)
 	}
 	amount := order.GetAmount()

@@ -34,6 +34,10 @@ func Recreate(ctx context.Context, conn *pgxpool.Pool) error {
 		return fmt.Errorf("failed to drop ohlc table: %w", err)
 	}
 
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS instrument_identity`); err != nil {
+		return fmt.Errorf("failed to drop instrument_identity table: %w", err)
+	}
+
 	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS asset_symbol`); err != nil {
 		return fmt.Errorf("failed to drop asset_symbol table: %w", err)
 	}
@@ -151,6 +155,9 @@ func migrateFinanceSchema(ctx context.Context, conn *pgxpool.Pool) error {
 		return err
 	}
 	if err := MigrateAssetSymbol(ctx, conn); err != nil {
+		return err
+	}
+	if err := MigrateInstrumentIdentity(ctx, conn); err != nil {
 		return err
 	}
 	if err := MigrateProviderSymbol(ctx, conn); err != nil {

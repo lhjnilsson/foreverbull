@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/trading"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 )
@@ -126,7 +127,14 @@ func OHLCClient(provider, profile, profilesFile string, yahoo supplier.Marketdat
 		if err != nil {
 			return nil, err
 		}
-		return NewAlpacaBars(apiKey, apiSecret)
+		bars, err := NewAlpacaBars(apiKey, apiSecret)
+		if err != nil {
+			return nil, err
+		}
+		if sharer, ok := yahoo.(interface{ ShareClasses() *mapping.Classes }); ok {
+			bars.UseShareClasses(sharer.ShareClasses())
+		}
+		return bars, nil
 	default:
 		if yahoo == nil {
 			return NewYahooClient()
