@@ -340,7 +340,11 @@ func LokiContainerAndLogging(t *testing.T, networkID string) (ConnectionString s
 
 	lokiLogger := &LokiLogger{entries: make(map[int64]string), LokiURL: fmt.Sprintf("http://%s:%d", host, port.Num())}
 
+	// Restore the logger the test replaced. A later test must not keep
+	// writing into this LokiLogger after the test has ended.
+	previous := log.Logger
 	t.Cleanup(func() {
+		log.Logger = previous
 		lokiLogger.Publish(t)
 		require.NoError(t, cont.Terminate(ctx))
 	})

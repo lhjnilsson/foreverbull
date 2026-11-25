@@ -139,11 +139,11 @@ func (s *stateSubscriber) Start(ctx context.Context) error {
 
 func (s *stateSubscriber) Stop(ctx context.Context) error {
 	var errs []error
-	if err := s.sub.Unsubscribe(); err != nil {
-		errs = append(errs, fmt.Errorf("error unsubscribing from jetstream for orchestration: %w", err))
+	if err := drainSubscription(ctx, s.sub); err != nil {
+		errs = append(errs, fmt.Errorf("error draining jetstream subscription: %w", err))
 	}
-	if err := s.unrecordedSub.Unsubscribe(); err != nil {
-		errs = append(errs, fmt.Errorf("error unsubscribing from unrecorded states: %w", err))
+	if err := drainSubscription(ctx, s.unrecordedSub); err != nil {
+		errs = append(errs, fmt.Errorf("error draining unrecorded subscription: %w", err))
 	}
 	return errors.Join(errs...)
 }

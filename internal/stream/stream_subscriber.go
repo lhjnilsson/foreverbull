@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/lhjnilsson/foreverbull/internal/stream/pb"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
@@ -213,19 +214,49 @@ func (ns *NatsSubscriber) Subscribe(component, method string, cb func(context.Co
 	return nil
 }
 
-func (ns *NatsSubscriber) Unsubscribe() error {
-	for _, sub := range ns.subs {
-		if !sub.IsValid() {
-			continue
-		}
+// drainWait bounds how long a stop waits for an in-flight NATS handler.
+// The handler logs on its own goroutine, so the test must not end while
+// that goroutine is still inside log.Err.
+const drainWait = 30 * time.Second
 
-		err := sub.Drain()
-		if err != nil {
-			return fmt.Errorf("error draining subscription: %w", err)
+// drainSubscription drains sub and waits until its handler has returned.
+// Subscription.Drain returns before that: it only starts the drain. The
+// closed status is sent after the callback returns, once the client
+// pending count drops. A handler left running races with the next test,
+// which replaces log.Logger.
+func drainSubscription(ctx context.Context, sub *nats.Subscription) error {
+	if sub == nil || !sub.IsValid() {
+		return nil
+	}
+	closed := sub.StatusChanged(nats.SubscriptionClosed)
+	if err := sub.Drain(); err != nil {
+		if errors.Is(err, nats.ErrBadSubscription) || errors.Is(err, nats.ErrConnectionClosed) {
+			return nil
+		}
+		return fmt.Errorf("error draining subscription: %w", err)
+	}
+	timer := time.NewTimer(drainWait)
+	defer timer.Stop()
+	select {
+	case <-closed:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("error draining subscription: %w", ctx.Err())
+	case <-timer.C:
+		return errors.New("error draining subscription: the handler did not finish")
+	}
+}
+
+// Unsubscribe drains each subscription and waits until its handler has
+// returned. See drainSubscription.
+func (ns *NatsSubscriber) Unsubscribe() error {
+	var errs []error
+	for _, sub := range ns.subs {
+		if err := drainSubscription(context.Background(), sub); err != nil {
+			errs = append(errs, err)
 		}
 	}
-
-	return nil
+	return errors.Join(errs...)
 }
 
 // unconfirmedError is a state publish whose outcome is unknown: the
