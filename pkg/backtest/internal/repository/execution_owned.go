@@ -64,15 +64,7 @@ func (db *Execution) listJoined(ctx context.Context, where string, args []any) (
 		ep.benchmark_period_return, ep.benchmark_volatility, ep.alpha, ep.beta
 		FROM backtest_execution
 		INNER JOIN session ON backtest_execution.session = session.id
-		INNER JOIN backtest ON session.backtest_id = backtest.id
-		LEFT JOIN (
-			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
-			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
-			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
-			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
-			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-			alpha, beta FROM backtest_execution_period ORDER BY date DESC LIMIT 1
-		) as ep ON backtest_execution.id = ep.backtest_execution ` + where
+		INNER JOIN backtest ON session.backtest_id = backtest.id` + latestExecutionPeriodJoin + " " + where
 	rows, err := db.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list executions: %w", err)
