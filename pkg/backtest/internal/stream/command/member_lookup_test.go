@@ -39,6 +39,9 @@ func (test *BacktestCommandTest) lookupFixture(symbols ...string) map[time.Time]
 // other value is the RPC error.
 func lookupClient(results map[string]error) *financeServicePB.MockMarketdataClient {
 	client := new(financeServicePB.MockMarketdataClient)
+	client.On("GetAsset", mock.Anything, mock.MatchedBy(func(req *financeServicePB.GetAssetRequest) bool {
+		return req != nil && req.GetIsin() != ""
+	})).Return(&financeServicePB.GetAssetResponse{Asset: &finance.Asset{}}, nil).Maybe()
 	for symbol, err := range results {
 		call := client.On("GetAsset", mock.Anything, &financeServicePB.GetAssetRequest{
 			Identifier: &financeServicePB.GetAssetRequest_Symbol{Symbol: symbol},

@@ -14,6 +14,16 @@ import (
 // are one asset; if they disagree on enabled the file is refused rather
 // than guessed.
 func storeShareClassesOnce(item *backtest.Backtest) error {
+	originals := make([]string, 0, 1)
+	originals = append(originals, item.GetBenchmark())
+	for _, period := range item.GetPeriods() {
+		for _, asset := range period.GetAssets() {
+			originals = append(originals, asset.GetSymbol())
+		}
+	}
+	// Learn BRK.B before it is stored as BRKB. The provider is then asked
+	// for BRK-B, not BRKB.
+	finance.LearnShareClasses(originals...)
 	item.Benchmark = finance.StoredSymbol(item.GetBenchmark())
 	for _, period := range item.GetPeriods() {
 		assets := make([]*backtest.Backtest_Period_Asset, 0, len(period.GetAssets()))

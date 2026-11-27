@@ -15,12 +15,36 @@ func ValidatePriceSource(provider, profile string) error {
 	return marketdata.ValidatePriceSource(provider, profile, environment.GetTradingProfilesFile())
 }
 
-// StoredSymbol is the one name a listed share class is stored under, however
-// a universe file spells it: BRK.B, BRK-B, BRK/B and BRKB all store as BRKB.
-// Every other symbol, including an exchange suffix such as VOD.L, is
-// returned exactly as typed.
+// StoredSymbol is the one name a share class is stored under. BRK.B, BRK-B,
+// BRK/B and BRK B all store as BRKB. A joined iShares ticker is that name
+// already. Every other symbol, including an exchange suffix such as VOD.L,
+// is returned exactly as typed.
 func StoredSymbol(symbol string) string {
 	return marketdata.StoredSymbol(symbol)
+}
+
+// LearnShareClasses records separated share-class spellings before they are
+// folded to the stored name. BRK.B teaches BRKB, so a later ask for the
+// stored name uses BRK-B.
+func LearnShareClasses(symbols ...string) {
+	marketdata.LearnShareClasses(symbols...)
+}
+
+// LearnJoinedShareClass records asked when hits contain its separated
+// spelling. The hit comes from the ISIN's listing or a provider search.
+func LearnJoinedShareClass(asked string, hits ...string) {
+	marketdata.LearnJoinedShareClass(asked, hits...)
+}
+
+// JoinedShareClass reports a ticker iShares may have written without a
+// separator, such as BRKB.
+func JoinedShareClass(symbol string) bool {
+	return marketdata.JoinedShareClass(symbol)
+}
+
+// YahooSymbol is the ticker Yahoo is asked for after LearnShareClasses.
+func YahooSymbol(symbol string) string {
+	return marketdata.YahooSymbol(symbol)
 }
 
 // StooqExchangeLead is Stooq's refusal of symbol without the provider step.

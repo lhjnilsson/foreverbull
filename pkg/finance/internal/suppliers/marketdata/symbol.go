@@ -1,85 +1,61 @@
 package marketdata
 
 import (
-	"regexp"
-	"strings"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 )
 
-// shareClassTickers lists share-class tickers that index holdings (iShares)
-// write without a separator. They cannot be told apart from an ordinary
-// ticker by their letters alone (BRKB, but also BKNG), so they are listed.
-var shareClassTickers = map[string]shareClass{
-	"BRKA": {company: "BRK", class: "A"},
-	"BRKB": {company: "BRK", class: "B"},
-	"BFA":  {company: "BF", class: "A"},
-	"BFB":  {company: "BF", class: "B"},
-	"LENB": {company: "LEN", class: "B"},
-	"HEIA": {company: "HEI", class: "A"},
-	"MOGA": {company: "MOG", class: "A"},
-	"MOGB": {company: "MOG", class: "B"},
+// parseShareClass reports a separated share class (BRK.B, BRK-B). A joined
+// iShares ticker is not one until a Classes has learned it. An exchange
+// suffix such as VOD.L is not one.
+func parseShareClass(symbol string) bool {
+	_, _, ok := mapping.ParseShareClass(symbol)
+	return ok
 }
 
-// separatedShareClass matches BRK.B, BRK-B, BRK/B and BRK B: a company code
-// and a one-letter class. The match only counts when the joined ticker is in
-// shareClassTickers, because a one-letter suffix can also be an exchange
-// (VOD.L is London, not class L).
-var separatedShareClass = regexp.MustCompile(`^([A-Z]{1,5})[.\-/ ]([A-Z])$`)
-
-type shareClass struct {
-	company string
-	class   string
-}
-
-// parseShareClass reads a share-class ticker in any of the forms above.
-func parseShareClass(symbol string) (shareClass, bool) {
-	upper := strings.ToUpper(strings.TrimSpace(symbol))
-	if sc, ok := shareClassTickers[upper]; ok {
-		return sc, true
-	}
-	if m := separatedShareClass.FindStringSubmatch(upper); m != nil {
-		if sc, ok := shareClassTickers[m[1]+m[2]]; ok {
-			return sc, true
-		}
-	}
-	return shareClass{}, false
-}
-
-// StoredSymbol is the one name a listed share class is stored under,
-// however the universe file spells it: BRK.B, BRK-B, BRK/B, BRK B and BRKB
-// all store as BRKB. It uses parseShareClass, so only names in
-// shareClassTickers are normalised. Any other symbol, including one with an
+// StoredSymbol is the one name a share class is stored under. BRK.B, BRK-B,
+// BRK/B and BRK B all store as BRKB, which is also the joined iShares
+// ticker, so the spellings are one row. Any other symbol, including an
 // exchange suffix such as VOD.L, is returned exactly as typed.
 func StoredSymbol(symbol string) string {
-	if sc, ok := parseShareClass(symbol); ok {
-		return sc.company + sc.class
-	}
-	return symbol
+	return mapping.Stored(symbol)
 }
 
-// yahooSymbol is the ticker Yahoo knows the symbol by: share classes use a
-// dash (BRK-B). Other tickers are only upper-cased.
+// yahooSymbol is the ticker Yahoo knows a separated share class by.
+// A joined iShares ticker is unchanged until Classes has learned it.
 func yahooSymbol(symbol string) string {
-	if sc, ok := parseShareClass(symbol); ok {
-		return sc.company + "-" + sc.class
-	}
-	return strings.ToUpper(strings.TrimSpace(symbol))
+	return mapping.Yahoo(symbol)
 }
 
-// alpacaSymbol is the ticker Alpaca knows the symbol by: share classes use a
-// dot (BRK.B). Other tickers are only upper-cased.
+// LearnShareClasses teaches joined tickers from separated spellings such as
+// BRK.B. The broker's price clients read the same set.
+func LearnShareClasses(symbols ...string) {
+	mapping.Process().Learn(symbols...)
+}
+
+// LearnJoinedShareClass teaches asked when a provider symbol for its ISIN
+// is the separated spelling of that same ticker.
+func LearnJoinedShareClass(asked string, hits ...string) {
+	mapping.Process().LearnIfJoined(asked, hits)
+}
+
+// JoinedShareClass reports an iShares-style ticker that might be a share
+// class written without a separator.
+func JoinedShareClass(symbol string) bool {
+	return mapping.MightBeJoinedClass(symbol)
+}
+
+// YahooSymbol is the ticker Yahoo is asked for, including a joined ticker
+// the process has learned.
+func YahooSymbol(symbol string) string {
+	return mapping.FormatYahoo(mapping.Process(), symbol)
+}
+
+// alpacaSymbol is the ticker Alpaca knows the symbol by.
 func alpacaSymbol(symbol string) string {
-	if sc, ok := parseShareClass(symbol); ok {
-		return sc.company + "." + sc.class
-	}
-	return strings.ToUpper(strings.TrimSpace(symbol))
+	return mapping.Alpaca(symbol)
 }
 
-// stooqShareClassCode is Stooq's daily code for a share class. exchange is
-// Stooq's suffix, so US is brk-b.us, the code Stooq was asked for before.
+// stooqShareClassCode is Stooq's daily code for a separated share class.
 func stooqShareClassCode(symbol, exchange string) (string, bool) {
-	sc, ok := parseShareClass(symbol)
-	if !ok || exchange == "" {
-		return "", false
-	}
-	return strings.ToLower(sc.company+"-"+sc.class) + "." + exchange, true
+	return mapping.StooqShareClass(symbol, exchange)
 }

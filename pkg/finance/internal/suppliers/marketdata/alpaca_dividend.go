@@ -125,7 +125,7 @@ func (a *AlpacaBars) corporateActions(ctx context.Context, symbol string, start,
 		base = alpacaDataURL
 	}
 	query := url.Values{}
-	query.Set("symbols", alpacaSymbol(symbol))
+	query.Set("symbols", a.alpacaTicker(symbol))
 	query.Set("types", strings.Join(alpacaCorporateActionTypes, ","))
 	query.Set("start", start.Format(time.DateOnly))
 	query.Set("end", today.Format(time.DateOnly))

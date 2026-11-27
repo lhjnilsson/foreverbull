@@ -72,7 +72,7 @@ type IBKRClient struct {
 	token      string
 	currency   string
 	httpClient *http.Client
-	byISIN     map[string]Listing
+	byISIN     map[string][]Listing
 	byConID    map[int64]Listing
 }
 
@@ -107,11 +107,10 @@ func NewIBKR(cfg IBKRConfig, book *Book, client *http.Client) (*IBKRClient, erro
 		currency = defaultIBKRCurrency
 	}
 
-	byISIN := make(map[string]Listing)
+	byISIN := listingsByISIN(book.List())
 	byConID := make(map[int64]Listing)
 	ambiguous := make(map[int64]struct{})
 	for _, row := range book.List() {
-		byISIN[row.ISIN] = row
 		if row.IBKRConID == 0 {
 			continue
 		}
@@ -360,8 +359,11 @@ func (c *IBKRClient) orderRequest(order *pb.Order) (Listing, ibkrPlaceRequest, e
 	if isin == "" {
 		return Listing{}, ibkrPlaceRequest{}, fmt.Errorf("empty isin: %w", supplier.ErrNotTradable)
 	}
-	listing, ok := c.byISIN[isin]
-	if !ok || listing.IBKRConID == 0 {
+	listing, err := orderListingNow(c.byISIN[isin], isin)
+	if err != nil {
+		return Listing{}, ibkrPlaceRequest{}, err
+	}
+	if listing.IBKRConID == 0 {
 		return Listing{}, ibkrPlaceRequest{}, fmt.Errorf("isin %s: %w", isin, supplier.ErrNotTradable)
 	}
 	amount := order.GetAmount()

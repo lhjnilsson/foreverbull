@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,22 +22,20 @@ func TestProviderSymbolMapsShareClasses(t *testing.T) {
 	cases := []struct {
 		asked, yahoo, alpaca string
 	}{
-		{"BRKB", "BRK-B", "BRK.B"},
-		{"brkb", "BRK-B", "BRK.B"},
 		{"BRK.B", "BRK-B", "BRK.B"},
 		{"BRK-B", "BRK-B", "BRK.B"},
 		{"BRK/B", "BRK-B", "BRK.B"},
-		{"BFB", "BF-B", "BF.B"},
+		{"BF.B", "BF-B", "BF.B"},
 		// Ordinary tickers, including ones that start like a share class.
 		{"BK", "BK", "BK"},
 		{"BKNG", "BKNG", "BKNG"},
 		{"aapl", "AAPL", "AAPL"},
 		{"GOOG", "GOOG", "GOOG"},
-		// A one-letter suffix that is not a listed share class is an exchange
-		// or another code and is sent as written.
+		// An exchange suffix is sent as written. A joined iShares ticker is
+		// not guessed from the letters.
 		{"VOD.L", "VOD.L", "VOD.L"},
-		{"BT.A", "BT.A", "BT.A"},
-		{"XYZ-B", "XYZ-B", "XYZ-B"},
+		{"BRKB", "BRKB", "BRKB"},
+		{"BFB", "BFB", "BFB"},
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.yahoo, yahooSymbol(tc.asked), "yahoo %s", tc.asked)
@@ -48,6 +47,9 @@ func TestStooqResolvesShareClasses(t *testing.T) {
 	t.Parallel()
 	client, err := NewStooqClient(WithStooqExchange("US"))
 	require.NoError(t, err)
+	classes := mapping.NewClasses()
+	classes.Learn("BRK-B")
+	client.classes = classes
 	for asked, want := range map[string]string{"BRKB": "brk-b.us", "BRK.B": "brk-b.us", "BK": "bk.us"} {
 		code, canonical, err := client.resolveSymbol(asked)
 		require.NoError(t, err)
@@ -87,7 +89,9 @@ const yahooBRKBChart = `{"chart":{"result":[{"meta":{"currency":"USD","symbol":"
 func TestYahooGetOHLCRequestsShareClassWithDash(t *testing.T) {
 	t.Parallel()
 	srv, paths := recordingServer(t, yahooBRKBChart)
-	client := &YahooClient{crumb: "test", chartURL: srv.URL + "/"}
+	classes := mapping.NewClasses()
+	classes.Learn("BRK-B")
+	client := &YahooClient{crumb: "test", chartURL: srv.URL + "/", classes: classes}
 	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
 
@@ -105,7 +109,9 @@ func TestYahooGetAssetKeepsTheAskedShareClassTicker(t *testing.T) {
 "quoteType":"EQUITY","shortName":"Berkshire Hathaway Inc. New","longName":"Berkshire Hathaway Inc."}}]}}`
 	srv, paths := recordingServer(t, quote)
 	isin, _ := recordingServer(t, `{"stocks":[{"keywords":"BRK-B|US0846707026"}]}`)
-	client := &YahooClient{crumb: "test", quoteURL: srv.URL + "/", isinURL: isin.URL + "/"}
+	classes := mapping.NewClasses()
+	classes.Learn("BRK-B")
+	client := &YahooClient{crumb: "test", quoteURL: srv.URL + "/", isinURL: isin.URL + "/", classes: classes}
 
 	asset, err := client.GetAsset(context.Background(), "BRKB")
 	require.NoError(t, err)
@@ -121,9 +127,11 @@ func TestAlpacaGetOHLCRequestsShareClassWithDot(t *testing.T) {
 	}}})
 	require.NoError(t, err)
 	srv, paths := recordingServer(t, string(response))
+	classes := mapping.NewClasses()
+	classes.Learn("BRK-B")
 	bars := &AlpacaBars{opts: marketdata.ClientOpts{
 		APIKey: "key", APISecret: "secret", BaseURL: srv.URL,
-	}}
+	}, classes: classes}
 	start := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
 
@@ -139,9 +147,8 @@ func TestAlpacaGetOHLCRequestsShareClassWithDot(t *testing.T) {
 // VOD.L is Vodafone on London, not class L: every provider is asked for it as written.
 func TestExchangeSuffixIsNotAShareClass(t *testing.T) {
 	t.Parallel()
-	_, ok := parseShareClass("VOD.L")
-	require.False(t, ok)
-	_, ok = stooqShareClassCode("VOD.L", "us")
+	require.False(t, parseShareClass("VOD.L"))
+	_, ok := stooqShareClassCode("VOD.L", "us")
 	require.False(t, ok)
 
 	srv, paths := recordingServer(t, `{"chart":{"result":[],"error":null}}`)
@@ -177,7 +184,7 @@ func TestStoredSymbol(t *testing.T) {
 		{"BRK.A", "BRKA"}, {"BRK-A", "BRKA"}, {"BRK/A", "BRKA"}, {"BRKA", "BRKA"},
 		{"BF.B", "BFB"},
 		// Exchange suffixes and unlisted classes: unchanged, as typed.
-		{"VOD.L", "VOD.L"}, {"vod.l", "vod.l"}, {"SHOP.V", "SHOP.V"}, {"RDS.A", "RDS.A"}, {"BRK.C", "BRK.C"},
+		{"VOD.L", "VOD.L"}, {"vod.l", "vod.l"}, {"SHOP.V", "SHOP.V"}, {"RDS.A", "RDSA"}, {"BRK.C", "BRK.C"},
 		// Not share classes: unchanged.
 		{"BK", "BK"}, {"BKNG", "BKNG"}, {"AAPL", "AAPL"}, {"aapl.us", "aapl.us"}, {"SPY", "SPY"}, {"", ""},
 	} {
@@ -185,12 +192,15 @@ func TestStoredSymbol(t *testing.T) {
 	}
 }
 
-// StoredSymbol returns company+class of the parsed share class, so every
-// listed ticker must be spelled exactly that way, or a class would be stored
-// under a name that is not in the list.
-func TestShareClassTickersAreCompanyPlusClass(t *testing.T) {
+// A joined iShares ticker is not a share class until a listing symbol for
+// that ISIN says so. The request then uses the provider's spelling, so
+// Yahoo is not asked for BRKB.
+func TestJoinedTickerNeedsAListingSymbol(t *testing.T) {
 	t.Parallel()
-	for ticker, sc := range shareClassTickers {
-		require.Equal(t, ticker, sc.company+sc.class, ticker)
-	}
+	require.Equal(t, "BRKB", yahooSymbol("BRKB"))
+	classes := mapping.NewClasses()
+	classes.LearnIfJoined("BRKB", []string{"BRK-B"})
+	require.Equal(t, "BRK-B", mapping.FormatYahoo(classes, "BRKB"))
+	require.Equal(t, "BRKB", mapping.Stored("BRK.B"))
+	require.Equal(t, "BRKB", mapping.Stored("BRKB"))
 }

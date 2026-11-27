@@ -15,6 +15,7 @@ import (
 	"github.com/lhjnilsson/foreverbull/internal/redact"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
 	financeapi "github.com/lhjnilsson/foreverbull/pkg/finance/api"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/repository"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/marketdata"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/ticker"
@@ -149,6 +150,9 @@ func downloadSymbols(symbols []string) ([]string, error) {
 	seen := make(map[string]struct{}, min(len(symbols), marketdata.MaxDownloadSymbols+1))
 	out := make([]string, 0, min(len(symbols), marketdata.MaxDownloadSymbols))
 	for _, symbol := range symbols {
+		// BRK.B must be learned before it is folded to BRKB, or the provider
+		// is asked for BRKB and answers 404.
+		mapping.Process().Learn(symbol)
 		name := marketdata.StoredSymbol(symbol)
 		if _, ok := seen[name]; ok {
 			continue
@@ -382,6 +386,47 @@ func failSymbol(ctx context.Context, sender *downloadSender,
 	sender.send(rsp)
 }
 
+// learnJoinedShareClass teaches a joined iShares ticker from the provider's
+// symbol for its ISIN. BRKB stays BRKB until a hit such as BRK-B is the
+// same letters with a class separator. A search that fails is logged and
+// does not fail the download: the chart request is still made.
+func learnJoinedShareClass(ctx context.Context, fs *MarketdataServer, symbol string, on time.Time) {
+	if fs == nil || fs.marketdata == nil || fs.pgx == nil || !mapping.MightBeJoinedClass(symbol) {
+		return
+	}
+	sharer, ok := fs.marketdata.(interface{ ShareClasses() *mapping.Classes })
+	if !ok || sharer.ShareClasses() == nil {
+		return
+	}
+	classes := sharer.ShareClasses()
+	if mapping.FormatYahoo(classes, symbol) != strings.ToUpper(strings.TrimSpace(symbol)) {
+		return
+	}
+	inst, err := (&repository.Instruments{Conn: fs.pgx}).Resolve(ctx, symbol, on)
+	if err != nil || inst == nil || strings.TrimSpace(inst.ISIN) == "" {
+		return
+	}
+	assets, err := fs.marketdata.SearchAsset(ctx, inst.ISIN)
+	if err != nil {
+		log.Warn().Err(err).Str("symbol", symbol).Str("isin", inst.ISIN).
+			Msg("joined ticker was not matched to a listing symbol")
+		return
+	}
+	hits := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		if asset == nil {
+			continue
+		}
+		// A hit with no ISIN is not this instrument. Only the same ISIN teaches
+		// the joined ticker.
+		if !strings.EqualFold(strings.TrimSpace(asset.GetISIN()), inst.ISIN) {
+			continue
+		}
+		hits = append(hits, asset.GetSymbol())
+	}
+	classes.LearnIfJoined(symbol, hits)
+}
+
 func (fs *MarketdataServer) downloadSymbol(
 	ctx context.Context,
 	sender *downloadSender,
@@ -397,6 +442,11 @@ func (fs *MarketdataServer) downloadSymbol(
 		Symbol: symbol,
 		Status: servicePb.DownloadHistoricalDataResponse_STATUS_OK,
 	}
+
+	// A joined iShares ticker (BRKB) is not guessed from the letters. When
+	// the ISIN is already stored, the provider's symbol for that ISIN
+	// teaches the class, so the chart is asked for BRK-B and not BRKB.
+	learnJoinedShareClass(ctx, fs, symbol, start)
 
 	// A non-US suffix refuses before the asset lookup, the price retry, and
 	// the later-ticker search. The quote, when the download checked it, has
@@ -995,58 +1045,38 @@ func (fs *MarketdataServer) fetchBarsOf(
 	return nil, noPriceDataError(symbol)
 }
 
-// laterTickerCandidates lists the instrument's other tickers: asset_symbol
-// aliases, then the provider's search by ISIN. searchErr is the search
-// failure and err is a failed alias read; the caller fails on either.
+// laterTickerCandidates lists the instrument's other tickers through the
+// mapping layer: asset_symbol aliases, then the provider's search by ISIN.
+// searchErr is the search failure and err is a failed alias read; the
+// caller fails on either. A failed search is not given to the layer, so a
+// partial hit list cannot choose the ticker.
 func laterTickerCandidates(
 	ctx context.Context,
 	instruments repository.Instruments,
 	md supplier.Marketdata,
 	isin, asked string,
 ) (candidates []string, searchErr, err error) {
-	asked = strings.TrimSpace(asked)
-	seen := map[string]struct{}{asked: {}}
-	candidates = make([]string, 0)
-
 	aliases, err := instruments.ListAliases(ctx, isin)
 	if err != nil {
 		return nil, nil, err
 	}
+	symbols := make([]string, 0, len(aliases))
 	for _, alias := range aliases {
-		symbol := strings.TrimSpace(alias.Symbol)
-		if !candidateSymbol(isin, symbol) {
-			continue
-		}
-		if _, ok := seen[symbol]; ok {
-			continue
-		}
-		seen[symbol] = struct{}{}
-		candidates = append(candidates, symbol)
+		symbols = append(symbols, alias.Symbol)
 	}
 
 	found, searchErr := md.SearchAsset(ctx, isin)
 	if searchErr != nil {
 		log.Info().Err(redact.URLError(searchErr)).Str("isin", isin).Msg("search for current ticker failed")
-	} else {
+	}
+	var hits []mapping.SearchHit
+	if searchErr == nil {
+		hits = make([]mapping.SearchHit, 0, len(found))
 		for _, a := range found {
-			symbol := strings.TrimSpace(a.Symbol)
-			if !candidateSymbol(isin, symbol) {
-				continue
-			}
-			// Only a hit with this exact ISIN is the same instrument. A hit
-			// without an ISIN (an ETF or fund quote) could be another
-			// company, and its prices must not be stored for this one.
-			if a.ISIN != isin {
-				continue
-			}
-			if _, ok := seen[symbol]; ok {
-				continue
-			}
-			seen[symbol] = struct{}{}
-			candidates = append(candidates, symbol)
+			hits = append(hits, mapping.SearchHit{Symbol: a.Symbol, ISIN: a.ISIN})
 		}
 	}
-	return candidates, searchErr, nil
+	return mapping.LaterCandidates(isin, asked, symbols, hits), searchErr, nil
 }
 
 // errRefusedCandidate is a later ticker listed outside the US or priced in
@@ -1077,20 +1107,6 @@ func downloadMarketSentence(listed []usercopy.MarketSymbol, err error) (string, 
 		return usercopy.GlobalMarketsLead(listed, nil), true
 	}
 	return "", false
-}
-
-// candidateSymbol reports whether a later-ticker candidate may be fetched.
-// Bars and the alias are stored under it and a refused bar names it, so a
-// stored alias or a search result outside the ticker pattern is skipped.
-func candidateSymbol(isin, symbol string) bool {
-	if symbol == "" {
-		return false
-	}
-	if ticker.Valid(symbol) {
-		return true
-	}
-	log.Warn().Str("isin", isin).Str("candidate", ticker.Logged(symbol)).Msg("skipping a later ticker outside the symbol pattern")
-	return false
 }
 
 // sessionCutoffAsOf is the broker's cutoff as the instant providers clamp

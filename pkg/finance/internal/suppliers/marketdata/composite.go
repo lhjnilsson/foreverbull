@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/supplier"
 	pb "github.com/lhjnilsson/foreverbull/pkg/pb/finance"
 )
@@ -47,6 +48,9 @@ func NewStooqYahoo(newYahoo func() (supplier.Marketdata, error), opts ...StooqOp
 	stooq, err := NewStooqClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Stooq client: %w", err)
+	}
+	if sharer, ok := yahoo.(interface{ ShareClasses() *mapping.Classes }); ok {
+		stooq.classes = sharer.ShareClasses()
 	}
 	return NewComposite(stooq, yahoo)
 }

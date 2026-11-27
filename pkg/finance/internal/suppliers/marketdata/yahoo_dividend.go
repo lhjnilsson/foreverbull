@@ -76,7 +76,7 @@ func (y *YahooClient) GetDividends(ctx context.Context, symbol string, start tim
 	if end != nil {
 		until = inclusiveFetchEnd(*end)
 	}
-	resp, err := y.doRequest(ctx, chartURL+url.PathEscape(yahooSymbol(symbol)),
+	resp, err := y.doRequest(ctx, chartURL+url.PathEscape(y.yahooTicker(symbol)),
 		fmt.Sprintf("period1=%d", start.Unix()), fmt.Sprintf("period2=%d", until.Unix()),
 		"interval=1d", "events=div")
 	if err != nil {

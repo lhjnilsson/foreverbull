@@ -9,6 +9,7 @@ import (
 
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/usercopy"
+	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/mapping"
 	"github.com/lhjnilsson/foreverbull/pkg/finance/internal/suppliers/trading"
 )
 
@@ -33,8 +34,8 @@ import (
 //
 // A non-US suffix is enough to refuse, including when the provider lookup
 // fails. A suffix is never enough to accept a listing the provider reports
-// as outside the US or in another currency. A share-class ticker in
-// shareClassTickers (BRK.B) is not an exchange suffix.
+// as outside the US or in another currency. A separated share class
+// (BRK.B, class letter A or B) is not an exchange suffix.
 
 // Quote is what a provider reported about one symbol. Reported is false when
 // the provider does not send an exchange or a currency (Stooq).
@@ -429,7 +430,7 @@ func quoteFacts(quote Quote) (place, currency string, nonUS, nonUSD bool) {
 // exchangeSuffix reports a non-US suffix. A share class (BRK.B) and the US
 // suffix (.US) are not one. bad is false when there is no refusing suffix.
 func exchangeSuffix(symbol string) (suffix, place string, bad bool) {
-	if _, ok := parseShareClass(symbol); ok {
+	if parseShareClass(symbol) {
 		return "", "", false
 	}
 	upper := strings.ToUpper(strings.TrimSpace(symbol))
@@ -499,6 +500,7 @@ func alpacaQuote(ctx context.Context, profile, symbol string) (Quote, error) {
 	if err != nil {
 		return Quote{}, err
 	}
+	client.UseShareClasses(mapping.Process())
 	exchange, currency, err := client.Listing(ctx, symbol)
 	if err != nil {
 		return Quote{}, err

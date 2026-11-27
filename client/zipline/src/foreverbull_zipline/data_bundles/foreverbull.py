@@ -54,6 +54,66 @@ class AliasSpec:
     symbol: str
     from_date: date | None = None
     to_date: date | None = None
+    exchange: str | None = None
+
+
+# The exchange written before a listing recorded a venue. It is used only
+# when the listing stores none.
+_LISTING_EXCHANGE_FALLBACK = "NASDAQ"
+
+
+def listing_exchange(stored: str | None) -> str:
+    """The venue written on a Zipline equity.
+
+    A stored listing exchange is used as it is. When none is stored, the
+    equity keeps the exchange the bundle used before venues were recorded.
+    """
+    if stored is None:
+        return _LISTING_EXCHANGE_FALLBACK
+    text = stored.strip()
+    if not text:
+        return _LISTING_EXCHANGE_FALLBACK
+    return text
+
+
+def _table_exists(engine, name: str) -> bool:
+    """True when name is a table in the current schema."""
+    query = text(
+        """SELECT 1
+             FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = :name"""
+    )
+    with engine.connect() as conn:
+        return conn.execute(query, {"name": name}).first() is not None
+
+
+def _venues_on(rows, isin: str, on: date | None) -> list[str]:
+    """Venues of isin that cover on. The caller refuses more than one."""
+    matches: list[str] = []
+    for row in rows:
+        if str(row.isin) != isin:
+            continue
+        mic = "" if _missing_date(getattr(row, "mic", None)) else str(row.mic).strip()
+        if not mic:
+            continue
+        start = _as_date(getattr(row, "valid_from", None))
+        end = _as_date(getattr(row, "valid_to", None))
+        if on is not None and start is not None and on < start:
+            continue
+        if on is not None and end is not None and on >= end:
+            continue
+        if mic not in matches:
+            matches.append(mic)
+    return matches
+
+
+def _exchange_on(rows, isin: str, on: date | None) -> str | None:
+    """The venue of isin on on, when exactly one venue is stored."""
+    matches = _venues_on(rows, isin, on)
+    if len(matches) == 1:
+        return matches[0]
+    return None
 
 
 @dataclass(frozen=True)
@@ -143,6 +203,36 @@ def _symbol_events_use_id(engine) -> bool:
         return conn.execute(query).first() is not None
 
 
+def several_exchanges_line(backtest: str, clashes: list[tuple[str, str, date | None]]) -> str:
+    """Ingest's failure when one ISIN is listed on more than one exchange.
+
+    clashes are (symbol, isin, day). A missing day omits " on <date>".
+    One clash is one sentence. Two or more are a line each, sorted by symbol.
+    """
+    ordered = sorted(clashes, key=lambda item: item[0])
+    saved = "The backtest wasn't saved."
+    report = "Please report it at https://github.com/lhjnilsson/foreverbull/issues with this message."
+    if len(ordered) == 1:
+        symbol, isin, on = ordered[0]
+        where = "" if on is None else f" on {on.isoformat()}"
+        return (
+            f"Couldn't load data for backtest '{backtest}': foreverbull lists {symbol} ({isin}) "
+            f"on more than one exchange{where}, so it can't tell which one to use. {saved} {report}"
+        )
+    lead = (
+        f"Couldn't load data for backtest '{backtest}': foreverbull lists {len(ordered)} symbols "
+        f"on more than one exchange, so it can't tell which one to use. {saved}"
+    )
+    lines = [lead]
+    for symbol, isin, on in ordered:
+        name = f"{symbol} ({isin})"
+        if on is not None:
+            name = f"{name} on {on.isoformat()}"
+        lines.append(f"  {name}")
+    lines.append(report)
+    return "\n".join(lines)
+
+
 def listings_unread_line(backtest: str) -> str:
     """Ingest's failure when listing and delisting evidence can't be read."""
     return (
@@ -218,7 +308,7 @@ def group_symbols_by_instrument(
         symbol = str(row.symbol)
         from_date = _as_date(getattr(row, "from_date", None))
         to_date = _as_date(getattr(row, "to_date", None))
-        alias = AliasSpec(symbol=symbol, from_date=from_date, to_date=to_date)
+        alias = AliasSpec(symbol=symbol, from_date=from_date, to_date=to_date, exchange=_row_text(row, "exchange"))
         if alias not in by_isin.setdefault(isin, []):
             by_isin[isin].append(alias)
         drops.setdefault(isin, []).append(_as_date(getattr(row, "member_to", None)))
@@ -259,6 +349,19 @@ def final_drop(drops: list[date | None]) -> date | None:
     if any(dropped is None for dropped in drops):
         return None
     return max(cast(list[date], drops))
+
+
+def _row_text(row, name: str) -> str | None:
+    """A text column, or None when the column or the value is missing."""
+    if not hasattr(row, name):
+        return None
+    raw = getattr(row, name)
+    if _missing_date(raw):
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    return text
 
 
 def _missing_date(value) -> bool:
@@ -1057,8 +1160,8 @@ class SQLIngester:
             ORDER BY s.isin, s.from_date"""
             frame = read_sql_query(query, self.engine._engine)
             if frame is not None and not frame.empty:
-                return frame
-            return self._symbol_list_aliases()
+                return self._with_listing_exchanges(frame)
+            return self._with_listing_exchanges(self._symbol_list_aliases())
         except SQLAlchemyError as exc:
             # The cause can quote the database URL, so it is logged redacted
             # and kept out of the message and the exception chain.
@@ -1083,6 +1186,47 @@ class SQLIngester:
                 ORDER BY s.isin, s.from_date"""
         ).bindparams(bindparam("symbols", expanding=True))
         return read_sql_query(query, self.engine._engine, params={"symbols": symbols})
+
+    def _with_listing_exchanges(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """Attach each alias's venue from instrument_identity.
+
+        A missing table means no venue was stored. Two venues for one ISIN
+        on the alias's day fail the read: the bundle cannot pick one.
+        """
+        if frame is None or frame.empty or "isin" not in frame.columns:
+            return frame
+        engine = getattr(self.engine, "_engine", None)
+        if engine is None or not _table_exists(engine, "instrument_identity"):
+            return frame
+        isins = sorted({str(value).strip() for value in frame["isin"].tolist() if str(value).strip()})
+        if not isins:
+            return frame
+        query = text(
+            """SELECT isin, mic, valid_from, valid_to
+                 FROM instrument_identity
+                WHERE isin IN :isins"""
+        ).bindparams(bindparam("isins", expanding=True))
+        found = read_sql_query(query, engine, params={"isins": isins})
+        # itertuples is typed as a plain tuple; the names are the query columns.
+        identities = [] if found is None or found.empty else list(cast(Iterable[Any], found.itertuples(index=False)))
+        exchanges: list[str | None] = []
+        clashes: dict[str, tuple[str, date | None]] = {}
+        for row in cast(Iterable[Any], frame.itertuples(index=False)):
+            isin = str(row.isin).strip()
+            on = _as_date(getattr(row, "from_date", None))
+            venues = _venues_on(identities, isin, on)
+            if len(venues) > 1:
+                symbol = _row_text(row, "symbol") or isin
+                clashes.setdefault(isin, (symbol, on))
+                exchanges.append(None)
+                continue
+            exchanges.append(venues[0] if venues else None)
+        if clashes:
+            named = [(symbol, isin, on) for isin, (symbol, on) in clashes.items()]
+            raise PlainSentence(several_exchanges_line(self.backtest.name, named))
+        out = frame.copy()
+        out["exchange"] = exchanges
+        return out
 
     def _group_frames(self, group: InstrumentGroup, from_date: date, to_date: date) -> dict[str, pd.DataFrame]:
         if group.instrument_id and hasattr(self.engine, "get_instrument_bars"):
@@ -1165,7 +1309,9 @@ class SQLIngester:
 
         # The auto-close of a sid depends on the newest bar of every member,
         # so the rows are written once every sid's bars are read.
-        ends: list[tuple[int, pd.Timestamp, date | None, bool, list[tuple[str, pd.Timestamp, pd.Timestamp]]]] = []
+        ends: list[
+            tuple[int, pd.Timestamp, date | None, bool, list[tuple[str, pd.Timestamp, pd.Timestamp]], InstrumentGroup]
+        ] = []
         gaps: dict[str, list[pd.Timestamp]] = {}
         # Every group is read before any is written, so one error names every
         # group without bars and every gap, and nothing is ingested.
@@ -1207,14 +1353,16 @@ class SQLIngester:
         self._bundle_dividends = self.bundle_dividends(resolved, from_date, to_date, calendar, sessions)
         for index, (group, combined, mapping_rows) in enumerate(resolved):
             is_benchmark = all(alias.symbol == self.backtest.benchmark for alias in group.aliases)
-            ends.append((index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows))
+            ends.append(
+                (index, _index_timestamp(combined.index, -1), group.member_to, is_benchmark, mapping_rows, group)
+            )
             yield index, combined
-        member_ends = [last for _, last, _, is_benchmark, _ in ends if not is_benchmark] or [
-            last for _, last, *_ in ends
+        member_ends = [last for _, last, _, is_benchmark, _, _ in ends if not is_benchmark] or [
+            last for _, last, _, _, _, _ in ends
         ]
         newest_member_end = max(member_ends)
         delisted = self._delisted_symbols()
-        for index, last, _member_to, _, mapping_rows in ends:
+        for index, last, _member_to, _, mapping_rows, group in ends:
             confirmed = any(symbol in delisted for symbol, _, _ in mapping_rows)
             auto_close = membership_auto_close_date(
                 last,
@@ -1222,6 +1370,9 @@ class SQLIngester:
                 bundle_end=to_date,
                 delisted=confirmed,
             )
+            exchanges: dict[str, str | None] = {}
+            for alias in group.aliases:
+                exchanges.setdefault(alias.symbol, alias.exchange)
             for symbol, start_date, end_date in mapping_rows:
                 asset_row = pd.DataFrame(
                     {
@@ -1230,7 +1381,7 @@ class SQLIngester:
                         "end_date": [end_date],
                         "auto_close_date": [auto_close],
                         "symbol": [symbol],
-                        "exchange": ["NASDAQ"],
+                        "exchange": [listing_exchange(exchanges.get(symbol))],
                     }
                 )
                 self._df_metadata = pd.concat([self._df_metadata, asset_row], ignore_index=True)
