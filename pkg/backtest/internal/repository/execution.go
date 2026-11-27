@@ -814,6 +814,23 @@ func (db *Execution) parseRows(rows pgx.Rows) ([]*backtest.Execution, error) {
 	return executions, nil
 }
 
+// latestExecutionPeriodJoin is the newest period of each execution in the
+// FROM clause. It matches backtest_execution.id, so a run keeps its own result.
+const latestExecutionPeriodJoin = `
+LEFT JOIN LATERAL (
+	SELECT date, pnl, returns, portfolio_value, longs_count, shorts_count,
+		long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure,
+		capital_used, gross_leverage, net_leverage,
+		starting_value, ending_value, starting_cash, ending_cash,
+		max_drawdown, max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
+		algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
+		alpha, beta
+	FROM backtest_execution_period
+	WHERE backtest_execution = backtest_execution.id
+	ORDER BY date DESC
+	LIMIT 1
+) ep ON true`
+
 func (db *Execution) List(ctx context.Context) ([]*backtest.Execution, error) {
 	if authOn() {
 		return nil, fmt.Errorf("list executions is refused while %s=true", "AUTH_ENABLED")
@@ -827,15 +844,7 @@ func (db *Execution) List(ctx context.Context) ([]*backtest.Execution, error) {
 		ep.max_drawdown, ep.max_leverage, ep.excess_returns, ep.treasury_period_return, ep.algorithm_period_return,
 		ep.algo_volatility, ep.sharpe, ep.sortino,
 		ep.benchmark_period_return, ep.benchmark_volatility, ep.alpha, ep.beta
-		FROM backtest_execution INNER JOIN session ON backtest_execution.session=session.id
-		LEFT JOIN (
-			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
-			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
-			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
-			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
-			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-			alpha, beta FROM backtest_execution_period ORDER BY date DESC LIMIT 1
-		) as ep ON backtest_execution.id=ep.backtest_execution`)
+		FROM backtest_execution INNER JOIN session ON backtest_execution.session=session.id`+latestExecutionPeriodJoin)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list executions: %w", err)
 	}
@@ -859,15 +868,7 @@ func (db *Execution) ListBySession(ctx context.Context, session string) ([]*back
 		ep.algo_volatility, ep.sharpe, ep.sortino,
 		ep.benchmark_period_return, ep.benchmark_volatility, ep.alpha, ep.beta
 		FROM backtest_execution
-		INNER JOIN session ON backtest_execution.session=session.id
-		LEFT JOIN (
-			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
-			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
-			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
-			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
-			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-			alpha, beta FROM backtest_execution_period ORDER BY date DESC LIMIT 1
-		) as ep ON backtest_execution.id=ep.backtest_execution
+		INNER JOIN session ON backtest_execution.session=session.id`+latestExecutionPeriodJoin+`
 		WHERE session=$1`, session)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list executions: %w", err)
@@ -892,16 +893,8 @@ func (db *Execution) ListByBacktest(ctx context.Context, backtest string) ([]*ba
 		ep.algo_volatility, ep.sharpe, ep.sortino,
 		ep.benchmark_period_return, ep.benchmark_volatility, ep.alpha, ep.beta
 		FROM backtest_execution
-		LEFT JOIN (
-			SELECT backtest_execution, date, pnl, returns, portfolio_value, longs_count, shorts_count,
-			long_value, short_value, starting_exposure, ending_exposure, long_exposure, short_exposure, capital_used, gross_leverage,
-			net_leverage, starting_value, ending_value, starting_cash, ending_cash, max_drawdown,
-			max_leverage, excess_returns, treasury_period_return, algorithm_period_return,
-			algo_volatility, sharpe, sortino, benchmark_period_return, benchmark_volatility,
-			alpha, beta FROM backtest_execution_period ORDER BY date DESC LIMIT 1
-		) as ep ON backtest_execution.id=ep.backtest_execution
 		INNER JOIN session ON backtest_execution.session=session.id
-		INNER JOIN backtest ON session.backtest=backtest.name
+		INNER JOIN backtest ON session.backtest=backtest.name`+latestExecutionPeriodJoin+`
 		WHERE backtest.name=$1`, backtest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list executions: %w", err)

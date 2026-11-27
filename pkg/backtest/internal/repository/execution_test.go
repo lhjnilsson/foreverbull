@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lhjnilsson/foreverbull/internal/auth"
 	"github.com/lhjnilsson/foreverbull/internal/environment"
 	"github.com/lhjnilsson/foreverbull/internal/test_helper"
 	"github.com/lhjnilsson/foreverbull/pkg/backtest/internal/repository"
@@ -182,6 +183,95 @@ func (test *ExecutionTest) TestListByBacktest() {
 	storedExecutions, err := executions.ListByBacktest(ctx, "backtest")
 	test.Require().NoError(err)
 	test.Len(storedExecutions, 1)
+}
+
+// The September period is the newest row in the table. Each list must
+// still return April for the other execution, with that run's Sharpe.
+func (test *ExecutionTest) TestListReturnsEachExecutionsLatestPeriod() {
+	ctx := context.Background()
+	executions := repository.Execution{Conn: test.conn}
+
+	earlier, err := executions.Create(ctx, test.execution, nil)
+	test.Require().NoError(err)
+	later, err := executions.Create(ctx, test.execution, nil)
+	test.Require().NoError(err)
+
+	staleSharpe := 0.25
+	earlierSharpe := 1.25
+	laterSharpe := 2.5
+	test.Require().NoError(executions.StoreResult(ctx, earlier.Id, backtest.ReturnBasis_RETURN_BASIS_TOTAL, 0, []*backtest.Period{
+		{Date: &pb.Date{Year: 2024, Month: 1, Day: 10}, PortfolioValue: 100, Sharpe: &staleSharpe},
+		{Date: &pb.Date{Year: 2024, Month: 4, Day: 2}, PortfolioValue: 140, Sharpe: &earlierSharpe},
+	}))
+	test.Require().NoError(executions.StoreResult(ctx, later.Id, backtest.ReturnBasis_RETURN_BASIS_TOTAL, 0, []*backtest.Period{
+		{Date: &pb.Date{Year: 2024, Month: 2, Day: 5}, PortfolioValue: 200, Sharpe: &staleSharpe},
+		{Date: &pb.Date{Year: 2024, Month: 9, Day: 18}, PortfolioValue: 260, Sharpe: &laterSharpe},
+	}))
+
+	want := map[string]listedPeriod{
+		earlier.Id: {year: 2024, month: 4, day: 2, portfolio: 140, sharpe: earlierSharpe},
+		later.Id:   {year: 2024, month: 9, day: 18, portfolio: 260, sharpe: laterSharpe},
+	}
+
+	listed, err := executions.List(ctx)
+	test.Require().NoError(err)
+	test.requireLatestPeriods(listed, want)
+
+	bySession, err := executions.ListBySession(ctx, test.storedSession.Id)
+	test.Require().NoError(err)
+	test.requireLatestPeriods(bySession, want)
+
+	byName, err := executions.ListByBacktest(ctx, test.storedBacktest.Name)
+	test.Require().NoError(err)
+	test.requireLatestPeriods(byName, want)
+
+	admin := insertBacktestAccount(test.T(), test.conn, auth.RoleAdmin)
+	test.Require().NoError(repository.MigrateBacktestOwner(ctx, test.conn, admin, &memIngest{}))
+	test.T().Setenv(environment.AuthEnabled, "true")
+
+	ownedSession, err := executions.ListBySession(ctx, test.storedSession.Id)
+	test.Require().NoError(err)
+	test.requireLatestPeriods(ownedSession, want)
+
+	var backtestID string
+	err = test.conn.QueryRow(ctx, `SELECT id FROM backtest WHERE name = $1`, test.storedBacktest.Name).Scan(&backtestID)
+	test.Require().NoError(err)
+	byID, err := executions.ListByBacktestID(ctx, backtestID)
+	test.Require().NoError(err)
+	test.requireLatestPeriods(byID, want)
+
+	visible, err := executions.ListVisible(ctx, auth.Account{ID: admin, Role: auth.RoleAdmin})
+	test.Require().NoError(err)
+	test.requireLatestPeriods(visible, want)
+}
+
+type listedPeriod struct {
+	year      int32
+	month     int32
+	day       int32
+	portfolio float64
+	sharpe    float64
+}
+
+func (test *ExecutionTest) requireLatestPeriods(got []*backtest.Execution, want map[string]listedPeriod) {
+	test.T().Helper()
+	test.Require().Len(got, len(want))
+	seen := make(map[string]struct{}, len(got))
+	for _, execution := range got {
+		period, ok := want[execution.GetId()]
+		test.Require().True(ok, execution.GetId())
+		seen[execution.GetId()] = struct{}{}
+		result := execution.GetResult()
+		test.Require().NotNil(result)
+		test.Require().NotNil(result.GetDate())
+		test.Require().Equal(period.year, result.GetDate().GetYear())
+		test.Require().Equal(period.month, result.GetDate().GetMonth())
+		test.Require().Equal(period.day, result.GetDate().GetDay())
+		test.Require().InDelta(period.portfolio, result.GetPortfolioValue(), 1e-9)
+		test.Require().NotNil(result.Sharpe)
+		test.Require().InDelta(period.sharpe, result.GetSharpe(), 1e-9)
+	}
+	test.Require().Len(seen, len(want))
 }
 
 func (test *ExecutionTest) TestCreateStoresFunctionArguments() {
